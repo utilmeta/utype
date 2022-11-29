@@ -1,0 +1,614 @@
+import inspect
+from typing import Optional, Callable, Type
+import json
+import decimal
+from collections.abc import Mapping, Sequence, Iterable
+from collections import deque
+import re
+from .compat import ForwardRef
+from datetime import timezone, datetime, date, timedelta, time
+from typing import TYPE_CHECKING
+from .functional import multi
+from enum import Enum
+from decimal import Decimal
+from uuid import UUID
+
+if TYPE_CHECKING:
+    from ..options import RuntimeOptions
+
+__transformers__ = []
+__cache__ = {}
+
+
+def register_transformer(*classes, attr=None,
+                         detector=None, metaclass=None,
+                         to=None,       # register to a specific type transformer class
+                         allow_subclasses: bool = True, priority: int = 0):
+    # detect class by issubclass or hasattr
+    # this method can override
+    # the latest function will have the final effect
+    # signature = (*classes, attr, detector)
+
+    if not detector:
+        if not classes and not attr and not metaclass:
+            raise ValueError(f'register_transformer must provide any of classes, metaclass, attr, detector')
+
+        for c in classes:
+            assert inspect.isclass(c), f'register_transformer classes must be class, got {c}'
+
+        if attr:
+            assert isinstance(attr, str), f'register_transformer classes must be str, got {attr}'
+
+        def detector(_cls):
+            if classes:
+                if allow_subclasses:
+                    if not issubclass(_cls, classes):
+                        return False
+                else:
+                    if _cls not in classes:
+                        return False
+            if metaclass:
+                if not isinstance(_cls, metaclass):
+                    return False
+            if attr and not hasattr(_cls, attr):
+                return False
+            return True
+
+    def decorator(f):
+        global __transformers__
+        __transformers__.insert(0, (detector, f, to, priority))
+        if priority:
+            __transformers__.sort(key=lambda v: -v[3])
+        return f
+
+    # before runtime, type will be compiled and applied
+    # if transformer is defined after the validator compiled
+    # it will not take effect
+    return decorator
+
+
+class DateFormat:
+    DATETIME = "%Y-%m-%d %H:%M:%S"
+    DATETIME_DF = '%Y-%m-%d %H:%M:%S.%f'
+    DATETIME_F = '%Y-%m-%d %H:%M:%S %f'
+    DATETIME_P = '%Y-%m-%d %I:%M:%S %p'
+    DATETIME_T = "%Y-%m-%dT%H:%M:%S"
+    DATETIME_TZ = "%Y-%m-%dT%H:%M:%SZ"
+    DATETIME_TFZ = "%Y-%m-%dT%H:%M:%S.%fZ"
+    DATETIME_TF = "%Y-%m-%dT%H:%M:%S.%f"
+    DATETIME_ISO = "%Y-%m-%dT%H:%M:%S.%fTZD"
+    DATETIME_GMT = '%a, %d %b %Y %H:%M:%S GMT'
+    DATETIME_PS = '%a %b %d %H:%M:%S %Y'
+    DATETIME_GMT2 = '%b %d %H:%M:%S %Y GMT'
+    DATE = '%Y-%m-%d'
+    # TIME = '%H:%M:%S'
+
+
+class TypeTransformer:
+    CACHE_TRANSFORMERS = True
+    DATETIME_FORMATS = [v for k, v in DateFormat.__dict__.items() if k.startswith('DATE')]
+    EPOCH = datetime(1970, 1, 1)
+    MS_WATERSHED = int(2e10)
+    ARRAY_SEPARATORS = (',', ';')
+    NULL_VALUES = ('none', 'nil', 'null')
+    FALSE_VALUES = ('0', 'false', 'no', 'off', 'f')
+    TRUE_VALUES = ('1', 'true', 'yes', 'on', 't', 'y')
+    STRUCTURE_BRACKET = [
+        '{}',
+        '[]',
+        '()',
+    ]
+    DURATION_REGS = [
+        re.compile(
+            r'^'
+            r'(?:(?P<days>-?\d+) (days?, )?)?'
+            r'((?:(?P<hours>-?\d+):)(?=\d+:\d+))?'
+            r'(?:(?P<minutes>-?\d+):)?'
+            r'(?P<seconds>-?\d+)'
+            r'(?:\.(?P<microseconds>\d{1,6})\d{0,6})?'
+            r'$'
+        ),  # Support the sections of ISO 8601 date representation that are accepted by timedelta
+        re.compile(
+            r'^(?P<sign>[-+]?)'
+            r'P'
+            r'(?:(?P<days>\d+(.\d+)?)D)?'
+            r'(?:T'
+            r'(?:(?P<hours>\d+(.\d+)?)H)?'
+            r'(?:(?P<minutes>\d+(.\d+)?)M)?'
+            r'(?:(?P<seconds>\d+(.\d+)?)S)?'
+            r')?'
+            r'$'
+        )
+    ]
+
+    def __init__(self,
+                 options: 'RuntimeOptions',
+                 no_explicit_cast: bool = None,
+                 no_data_loss: bool = None,
+                 ):
+        self.options = options
+        self.no_explicit_cast = no_explicit_cast if no_explicit_cast is not None else options.no_explicit_cast
+        self.no_data_loss = no_data_loss if no_data_loss is not None else options.no_data_loss
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}(no_explicit_cast={self.no_explicit_cast}, no_data_loss={self.no_data_loss})'
+    # @property
+    # def strict(self):
+    #     return self.options.strict_transform
+
+    @classmethod
+    def resolver_transformer(cls, t: type) -> Optional[Callable]:
+        # resolve to it's subclass if both subclass and baseclass is provided
+        # like Schema type will not resolve to dict
+        if hasattr(t, '__transformer__') and callable(t.__transformer__):
+            # this type already got a callable transformer, do not resolve then
+            return t.__transformer__
+        global __cache__
+        if cls.CACHE_TRANSFORMERS and t in __cache__:
+            return __cache__[t]
+        for detector, trans, to, priority in __transformers__:
+            if to and not issubclass(cls, to):
+                # like user want to subclass the TypeTransformer and register a function that only applies
+                # to that subclass (not affecting the other types who use base class)
+                # @register_transformer(to=CustomTypeTransformer)
+                continue
+            try:
+                if detector(t):
+                    if cls.CACHE_TRANSFORMERS:
+                        __cache__[t] = trans
+                    return trans
+            except (TypeError, ValueError):
+                continue
+        return None
+
+    def _attempt_from(self, value):
+        if self.no_explicit_cast:
+            # does not allow
+            return value
+        if multi(value) and value:
+            if self.no_data_loss and len(value) > 1:
+                # like convert ["a"] to "a"
+                # whether a "data loss" happen in here is leave to future discussion
+                # we apply this for now because some data structure will make value a
+                # list with a single item
+                # * querystring -> query dict
+                # * multipart/form-data -> files
+                raise TypeError
+            return list(value)[0]
+        if isinstance(value, Enum):
+            return value.value
+        return value
+
+    def _from_byte_like(self, data):
+        if isinstance(data, (bytes, bytearray, memoryview)):
+            if isinstance(data, memoryview):
+                data = bytes(data)
+            return data.decode(errors='strict' if self.no_data_loss else 'ignore')
+        return data
+
+    def _attempt_from_number(self, data):
+        data = self._from_byte_like(
+            self._attempt_from(data)
+        )
+        if isinstance(data, datetime):
+            return data.timestamp()
+        elif isinstance(data, timedelta):
+            return data.total_seconds()
+        return data
+
+    # ---------------------
+    # 2 approach to do first check
+    # 1. all the subclasses instance can directly pass through
+    # if isinstance(data, t):
+    #     # we will follow the type
+    #     return data
+    #
+    # 2. all the subclasses of the hooked types can pass through (by re-initialize)
+    # this should guarantee that the type __init__ take only 1 argument
+    # if isinstance(data, *_type_classes):
+    #     return t(data)
+
+    @register_transformer(type(None), allow_subclasses=False)
+    def to_null(self, data, t):
+        if data is None:
+            return None
+        if self.no_explicit_cast:
+            raise TypeError
+        if isinstance(data, str):
+            if data.lower() in self.NULL_VALUES:
+                return None
+        raise TypeError
+
+    # register this metaclass earlier, because str/list/... is all subclass of Iterable
+    # this is just a FALLBACK for the iterable/sequence that does not get resolved
+    @register_transformer(Sequence, Iterable)
+    def to_iter_types(self, data, t):
+        if isinstance(data, t):
+            # we will follow the type
+            return data
+        value = self.to_array_types(data, list)
+        if not getattr(t, '__abstractmethods__', None):
+            return t(value)
+        # if type is still abstracted, just returning the list result
+        return value
+
+    @register_transformer(Mapping)
+    def to_mapping(self, data, t):
+        if isinstance(data, t):
+            # we will follow the type
+            return data
+        value = self.to_dict(data, dict)
+        if not getattr(t, '__abstractmethods__', None):
+            return t(value)
+        return value
+
+    @register_transformer(str)
+    def to_str(self, data, t: Type[str]):
+        if isinstance(data, str):
+            return t(data)
+        data = self._from_byte_like(
+            self._attempt_from(data)
+        )
+        if self.no_explicit_cast and not isinstance(data, str):
+            raise TypeError
+        return t(data)
+
+    @register_transformer(bytes, bytearray, memoryview)
+    def to_bytes(self, data, t: Type[bytes]):
+        data = self._attempt_from(data)
+
+        if isinstance(data, (bytes, bytearray, memoryview)):
+            return t(data)
+
+        if isinstance(data, str):
+            return t(data.encode())
+
+        if self.no_explicit_cast:
+            # bytes can convert all the types (from str)
+            # if the value is not bytes (need to transform) in strict mode, throw an error directly
+            raise TypeError
+
+        return t(str(data).encode())
+
+    @register_transformer(list, tuple, set, frozenset, deque)
+    def to_array_types(self, data, t):
+        if isinstance(data, t):
+            return data
+
+        if multi(data):     # same group
+            return t(data)
+
+        if self.no_explicit_cast:
+            raise TypeError
+
+        data = self._from_byte_like(data)
+
+        if isinstance(data, str):
+            data = data.strip()
+            # guess string form array like
+            # [1, 2, 3]
+            # [{"a": b}]
+            # {1, 2, 3}
+            # a,b,c
+            if any(data.startswith(v[0]) and data.endswith(v[1]) for v in self.STRUCTURE_BRACKET):
+                try:
+                    data = json.loads(data)
+                except json.JSONDecodeError:
+                    import ast
+                    data = ast.literal_eval(data)
+                    if multi(data):
+                        return t(data)
+                else:
+                    if isinstance(data, list):
+                        return t(data)
+            else:
+                for sep in self.ARRAY_SEPARATORS:
+                    if sep in data:
+                        return t(v.strip() for v in data.split(sep))
+
+        # if data is None:
+        #     return t()
+
+        if isinstance(data, dict):
+            if issubclass(t, set):
+                if self.no_data_loss:
+                    raise TypeError
+                # set cannot pack un-hashable dict item
+                return t(data)
+            if not data:
+                # {} -> [], as for no data loss
+                return t()
+        # instead of tear the item apart
+        return t([data])
+        # return t(data)
+
+    @register_transformer(dict)
+    def to_dict(self, data, t) -> dict:
+        if isinstance(data, t):
+            return data
+        try:
+            return t(data)
+            # directly return
+        except (TypeError, ValueError):
+            pass
+
+        if self.no_explicit_cast:
+            raise TypeError
+
+        data = self._from_byte_like(
+            self._attempt_from(data)
+        )
+
+        if isinstance(data, str):
+            try:
+                return t(json.loads(data, strict=self.no_data_loss))  # noqa
+            except json.decoder.JSONDecodeError:
+                data = data.strip()
+                if any(data.startswith(v[0]) and data.endswith(v[1]) for v in self.STRUCTURE_BRACKET):
+                    import ast
+                    res = self._attempt_from(ast.literal_eval(data))
+                    if isinstance(res, dict):
+                        # maybe set
+                        return res
+                    raise TypeError
+                if '=' in data:
+                    if '&' in data:
+                        # a=b&c=d   querystring index
+                        from urllib.parse import parse_qs
+                        return parse_qs(data)
+                    spliter = ';' if ';' in data else ','
+                    # cookie syntax or comma separate syntax
+                    return {value.split('=')[0].strip(): value.split('=')[1].strip()
+                            for value in data.split(spliter)}
+                raise TypeError
+
+        from xml.etree.ElementTree import Element
+        if isinstance(data, Element):
+            return t(data.attrib)  # noqa
+
+        return t(data)
+
+    # bool is a subclass of int
+    @register_transformer(float)
+    def to_float(self, data, t: Type[float]) -> float:
+        if isinstance(data, float):
+            return t(data)
+
+        if self.no_explicit_cast:
+            if not isinstance(data, (int, float, Decimal)):
+                raise TypeError
+        else:
+            data = self._attempt_from_number(data)
+
+        return t(data)
+
+    @register_transformer(int)
+    def to_integer(self, data, t: Type[int]) -> int:
+        if isinstance(data, int):
+            # including bool:
+            # True -> 1
+            # False -> 0
+            return t(data)
+
+        if self.no_explicit_cast:
+            if not isinstance(data, (int, float, Decimal)):
+                raise TypeError
+        else:
+            data = self._attempt_from_number(data)
+            if isinstance(data, str):
+                if data.lower() in self.FALSE_VALUES:
+                    return 0
+                if data.lower() in self.TRUE_VALUES:
+                    return 1
+
+        data = float(data)
+
+        if self.no_data_loss:
+            if not data.is_integer():
+                raise TypeError
+
+        return t(data)
+
+    @register_transformer(decimal.Decimal)
+    def to_decimal(self, data, t: Type[decimal.Decimal]) -> Decimal:
+        if isinstance(data, Decimal):
+            return t(data)  # noqa
+
+        if self.no_explicit_cast:
+            data = self._from_byte_like(data)
+            if not isinstance(data, (int, float, str, Decimal)):
+                raise TypeError
+        else:
+            data = self._attempt_from_number(data)
+
+        return t(str(data).strip())  # noqa
+
+    @register_transformer(bool)     # after int
+    def to_bool(self, data, t=bool):
+        if isinstance(data, bool):
+            return t(data)
+        if data == 1:
+            return True
+        elif data == 0:
+            return False
+        if self.no_explicit_cast:
+            raise TypeError
+        if isinstance(data, bytes):
+            data = data.decode()
+        rep = str(data).lower()
+        if rep in self.FALSE_VALUES:
+            return False
+        elif rep in self.TRUE_VALUES:
+            return True
+        if self.no_data_loss:
+            # bool can convert all the types
+            # if the value is not bool (need to transform) in strict mode, throw an error directly
+            raise TypeError
+        return bool(data)
+
+    @register_transformer(date, allow_subclasses=False)     # datetime is a subclass of date
+    def to_date(self, data, t: Type[date]) -> date:
+        if isinstance(data, datetime):
+            if self.no_data_loss:
+                raise ValueError(f'Invalid date: {data}, must be date')
+            return data.date()
+        elif isinstance(data, t):
+            return data
+
+        dt = self.to_datetime(data, datetime)
+        if self.no_data_loss:
+            if dt.time() != time(0, 0):
+                raise ValueError(f'Invalid date: {data}, got time part: {dt.time()}')
+        return dt.date()
+
+    @register_transformer(datetime)
+    def to_datetime(self, data, t: Type[datetime]) -> datetime:
+        if isinstance(data, t):
+            return data
+        elif isinstance(data, date):
+            return t(year=data.year, month=data.month, day=data.day)        # noqa
+
+        data = self._attempt_from(data)
+        try:
+            num = self.to_float(data, float)
+        except (TypeError, ValueError):
+            pass
+        else:
+            while abs(num) > self.MS_WATERSHED:
+                num /= 1000
+            return t.fromtimestamp(num).replace(tzinfo=timezone.utc)
+
+        data = self._from_byte_like(data)
+
+        for f in self.DATETIME_FORMATS:
+            try:
+                val = t.strptime(data, f)
+                if data.endswith('GMT') or data.endswith('Z') and 'T' in data:
+                    val = val.replace(tzinfo=timezone.utc)
+                return val
+            except (TypeError, ValueError, re.error):
+                continue
+
+        raise TypeError
+
+    @register_transformer(timedelta)
+    def to_timedelta(self, data, t: Type[timedelta]) -> timedelta:
+        if isinstance(data, t):
+            return data
+        data = self._from_byte_like(
+            self._attempt_from(data)
+        )
+        try:
+            num = self.to_float(data, float)
+        except (TypeError, ValueError):
+            pass
+        else:
+            if self.no_explicit_cast and isinstance(data, str):
+                raise TypeError
+            return t(seconds=num)
+        if isinstance(data, str):
+            for regex in self.DURATION_REGS:
+                match = regex.match(data)
+                if not match:
+                    continue
+                kw = match.groupdict()
+                sign = -1 if kw.pop('sign', '+') == '-' else 1
+                if kw.get('microseconds'):
+                    kw['microseconds'] = kw['microseconds'].ljust(6, '0')
+
+                if kw.get('seconds') and kw.get('microseconds') and kw['seconds'].startswith('-'):
+                    kw['microseconds'] = '-' + kw['microseconds']
+                kw_ = {k: float(v) for k, v in kw.items() if v is not None}
+                return sign * t(**kw_)
+            if self.no_explicit_cast:
+                raise ValueError(f'Invalid timedelta: {data}')
+            tm = time.fromisoformat(data)
+            return t(hours=tm.hour, minutes=tm.minute, seconds=tm.second, microseconds=tm.microsecond)
+        raise TypeError
+
+    @register_transformer(time)
+    def to_time(self, data, t: Type[time]) -> time:
+        if isinstance(data, t):
+            return data
+        data = self._attempt_from(data)
+        if not self.no_data_loss:
+            if isinstance(data, datetime):
+                return data.time()
+            if isinstance(data, date):
+                return t()
+        data = self._from_byte_like(data)
+        if isinstance(data, str):
+            return t.fromisoformat(data)
+        raise TypeError
+
+    @register_transformer(UUID)
+    def to_uuid(self, data, t: Type[UUID]):
+        if isinstance(data, t):
+            return data
+
+        if isinstance(data, str):
+            return t(data)
+
+        elif isinstance(data, (bytes, bytearray)):
+            try:
+                return t(data.decode())
+            except ValueError:
+                # 16 bytes in big-endian order as the bytes argument fail
+                # the above check
+                return t(bytes=data)
+
+        if not self.no_explicit_cast:
+            if not self.no_data_loss and isinstance(data, (float, Decimal)):
+                data = int(data)
+
+            if isinstance(data, int):
+                return t(int=data)
+
+        raise TypeError
+
+    # enum should be the last of current types
+    # because Enum subclass may inherit other base
+    @register_transformer(Enum)
+    def to_enum(self, data, t: Type[Enum]):
+        if isinstance(data, t):
+            return data
+        if self.no_explicit_cast:
+            return t(data)  # noqa
+        if not self.no_data_loss:
+            if data in t.__members__:  # noqa
+                return t.__members__[data]  # noqa
+        member_type = getattr(t, '_member_type_', None)
+        if member_type and member_type != object:
+            if type(data) != member_type:
+                data = self(data, member_type)
+        return t(data)  # noqa
+
+    def apply(self, data, t, func=None):
+        if type(data) == t:
+            # strict equal. not isinstance, like datetime is instance of date
+            return data
+        if isinstance(t, ForwardRef):
+            if not t.__forward_evaluated__:
+                raise TypeError(f'ForwardRef: {t} not evaluated')
+            t = t.__forward_value__
+        if not func:
+            return t(data)
+        return func(self, data, t)
+
+    def __call__(self, data, t):
+        if isinstance(t, ForwardRef):
+            if not t.__forward_evaluated__:
+                raise TypeError(f'ForwardRef: {t} not evaluated')
+            t = t.__forward_value__
+        if type(data) == t:
+            # strict equal. not isinstance, like datetime is instance of date
+            return data
+        transformer = self.resolver_transformer(t)
+        if not transformer:
+            return t(data)
+        return transformer(self, data, t)
+
+
+def type_transform(data, type, options=None):
+    cls = options.transformer_cls if options else TypeTransformer
+    return cls(options)(data, type)
