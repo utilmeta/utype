@@ -135,6 +135,22 @@ class Schema(dict, metaclass=SchemaMeta):
     def __validate__(self, options=None):
         pass
 
+    def __str__(self):
+        items = []
+        for key, val in self.items():
+            field = self.__parser__.get_field(key)
+            name = field.name if field else key
+            items.append(f'{name}={repr(val)}')
+        values = ', '.join(items)
+        return f'{self.__name__}({values})'
+
+    @property
+    def __name__(self):
+        return getattr(self.__class__, '__qualname__', self.__class__.__name__)
+
+    def __repr__(self):
+        return self.__str__()
+
     def __init__(self, **data):
         options = self.__options__.make_runtime(__class__, options=pop(data, '__options__'))
         values = self.__parser__(data, options=options)

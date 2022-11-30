@@ -1,11 +1,16 @@
 import inspect
-from utilmeta.types import *
-from utilmeta.util import common
+from datetime import datetime, date, timedelta, time, timezone
+from uuid import UUID
+from decimal import Decimal
+from typing import Literal, Union, List, Optional, Any, Callable, Final, Iterable, Set
 from .rule import Rule, LogicalType, resolve_forward_type
 from .options import Options, RuntimeOptions
-from .utils.transform import TypeTransformer
 from .utils.compat import get_origin, get_args
 from .utils import exceptions as exc
+from collections.abc import Mapping
+from .utils.functional import multi, copy_value
+from ipaddress import IPv4Address, IPv6Address
+import warnings
 
 
 class Field:
@@ -32,7 +37,7 @@ class Field:
                  # null: bool = False,
                  # use null in type like Optional[int] / int | None
                  default=...,
-                 deprecated: bool = False,
+                 deprecated: Union[bool, str] = False,
                  discriminator=None,    # discriminate the schema union by it's field
                  no_input: Union[bool, str, Callable] = False,
                  # can be a callable that takes the value of the field
@@ -42,6 +47,7 @@ class Field:
                  on_error: Literal['exclude', 'preserve', 'throw'] = None,      # follow the options
                  unprovided: Any = ...,
                  immutable: bool = False,
+                 secret: bool = False,
                  dependencies: Union[list, type] = None,
                  # (backup: internal, disallow, unacceptable)
                  # unacceptable: we do not accept this field as an input,
@@ -96,7 +102,9 @@ class Field:
         self.alias_from = alias_from
         # self.alias_from =
         self.case_insensitive = case_insensitive
-        self.deprecated = deprecated
+        self.deprecated = bool(deprecated)
+        self.deprecated_to = deprecated if isinstance(deprecated, str) else None
+
         self.no_input = no_input
         self.no_output = no_output
         self.immutable = immutable
@@ -107,6 +115,12 @@ class Field:
         self.discriminator = discriminator
         self.on_error = on_error
         self.mode = mode
+
+        self.title = title
+        self.description = description
+        self.example = example
+        self.message = message
+        self.secret = secret        # will display "******" instead of real value in repr
 
         constraints = {k: v for k, v in dict(
             strict=strict,
@@ -157,7 +171,7 @@ class Field:
     def get_alias_from(self, attname: str, generator=None) -> Set[str]:
         aliases = {attname}
         if self.alias_from:
-            if not common.multi(self.alias_from):
+            if not multi(self.alias_from):
                 alias_from = [self.alias_from]
             else:
                 alias_from = self.alias_from
@@ -166,7 +180,7 @@ class Field:
             for alias in alias_from:
                 if callable(alias):
                     alias = alias(attname)
-                if common.multi(alias):
+                if multi(alias):
                     aliases.update([a for a in alias if isinstance(a, str) and a])
                 elif isinstance(alias, str) and alias:
                     aliases.add(alias)
@@ -280,7 +294,7 @@ class SchemaField:
                                 f'which does not support discriminator')
 
             if comb.combinator == '|' or comb.combinator == '^':
-                from .base import SchemaMeta
+                from .schema import SchemaMeta
                 for arg in comb.args:
                     if not isinstance(arg, SchemaMeta):
                         raise ValueError(f'Field: {repr(self.attname)} specify a discriminator: '
@@ -372,7 +386,7 @@ class SchemaField:
             return ...
         if callable(value):
             return value()
-        return common.copy_value(value)
+        return copy_value(value)
 
     def get_default(self, options: RuntimeOptions):
         # options = options or self.options
@@ -386,7 +400,7 @@ class SchemaField:
             return ...
         if callable(default):
             return default()
-        return common.copy_value(default)
+        return copy_value(default)
 
     def get_on_error(self, options: RuntimeOptions):
         if self.field.on_error:
@@ -427,6 +441,10 @@ class SchemaField:
         return options.mode in self.field.no_output
 
     def parse_value(self, value, options: RuntimeOptions):
+        if self.field.deprecated:
+            to = f', use {repr(self.field.deprecated_to)} instead' if self.field.deprecated_to else ''
+            options.collect_waring(f'{repr(self.name)} is deprecated{to}', category=DeprecationWarning)
+
         type = self.type
         if self.discriminator_map:
             if isinstance(value, dict):
@@ -434,6 +452,7 @@ class SchemaField:
                 if discriminator in self.discriminator_map:
                     type = self.discriminator_map[discriminator]
                     # directly assign type instead parse it in a Logical context
+
         trans = options.transformer
         try:
             return trans(value, type)

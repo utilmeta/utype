@@ -1,12 +1,14 @@
-from utilmeta.core.schema.rule import Rule
-from utilmeta.core.schema.options import Options
-from utilmeta.core.schema.utils import exceptions as exc
-from utilmeta.core.schema.utils.transform import TypeTransformer, register_transformer
-from utilmeta.util.common import COMMON_ERRORS, DateFormat
-from utilmeta.types import *
-from utilmeta.core.schema import types
+from utype import Rule, Options, exc
+from utype.utils.transform import TypeTransformer, register_transformer
+from utype import types
 import uuid
 import pytest
+from typing import List, Iterator, Iterable
+from datetime import datetime, date, timedelta, time, timezone
+from uuid import UUID
+from decimal import Decimal
+from enum import Enum
+from collections.abc import Mapping
 
 
 class TestRule:
@@ -223,7 +225,7 @@ class TestRule:
                     True,
                     True
                 )
-                for key, fmt in DateFormat.dict().items() if str(key).startswith('DATETIME')
+                for key, fmt in TypeTransformer.DATETIME_FORMATS
             ]
             + [
                 ('2022-01-02', datetime(2022, 1, 2), True, True),
@@ -421,7 +423,7 @@ class TestRule:
         with pytest.raises(exc.ParseError):
             types.NormalFloat('nan')
 
-        int_or_dt = types.PositiveInt | types.date
+        int_or_dt = types.PositiveInt | date
         assert int_or_dt(3) == 3
         assert int_or_dt(date(2000, 1, 1)) == date(2000, 1, 1)
         with pytest.raises(exc.ParseError):

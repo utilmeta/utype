@@ -351,8 +351,8 @@ class RuntimeOptions(RuntimeOptionsMixin):
         if force_raise or not self.collect_errors or len(self.errors) > self.max_errors:
             raise e
 
-    def collect_waring(self, warning):
-        warnings.warn(warning)
+    def collect_waring(self, warning, category=None):
+        warnings.warn(warning, category=category)
         self.warnings.append(warning)
 
 

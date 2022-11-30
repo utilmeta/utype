@@ -1,14 +1,51 @@
 import typing
-
-from utilmeta.types import *
-from utilmeta.utils import *
-from utilmeta.util import common
-from utilmeta.core.schema import Schema, types, Field
+import utype
+from utype import Rule, Options, exc, Field, Schema, register_transformer
+from utype import types
+from typing import List, Dict, Tuple, Union, Set, Optional, Type
+from datetime import datetime, date, timedelta, time, timezone
+from uuid import UUID
+from decimal import Decimal
+from enum import Enum
+from collections.abc import Mapping
 import json
 import pytest  # noqa
 
 
 class TestSchemaClass:
+    def test_init(self):
+        class Slug(str, Rule):
+            regex = r"[a-z0-9]+(?:-[a-z0-9]+)*"
+
+        @register_transformer(Slug)
+        def to_slug(transformer, value: str, t: Type[Slug]):
+            str_value = transformer(value, str)
+            return t('-'.join([''.join(
+                filter(str.isalnum, v)) for v in str_value.split()]).lower())
+
+        class ArticleSchema(Schema):
+            slug: Slug
+
+        assert dict(ArticleSchema(slug=b'My Awesome Article!')) == {'slug': 'my-awesome-article'}
+
+        @utype.apply(gt=0, le=12)
+        class Month(int):
+            @utype.parse
+            def get_days(self, year: int = utype.Field(ge=2000, le=3000)) -> int:
+                from calendar import monthrange
+                return monthrange(year, self)[1]
+
+        @utype.register_transformer(Month)
+        def to_month(trans, data, t):
+            if isinstance(data, date):
+                return data.month
+            return trans(data, t)
+
+        mon = Month(date(2022, 2, 2))
+        assert int(mon) == 2
+        mon = Month(b'3')
+        assert mon.get_days(year=b'2000')
+
     def test_setup(self):
         class CustomType:
             def __init__(self, val):
@@ -25,7 +62,7 @@ class TestSchemaClass:
             uuid_val: UUID
             custom_val: CustomType
 
-            dt_val: datetime = Field(default=common.time_now)
+            dt_val: datetime = Field(default=datetime.now)
             null_val: Optional[str] = Field(length=6, on_error='exclude')
             d_val: date = Field(required=False)
             # test nest types
@@ -761,8 +798,8 @@ class TestSchemaClass:
 
         class IgnoreDiscardSchema(Schema):
             __options__ = Schema.Options(ignore_discard=["v1"])
-            v1: str = QueryField(discard=True)
-            v2: str = QueryField(discard=True)
+            v1: str = Field(discard=True)
+            v2: str = Field(discard=True)
             v3: str = "x"
 
         assert dict(IgnoreDiscardSchema(v1='x', v2='y', v3='z')) == {'v1': 'x', 'v3': 'z'}
@@ -804,14 +841,8 @@ class TestSchemaClass:
 
         assert UnprovidedSchema2().attr is None
 
-        from utilmeta.util.parser.cls import ClassParser
-
-        class ExClassParser(ClassParser):
-            pass
 
         class ClassOptionsSchema(Schema):
-            __parser_cls__ = ExClassParser
-
             class __options__(Schema.Options):
                 unprovided_attribute = None
                 ignore_conflict = True

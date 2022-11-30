@@ -10,9 +10,6 @@ from enum import Enum
 
 class Number(Rule):
     primitive = 'number'
-    round: int
-    multiple_of: int
-    max_digits: int
 
     @classmethod
     def check_type(cls, t):
@@ -120,13 +117,14 @@ class Timestamp(Float):
     ge = 0
     format = 'timestamp'
 
-    def __init__(self, data):
+    @classmethod
+    def apply(cls, value, __options__=None):
         import datetime
-        if isinstance(data, datetime.datetime):
-            data = data.timestamp()
-        elif isinstance(data, datetime.timedelta):
-            data = data.total_seconds()
-        super(float, self).__init__(data)
+        if isinstance(value, datetime.datetime):
+            value = value.timestamp()
+        elif isinstance(value, datetime.timedelta):
+            value = value.total_seconds()
+        super().apply(value, __options__)
 
 
 def array_enums(enums: Union[Type[Enum], list, tuple, set], item_type=None,
@@ -151,18 +149,19 @@ class SlugStr(Str):
     """
     Slug str or URI
     """
+    format = 'slug'
     regex = r"[a-z0-9]+(?:-[a-z0-9]+)*"
 
 
-class Secret(Str):
-    """
-    Slug str or URI
-    """
-    def __repr__(self):
-        return f'{self.__class__.__name__}("%s")' % ('*' * 6)
-
-    def __str__(self):
-        return f'{self.__class__.__name__}("%s")' % ('*' * 6)
+# class Secret(Str):
+#     """
+#     Slug str or URI
+#     """
+#     def __repr__(self):
+#         return f'{self.__class__.__name__}("%s")' % ('*' * 6)
+#
+#     def __str__(self):
+#         return f'{self.__class__.__name__}("%s")' % ('*' * 6)
 
 
 class Year(Int):
@@ -211,4 +210,28 @@ class Second(Int):
 
 
 class EmailStr(Str):
+    format = 'email'
     regex = '^[\\w-\\.]+@([\\w-]+\\.)+[\\w-]{2,4}$'
+
+
+from pathlib import Path
+
+
+class FilePath(Path, Rule):
+    format = 'file-path'
+    is_dir: bool = False
+    is_abs: bool = None
+    is_link: bool = None
+    is_exists: bool = None
+    max_size: int
+    min_size: int
+
+
+class Directory(Path, Rule):
+    format = 'directory'
+    is_dir: bool = True
+    is_abs: bool = None
+    is_link: bool = None
+    is_exists: bool = None
+    max_files: int
+    min_files: int
