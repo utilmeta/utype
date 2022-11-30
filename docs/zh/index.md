@@ -1,3 +1,5 @@
+# 快速开始
+
 utype 是一个基于 Python 类型注释标准的数据类型声明与解析库，能够在运行时根据你声明的类型和数据结构对数据进行解析转化
 
 ## 1. 安装
@@ -5,15 +7,14 @@ utype 是一个基于 Python 类型注释标准的数据类型声明与解析库
 pip install -U utype
 ```
 
-安装 utype 需要 Python 版本大于 3.6
+!!! note
+	utype 需要 Python 版本大于 3.6
 
-> utype 只基于 Python 标准库，没有第三方依赖
 
-
-## 2. 快速开始
+## 2. 基本用法
 
 ### 基本类型
-```python
+```Python
 from utype import Rule
 
 class PositiveInt(int, Rule):  
@@ -77,15 +78,18 @@ def get_article_info(
 ArticleInfo(id=1, slug='my-article', info={'alice': 1, 'bob': 2})
 ```
 
-> 虽然按照类型的声明，我们不应该在代码中这样调用函数，但是如果调用函数的是来自网络的 HTTP 请求，就可能会出现例子中的情况
+!!! note
+	虽然按照类型的声明，我们不应该在代码中这样调用函数，但是如果调用函数的是来自网络的 HTTP 请求，就可能会出现例子中的情况
 
 
 ### 类型的逻辑运算
 utype 支持 Python 的原生逻辑运算符，能够对类型与数据结构进行逻辑运算，包括
-* 和（&）：数据必须同时满足所有条件（AllOf）
-* 或（|）：数据需要至少满足其中的一个条件（AnyOf）
-* 异或（^）：数据必须满足其中的一个条件，不能是多个或0个（OneOf）
-* 非（~）：数据必须不满足类型的条件（Not）
+
+- 和（&）：数据必须同时满足所有条件（AllOf）
+- 或（|）：数据需要至少满足其中的一个条件（AnyOf）
+- 异或（^）：数据必须满足其中的一个条件，不能是多个或0个（OneOf）
+- 非（~）：数据必须不满足类型的条件（Not）
+
 ```python
 from utype import Rule
 
@@ -130,9 +134,8 @@ class ArticleSchema(Schema):
 {'slug': 'my-awesome-article'}
 ```
 
-::: tip
-注册转换器并没有影响类的 `__init__` 方法的行为，所以直接调用 `Slug(value)` 并不会生效
-:::
+!!! note
+	注册转换器并没有影响类的 `__init__` 方法的行为，所以直接调用 `Slug(value)` 并不会生效
 
 你不仅可以为自定义类型注册转化器，还可以为基本类型（如 str, int, bool 等）或标准库中的类型（如 datetime, Enum 等）注册转化器函数，来自定义其中的转化行为
 

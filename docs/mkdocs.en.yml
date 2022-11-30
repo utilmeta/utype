@@ -1,0 +1,67 @@
+site_name: uType
+site_description: Data type & schema declaration & parsing library based on Python type annotations, enforce type and constraints at runtime
+site_url: https://utype.io
+docs_dir: en
+site_dir: build/en
+# ref: https://github.com/squidfunk/mkdocs-material/discussions/2346
+
+theme:
+  name: material
+  language: en
+  # logo: ../assets/logo.png
+  palette:
+  - media: '(prefers-color-scheme: light)'
+    scheme: default
+    primary: white
+    toggle:
+      icon: material/lightbulb
+      name: Switch to light mode
+  - media: '(prefers-color-scheme: dark)'
+    scheme: slate
+    primary: indigo
+    toggle:
+      icon: material/lightbulb-outline
+      name: Switch to dark mode
+  features:
+    - navigation.sections
+    - toc.follow
+    - navigation.tracking
+    - navigation.top
+
+repo_name: utilmeta/utype
+repo_url: https://github.com/utilmeta/utype
+edit_uri: ''
+plugins:
+- search
+
+nav:
+  - index.md
+  - field.md
+  - rule.md
+  - schema.md
+  - options.md
+  - transform.md
+  - Languages:
+      - en: /
+      - zh: /zh/
+
+extra:
+  alternate:
+    - name: English
+      link: /
+      lang: en
+    - name: 中文
+      link: /zh/
+      lang: zh
+
+markdown_extensions:
+  - toc:
+      permalink: true
+  - markdown.extensions.codehilite:
+      guess_lang: false
+  - admonition
+  - pymdownx.highlight:
+      use_pygments: true
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.superfences

@@ -1,8 +1,9 @@
 import inspect
+import warnings
 from datetime import datetime, date, timedelta, time, timezone
 from uuid import UUID
 from decimal import Decimal
-from typing import Literal, Union, List, Optional, Any, Callable, Final, Iterable, Set
+from typing import Literal, Union, List, Optional, Any, Callable, Final, Iterable, Set, Dict
 from .rule import Rule, LogicalType, resolve_forward_type
 from .options import Options, RuntimeOptions
 from .utils.compat import get_origin, get_args
@@ -10,14 +11,10 @@ from .utils import exceptions as exc
 from collections.abc import Mapping
 from .utils.functional import multi, copy_value
 from ipaddress import IPv4Address, IPv6Address
-import warnings
 
 
 class Field:
-    rule_cls = Rule
-
-    def __config__(self, default_required: bool = True):
-        pass
+    DEFAULT_REQUIRED = True
 
     def __init__(self, *,
                  alias: Union[str, Callable] = None,
@@ -90,12 +87,32 @@ class Field:
 
         if mode:
             if readonly or writeonly:
-                raise ValueError()
+                raise ValueError(f'Field: mode: ({repr(mode)}) cannot set with readonly or writeonly')
 
+        if readonly and writeonly:
+            raise ValueError(f'Field: readonly and writeonly cannot be both specified')
         if readonly:
             mode = 'r'
         if writeonly:
             mode = 'w'
+
+        if deprecated:
+            required = False
+
+        if default is not ...:
+            required = False
+
+        if required is None:
+            required = self.DEFAULT_REQUIRED
+
+        if isinstance(no_input, str):
+            if mode:
+                if no_input not in mode:
+                    raise ValueError(f'Field no_input: {repr(no_input)} is not in mode: {repr(mode)}')
+        if isinstance(no_output, str):
+            if mode:
+                if no_output not in mode:
+                    raise ValueError(f'Field no_output: {repr(no_output)} is not in mode: {repr(mode)}')
 
         self.alias = alias if isinstance(alias, str) else None
         self.alias_generator = alias if callable(alias) else None
@@ -237,6 +254,7 @@ class SchemaField:
     }
 
     field_cls = Field
+    rule_cls = Rule
     # transformer_cls = TypeTransformer
 
     def __init__(self,
@@ -268,11 +286,12 @@ class SchemaField:
                 aliases = [a.lower() for a in aliases]
 
         self.name = name
-        self.aliases = set(aliases or [])
+        self.aliases = set(aliases or []).difference({self.name})
         self.all_aliases = self.aliases.union({self.name})
 
         # self.input_transformer = self.transformer_cls.resolver_transformer(input_type)
         self.dependencies = set()
+        self.deprecated_to = None
         self.discriminator_map = {}
         self.validate_annotation()
 
@@ -329,23 +348,31 @@ class SchemaField:
                                 f'with combinator: {repr(comb.combinator)} which does not support discriminator, '
                                 f'only "^"(OneOf) or "|"(AnyOf) support')
 
-    def generate_dependencies(self, alias_map: dict):
+    def apply_fields(self, fields: Dict[str, 'SchemaField'], alias_map: dict):
         """
         take the field
         """
-        if not self.field.dependencies:
-            return
-        dependencies = []
-        for dep in self.field.dependencies:
-            if dep in alias_map:
-                val = alias_map[dep]
-            elif dep in alias_map.values():
-                val = dep
-            else:
-                continue
-            if val not in dependencies:
-                dependencies.append(val)
-        self.dependencies = set(dependencies)
+        if self.aliases:
+            inter = self.aliases.intersection(fields)
+            if inter:
+                raise ValueError(f'Field(name={repr(self.name)}) aliases: {inter} conflict with fields')
+        if self.field.dependencies:
+            dependencies = []
+            for dep in self.field.dependencies:
+                if dep in alias_map:
+                    dep = alias_map[dep]
+                if dep not in fields:
+                    raise ValueError(f'Field(name={repr(self.name)}) dependency: {repr(dep)} not exists')
+                if dep not in dependencies:
+                    dependencies.append(dep)
+            self.dependencies = set(dependencies)
+        if self.field.deprecated_to:
+            to = self.field.deprecated_to
+            if to in alias_map:
+                to = alias_map[to]
+            if to not in fields:
+                raise ValueError(f'Field(name={repr(self.name)}) is deprecated,'
+                                 f' but prefer field : {repr(to)} not exists')
 
     def resolve_forward_refs(self):
         self.type, r = resolve_forward_type(self.type)
@@ -390,9 +417,9 @@ class SchemaField:
 
     def get_default(self, options: RuntimeOptions):
         # options = options or self.options
-        if options and options.no_default:
+        if options.no_default:
             return ...
-        if options and options.force_default:
+        if options.force_default is not ...:
             default = options.force_default
         elif self.field.default is not ...:
             default = self.field.default
@@ -406,6 +433,10 @@ class SchemaField:
         if self.field.on_error:
             return self.field.on_error
         return options.invalid_values
+
+    def get_example(self):
+        if self.field.example is not ...:
+            return self.field.example
 
     def is_required(self, options: RuntimeOptions):
         if options.ignore_required:
@@ -440,9 +471,16 @@ class SchemaField:
             return options.mode not in self.field.mode
         return options.mode in self.field.no_output
 
+    def check_function(self):
+        if not self.field.required and self.field.no_default:
+            pass
+        if self.field.no_output:
+            warnings.warn(f'Field.no_output has no meanings in function params, please consider move it')
+            pass
+
     def parse_value(self, value, options: RuntimeOptions):
         if self.field.deprecated:
-            to = f', use {repr(self.field.deprecated_to)} instead' if self.field.deprecated_to else ''
+            to = f', use {repr(self.deprecated_to)} instead' if self.deprecated_to else ''
             options.collect_waring(f'{repr(self.name)} is deprecated{to}', category=DeprecationWarning)
 
         type = self.type
@@ -527,7 +565,7 @@ class SchemaField:
 
             if prop.fget:
                 return_annotation = getattr(prop.fget, '__annotations__', {}).get('return')
-                output_type = cls.field_cls.rule_cls.parse_annotation(
+                output_type = cls.rule_cls.parse_annotation(
                     annotation=return_annotation,
                     global_vars=global_vars,
                     forward_refs=forward_refs,
@@ -557,7 +595,7 @@ class SchemaField:
             if args:
                 annotation = args[0]
 
-        input_type = cls.field_cls.rule_cls.parse_annotation(
+        input_type = cls.rule_cls.parse_annotation(
             annotation=annotation,
             constraints=field.constraints,
             global_vars=global_vars,

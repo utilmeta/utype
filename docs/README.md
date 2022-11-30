@@ -1,1 +1,0 @@
-uType is a Type 

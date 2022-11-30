@@ -429,10 +429,13 @@ class Constraints:
         lt = bounds.get('lt')
         le = bounds.get('le')
 
+        t = self.origin_type
         if gt is not None:
             if not callable(gt):
                 _min_t = type(gt)
                 _min = gt
+            if t and not hasattr(t, '__le__'):
+                raise TypeError(f'Rule: type {t} does not support <gt> constraint for not providing __le__ method')
 
         if ge is not None:
             if _min is not None:
@@ -442,10 +445,16 @@ class Constraints:
                 _min_t = type(ge)
                 _min = ge
 
+            if t and not hasattr(t, '__lt__'):
+                raise TypeError(f'Rule: type {t} does not support <ge> constraint for not providing __lt__ method')
+
         if lt is not None:
             if not callable(lt):
                 _max_t = type(lt)
                 _max = lt
+
+            if t and not hasattr(t, '__ge__'):
+                raise TypeError(f'Rule: type {t} does not support <lt> constraint for not providing __ge__ method')
 
         if le is not None:
             if _max is not None:
@@ -454,6 +463,9 @@ class Constraints:
             if not callable(le):
                 _max_t = type(le)
                 _max = le
+
+            if t and not hasattr(t, '__gt__'):
+                raise TypeError(f'Rule: type {t} does not support <le> constraint for not providing __gt__ method')
 
         if _min_t and _max_t:
             if _min_t != _max_t:
@@ -526,6 +538,10 @@ class Constraints:
             return {'enum': enum}   # ignore other constraints
 
         constraints = {k: v for k, v in constraints.items() if v is not None}
+        if 'max_contains' in constraints or 'min_contains' in constraints:
+            if 'contains' not in constraints:
+                raise ValueError(f'Rule with max_contains/min_contains must set <contains> constraint')
+
         if 'unique_items' in constraints and not constraints['unique_items']:
             # only True is valid
             pop(constraints, 'unique_items')
@@ -712,10 +728,8 @@ class Constraints:
         # validate max_contains and min_contains as well
         contains = 0
         options = self.options or RuntimeOptions()
-        transformer = options.get_transformer(
-            no_explicit_cast=True,
-            no_data_loss=True
-        )   # use strict transformer to detect contains
+
+        transformer = options.transformer
         for item in value:
             try:
                 transformer(item, t)

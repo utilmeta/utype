@@ -549,7 +549,7 @@ class Parser:
         case_insensitive_names = set()
 
         for key, field in self.fields.items():
-            if field.aliases:
+            if field.aliases:   # not contains the name
                 for alias in field.aliases:
                     if key != alias:
                         if alias in alias_map:
@@ -562,6 +562,10 @@ class Parser:
 
             if field.case_insensitive:
                 case_insensitive_names.update(*field.aliases, key)
+
+        # for key, field in self.fields.items():
+        #     if key in alias_map:
+        #         raise ValueError(f'{self.obj}: alias: [{repr(key)}] conflict with field: [{repr(field)}]')
 
         if case_insensitive_names:
             for key, field in self.fields.items():
@@ -580,7 +584,7 @@ class Parser:
         self.case_insensitive_names = case_insensitive_names
 
         for key, field in self.fields.items():
-            field.generate_dependencies(alias_map)
+            field.apply_fields(self.fields, alias_map)
 
     @property
     def __ref__(self):

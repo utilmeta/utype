@@ -1,6 +1,11 @@
+from typing import Any, Iterable
 
 
 def parse(f, *, params: bool = True, result: bool = True, options=None):
+    pass
+
+
+def dataclass(cls, *, params=None):
     pass
 
 
@@ -27,6 +32,7 @@ def apply(
     unique_items: bool = None,
 ):
     pass
+
 
 def handle(*func_and_errors):
     pass

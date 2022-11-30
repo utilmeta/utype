@@ -621,6 +621,90 @@ class TestRule:
         with pytest.raises(exc.ConstraintError):
             MListB([10, 1])
 
+    def test_max_digits(self):
+        class MaxFloat(types.Float):
+            max_digits = 3
+
+        assert MaxFloat(b'33.123') == 33.123
+        assert MaxFloat('-133.123') == -133.123
+
+        with pytest.raises(exc.ConstraintError):
+            MaxFloat('3311.123')
+
+        with pytest.raises(exc.ConstraintError):
+            MaxFloat(-3311.123)
+
+    def test_multiple_of(self):
+        class MulInt(types.Int):
+            multiple_of = 3
+
+        assert MulInt(9) == 9
+        assert MulInt(b'30.3') == 30
+        assert MulInt('-33') == -33
+
+        with pytest.raises(exc.ConstraintError):
+            MulInt(b'2.2')
+
+        with pytest.raises(exc.ConstraintError):
+            MulInt(32)
+
+        class LooseMulInt(types.Int):
+            strict = False
+            multiple_of = 3
+
+        assert LooseMulInt('31.1') == 30
+
+    def test_round(self):
+        def make_round(r):
+            class F(types.Float):
+                round = r
+            return F
+
+        assert make_round(2)(1.2) == round(1.2, 2)  # noqa
+        assert make_round(1)(1.24) == round(1.24, 1)  # noqa
+        assert make_round(0)("1.245") == round(1.245, 0)  # noqa
+        assert make_round(-1)("31.245") == round(31.245, -1)  # noqa
+
+    def test_contains(self):
+        class IntArray(list, types.Array):
+            contains = types.PositiveInt
+            max_contains = 3
+            min_contains = 1
+
+        assert IntArray([1, 2, 3]) == [1, 2, 3]
+        assert IntArray([1, 2, -1, 'a', 'b']) == [1, 2, -1, 'a', 'b']
+        assert IntArray(['1', True, b'2.3'])
+
+        with pytest.raises(exc.ConstraintError):
+            # NO EXPLICITLY POSITIVE INT
+            IntArray([-1])
+
+        with pytest.raises(exc.ConstraintError):
+            # NO EXPLICITLY POSITIVE INT
+            IntArray([1, 2, 3, 4, 'a'])
+
+        with pytest.raises(exc.ConstraintError):
+            # NO EXPLICITLY POSITIVE INT
+            IntArray(['1', -3, b'2.3'], __options__=Options(no_explicit_cast=True))
+
+        int_array = IntArray[int]
+        assert int_array(['1', -3, b'2.3']) == [1, -3, 2]
+
+    def test_unique_items(self):
+        class UniqueArray(list, types.Array):
+            unique_items = True
+
+        assert UniqueArray([1, 2, 3]) == [1, 2, 3]
+        assert UniqueArray((1, '1', b'1')) == [1, '1', b'1']
+
+        with pytest.raises(exc.ConstraintError):
+            assert UniqueArray((1, 1, 2))
+
+        int_unique_array = UniqueArray[int]
+        assert int_unique_array([1, '2', b'3']) == [1, 2, 3]
+        with pytest.raises(exc.ConstraintError):
+            int_unique_array((1, '1', b'1'))
+
     # def test_excludes(self):
     #     rule = Rule(excludes=0)
     #     assert rule(1) == 1
@@ -797,17 +881,6 @@ class TestRule:
 
         with pytest.raises(exc.ParseError):
             dict_type({'A': 'a'})
-
-    def test_round(self):
-        def make_round(r):
-            class F(types.Float):
-                round = r
-            return F
-
-        assert make_round(2)(1.2) == round(1.2, 2)  # noqa
-        assert make_round(1)(1.24) == round(1.24, 1)  # noqa
-        assert make_round(0)("1.245") == round(1.245, 0)  # noqa
-        assert make_round(-1)("31.245") == round(31.245, -1)  # noqa
 
     # def test_example(self):
     #     rules = [
