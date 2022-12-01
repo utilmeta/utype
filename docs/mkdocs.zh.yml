@@ -8,16 +8,18 @@ theme:
   name: material
   language: zh
   # logo: ../assets/logo.png
+  logo: utype-white.png
   palette:
   - media: '(prefers-color-scheme: light)'
     scheme: default
-    primary: white
+    primary: indigo
     toggle:
       icon: material/lightbulb
       name: Switch to light mode
   - media: '(prefers-color-scheme: dark)'
     scheme: slate
     primary: indigo
+    logo: assets/utype-white.png
     toggle:
       icon: material/lightbulb-outline
       name: Switch to dark mode

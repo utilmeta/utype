@@ -7,6 +7,7 @@ class ParseError(TypeError, ValueError):
                  value: Any = None,
                  type: type = None,
                  item: Union[int, str] = None,  # like key in the object or index in seq to indentify value
+                 field=None,        # no field can means it's additional field
                  origin_exc: Exception = None):
         if not msg and origin_exc:
             msg = str(origin_exc)
@@ -15,6 +16,7 @@ class ParseError(TypeError, ValueError):
         self.value = value
         self.type = type
         self.item = item
+        self.field = field
         super().__init__(self.formatted_message)
 
     @property
@@ -78,9 +80,7 @@ class PropertiesLackError(ParseError):
 
 
 class AbsenceError(ParseError):
-    def __init__(self, msg: str = None, absence_item: Union[int, str] = None, **kwargs):
-        super().__init__(msg, **kwargs)
-        self.absence_item = absence_item
+    pass
 
 
 class DependenciesAbsenceError(AbsenceError):

@@ -1,9 +1,9 @@
 import inspect
 import warnings
 from typing import Literal, Union, List, Optional, Any, Callable, Type
-from .utils.transform import TypeTransformer
-from .utils.functional import multi
-from .utils import exceptions as exc
+from ..utils.transform import TypeTransformer
+from ..utils.functional import multi
+from ..utils import exceptions as exc
 
 
 class RuntimeOptionsMixin:
@@ -19,7 +19,6 @@ class RuntimeOptionsMixin:
     THROW = 'throw'
 
     transformer_cls = TypeTransformer      # support custom with scope
-    mode: str = None
     collect_errors: bool = False
     max_errors: int = 0
     # if errors reach to this limit, just throw and do not collect further
@@ -66,16 +65,10 @@ class RuntimeOptionsMixin:
     data_first_search: Optional[bool] = False
 
 
-# class ErrorContext:
-#     def __init__(self):
-#         self.errors = []
-#         self.tmp_errors = []
-#         self.warnings = []
-
-
 class RuntimeOptions(RuntimeOptionsMixin):
     override: bool
     depth: int
+    mode: str = None
 
     def __init__(self, context: 'RuntimeOptions' = None,
                  cls=None,
@@ -324,4 +317,6 @@ class Options(RuntimeOptionsMixin):
 
     def __call__(self, fn=None, *args, **kwargs):
         # fn can be a schema or function
-        pass
+        if fn:
+            fn.__options__ = self
+            return fn

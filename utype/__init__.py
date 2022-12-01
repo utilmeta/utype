@@ -1,13 +1,14 @@
 from .utils.transform import TypeTransformer, register_transformer
-from .rule import Rule
-from .field import Field
-from .options import Options
-from .schema import Schema
+from .utils.encode import register_encoder
+from .parser.rule import Rule
+from .parser.field import Field
+from .parser.options import Options
+from .schema import Schema, DataClass
 from .utils import exceptions as exc
 from .decorator import parse, handle, apply
 
 
-VERSION = (1, 0, 0, 'alpha')
+VERSION = (0, 1, 1, None)
 
 
 def _get_version():

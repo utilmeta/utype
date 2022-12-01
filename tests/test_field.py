@@ -79,6 +79,12 @@ class TestField:
             ra: str = Field(mode='ra')
             wa: str = Field(mode='wa')
 
+        class Tr(Schema):
+            __mode__ = 'r'
+
+        class Twa(Schema):
+            __mode__ = 'wa'
+
         assert dict(T(__options__=Options(mode='r'), ro=1, wo=1, ra=1, wa=1)) == {
             'ro': '1',
             'ra': '1'

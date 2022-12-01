@@ -6,10 +6,10 @@ from decimal import Decimal
 from typing import Literal, Union, List, Optional, Any, Callable, Final, Iterable, Set, Dict
 from .rule import Rule, LogicalType, resolve_forward_type
 from .options import Options, RuntimeOptions
-from .utils.compat import get_origin, get_args
-from .utils import exceptions as exc
+from ..utils.compat import get_origin, get_args
+from ..utils import exceptions as exc
 from collections.abc import Mapping
-from .utils.functional import multi, copy_value
+from ..utils.functional import multi, copy_value
 from ipaddress import IPv4Address, IPv6Address
 
 
@@ -169,10 +169,6 @@ class Field:
     def no_default(self):
         return self.default is ...
 
-    @property
-    def always_provided(self):
-        return self.required or not self.no_default
-
     def get_alias(self, attname: str, generator=None):
         alias = attname
         if self.alias:
@@ -291,6 +287,7 @@ class SchemaField:
 
         # self.input_transformer = self.transformer_cls.resolver_transformer(input_type)
         self.dependencies = set()
+        self.attr_dependencies = set()
         self.deprecated_to = None
         self.discriminator_map = {}
         self.validate_annotation()
@@ -313,7 +310,7 @@ class SchemaField:
                                 f'which does not support discriminator')
 
             if comb.combinator == '|' or comb.combinator == '^':
-                from .schema import SchemaMeta
+                from ..schema import SchemaMeta
                 for arg in comb.args:
                     if not isinstance(arg, SchemaMeta):
                         raise ValueError(f'Field: {repr(self.attname)} specify a discriminator: '
@@ -348,7 +345,7 @@ class SchemaField:
                                 f'with combinator: {repr(comb.combinator)} which does not support discriminator, '
                                 f'only "^"(OneOf) or "|"(AnyOf) support')
 
-    def apply_fields(self, fields: Dict[str, 'SchemaField'], alias_map: dict):
+    def apply_fields(self, fields: Dict[str, 'SchemaField'], alias_map: dict, attr_alias_map: dict):
         """
         take the field
         """
@@ -358,6 +355,7 @@ class SchemaField:
                 raise ValueError(f'Field(name={repr(self.name)}) aliases: {inter} conflict with fields')
         if self.field.dependencies:
             dependencies = []
+            attr_dependencies = []
             for dep in self.field.dependencies:
                 if dep in alias_map:
                     dep = alias_map[dep]
@@ -365,7 +363,11 @@ class SchemaField:
                     raise ValueError(f'Field(name={repr(self.name)}) dependency: {repr(dep)} not exists')
                 if dep not in dependencies:
                     dependencies.append(dep)
+                attr = attr_alias_map.get(dep, dep)
+                if attr not in attr_dependencies:
+                    attr_dependencies.append(attr)
             self.dependencies = set(dependencies)
+            self.attr_dependencies = set(attr_dependencies)
         if self.field.deprecated_to:
             to = self.field.deprecated_to
             if to in alias_map:
@@ -377,6 +379,10 @@ class SchemaField:
     def resolve_forward_refs(self):
         self.type, r = resolve_forward_type(self.type)
         self.output_type, r = resolve_forward_type(self.output_type)
+
+    @property
+    def always_provided(self):
+        return self.field.required or not self.field.no_default
 
     @property
     def default(self):
@@ -499,6 +505,7 @@ class SchemaField:
                 item=self.name,
                 type=self.type,
                 value=value,
+                field=self,
                 origin_exc=e
             )
             error_option = self.get_on_error(options)

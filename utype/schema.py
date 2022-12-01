@@ -1,9 +1,9 @@
-from .rule import LogicalType
+from .parser.rule import LogicalType
+from .parser.options import Options
 from .utils.transform import register_transformer, TypeTransformer
 from .utils.functional import pop
 from collections.abc import Mapping
-from .options import Options
-from .parser import Parser
+from .parser.cls import ClassParser
 from typing import TypeVar, Type, Union
 
 T = TypeVar('T')
@@ -31,12 +31,12 @@ class SchemaMeta(type):
             # first base classes
             return
         cls.__kwargs__ = kwargs
-        cls.__parser_cls__: Type[Parser] = getattr(cls, '__parser_cls__', Parser)
+        cls.__parser_cls__: Type[ClassParser] = getattr(cls, '__parser_cls__', ClassParser)
         cls.__parser__ = cls.__parser_cls__.apply_for(cls)
         cls.__options__ = cls.__parser__.options
-        if cls.__parser__.init_parser:
-            # override the __init__ to provide type parsing for init function
-            cls.__init__ = cls.__parser__.init_parser.function
+        # if cls.__parser__.init_parser:
+        #     # override the __init__ to provide type parsing for init function
+        #     cls.__init__ = cls.__parser__.init_parser.function
 
         for key, field in cls.__parser__.fields.items():
             if not field.property:
@@ -75,9 +75,10 @@ class SchemaMeta(type):
 
 
 class DataClass(metaclass=SchemaMeta):
-    __parser_cls__ = Parser
-    __parser__: Parser
+    __parser_cls__ = ClassParser
+    __parser__: ClassParser
     __options__: Options
+    __mode__: str = None
 
     def __class_getitem__(cls, item):
         pass
@@ -125,9 +126,10 @@ class DataClass(metaclass=SchemaMeta):
 
 
 class Schema(dict, metaclass=SchemaMeta):
-    __parser_cls__ = Parser
-    __parser__: Parser
+    __parser_cls__ = ClassParser
+    __parser__: ClassParser
     __options__: Options
+    __mode__: str = None
 
     def __class_getitem__(cls, item):
         pass

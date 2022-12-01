@@ -13,12 +13,14 @@ theme:
   - media: '(prefers-color-scheme: light)'
     scheme: default
     primary: white
+    logo: assets/utype-black.png
     toggle:
       icon: material/lightbulb
       name: Switch to light mode
   - media: '(prefers-color-scheme: dark)'
     scheme: slate
     primary: indigo
+    logo: assets/utype-white.png
     toggle:
       icon: material/lightbulb-outline
       name: Switch to dark mode

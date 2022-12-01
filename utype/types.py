@@ -127,14 +127,17 @@ class Timestamp(Float):
         super().apply(value, __options__)
 
 
-def array_enums(enums: Union[Type[Enum], list, tuple, set], item_type=None,
-                array_type=list, unique: bool = False, array_strict: bool = True) -> Type[Array]:
+def enum_array(item_enum: Union[Type[Enum], list, tuple, set], item_type=None,
+               array_type=list, unique: bool = False, array_strict: bool = True) -> Type[Array]:
     """
     Make an array type, which item is one of the enum value
     """
-    class EnumItem(Rule):
-        __origin__ = item_type
-        enum = enums
+    if isinstance(item_enum, Enum):
+        EnumItem = item_enum
+    else:
+        class EnumItem(Rule):
+            __origin__ = item_type
+            enum = item_enum
 
     class EnumArray(array_type, Array):
         __args__ = (EnumItem,)

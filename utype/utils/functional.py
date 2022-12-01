@@ -1,4 +1,3 @@
-
 def multi(f):
     return isinstance(f, (list, set, frozenset, tuple, type({}.values()), type({}.keys())))
 

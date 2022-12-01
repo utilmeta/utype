@@ -748,8 +748,8 @@ class TestRule:
 
         choices = ["INFO", "WARN", "ERROR"]
 
-        array_enum = types.array_enums(choices, array_type=tuple)
-        unique_array_enum = types.array_enums(choices, unique=True)
+        array_enum = types.enum_array(choices, array_type=tuple)
+        unique_array_enum = types.enum_array(choices, unique=True)
 
         class EnumRule(Rule):
             enum = choices
@@ -780,7 +780,7 @@ class TestRule:
         class EnumRule2(Rule):
             enum = Color
 
-        set_enum = types.array_enums(Color, array_type=set)
+        set_enum = types.enum_array(Color, array_type=set)
 
         assert EnumRule2(Color.RED.value) == Color.RED.value
         assert EnumRule2(Color.GREEN) == Color.GREEN.value

@@ -1,8 +1,34 @@
 from typing import Any, Iterable
+import warnings
+from .parser.func import FunctionParser
+from .parser.options import Options
 
 
-def parse(f, *, params: bool = True, result: bool = True, options=None):
-    pass
+def parse(f=None, *, mode: str = None,
+          options=None,
+          ignore_params: bool = False,
+          ignore_result: bool = False):
+    if ignore_params and ignore_result:
+        warnings.warn(f'you turn off both params and result parse in @parse decorator,'
+                      f' which is basically meaningless...')
+
+    if mode:
+        if options:
+            options = options & Options(mode=mode)
+        else:
+            options = Options(mode=mode)
+
+    def decorator(func):
+        parser = FunctionParser.apply_for(func)
+        return parser.wrap(
+            options=options,
+            parse_params=not ignore_params,
+            parse_result=not ignore_result
+        )
+
+    if f:
+        return decorator(f)
+    return decorator
 
 
 def dataclass(cls, *, params=None):

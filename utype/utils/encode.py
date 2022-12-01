@@ -5,7 +5,6 @@ from collections.abc import Mapping
 from datetime import datetime, date, timedelta, time
 from typing import Union
 from enum import Enum
-# from utilmeta.conf import get_config, Time
 
 DEFAULT_DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 DEFAULT_DATE_FORMAT = "%Y-%m-%d"
