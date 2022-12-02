@@ -8,7 +8,7 @@ class TestField:
             f1: str = Field(required=True)
             f2: str
             f3: str = Field(required=False)
-            f4: str = Field(default=str)
+            f4: str = Field(default_factory=str)
             f5: int = Field(default=0)
         assert dict(T(f1=1, f2=2)) == {
             'f1': '1',
@@ -55,7 +55,7 @@ class TestField:
         class T(Schema):
             some_field: str = Field(case_insensitive=True)
 
-        assert T(soMe_FiEld=1).some_field == 1
+        assert T(soMe_FiEld=1).some_field == '1'
 
         with pytest.raises(Exception):
             class T(Schema):     # noqa
@@ -79,15 +79,29 @@ class TestField:
             ra: str = Field(mode='ra')
             wa: str = Field(mode='wa')
 
-        class Tr(Schema):
-            __mode__ = 'r'
+        class Tr(T):
+            __options__ = Options(mode='r')
 
-        class Twa(Schema):
-            __mode__ = 'wa'
+        class Twa(T):
+            __options__ = Options(mode='wa')
 
         assert dict(T(__options__=Options(mode='r'), ro=1, wo=1, ra=1, wa=1)) == {
             'ro': '1',
             'ra': '1'
+        }
+        assert dict(Tr(ro=1, wo=1, ra=1, wa=1)) == {
+            'ro': '1',
+            'ra': '1'
+        }
+        assert dict(Twa(ro=1, wo=1, ra=1, wa=1)) == {
+            'wa': '1'
+        }
+        # test no mode
+        assert dict(T(ro=1, wo=1, ra=1, wa=1)) == {
+            'ro': '1',
+            'ra': '1',
+            'wo': '1',
+            'wa': '1'
         }
         assert dict(T(__options__=Options(mode='w'), ro=1, wo=1, ra=1, wa=1)) == {
             'wo': '1',
@@ -116,16 +130,59 @@ class TestField:
     def test_field_no_input_output(self):
         class T(Schema):
             noi: str = Field(no_input=True)
+            noo: str = Field(no_output=True)
+            noic: str = Field(no_input=lambda v: not v)
+            nooc: str = Field(no_output=lambda v: not v)
             noir: str = Field(no_input='r', no_output='a')
             noiwa: str = Field(no_input='wa', no_output='a')
 
+        test = T(
+            noi='123',
+            noo='noo',
+            noic='v',
+            nooc='',
+            noir='noir',
+            noiwa='noiwa',
+        )
+        with pytest.raises(AttributeError):
+            _ = test.noi
+        assert 'noi' not in test
+        assert 'nooc' not in test       # not included in dict, but can access through attribute
+        assert test.nooc == ''
+        assert test.noic == 'v'
+        assert dict(test) == {
+            'noic': 'v',
+            'noir': 'noir',
+            'noiwa': 'noiwa'
+        }
+        test.noi = 1
+        assert test.noi == '1'
+        assert 'noi' in test
+
+        test2 = T(**test, noo='noo', nooc='', __options__=Options(mode='r'))
+        with pytest.raises(AttributeError):
+            _ = test2.noir
+
+        assert dict(test2) == {
+            'noic': 'v',
+            'noiwa': 'noiwa'
+        }
+
+        test3 = T(**test, noo='noo', nooc='', __options__=Options(mode='wa'))
+        with pytest.raises(AttributeError):
+            _ = test3.noiwa
+        assert dict(test3) == {
+            'noic': 'v',
+            'noir': 'noir',
+        }
+
         with pytest.raises(Exception):
-            class T(Schema):
+            class T(Schema):    # noqa
                 # no input does not in mode
                 noi: str = Field(mode='r', no_input='wa')
 
         with pytest.raises(Exception):
-            class T(Schema):
+            class T(Schema):    # noqa
                 # no input does not in mode
                 noi: str = Field(mode='r', no_output='ra')
 
@@ -139,6 +196,14 @@ class TestField:
         class T(Schema):
             st: str = Field(max_length=3, min_length=1)
             num: int = Field(ge=0, le=10)
+
+        assert dict(T(st=123, num=b'5')) == {'st': '123', 'num': 5}
+
+        with pytest.raises(exc.ParseError):
+            T(st='', num='1')
+
+        with pytest.raises(exc.ParseError):
+            T(st=1234, num=20)
 
         with pytest.raises(Exception):
             class T(Schema):
@@ -154,7 +219,15 @@ class TestField:
 
         with pytest.raises(Exception):
             class T(Schema):
+                num: str = Field(max_contains=3, contains=int)
+
+        with pytest.raises(Exception):
+            class T(Schema):
                 num: list = Field(max_contains=3)
+
+        with pytest.raises(Exception):
+            class T(Schema):
+                num: list = Field(max_contains=3, min_contains=10, contains=int)
 
     def test_field_dependencies(self):
         pass
@@ -171,10 +244,10 @@ class TestField:
             det: str = Field(deprecated='prefer')
             prefer: str = ''
 
-        with pytest.warns(DeprecationWarning):
+        with pytest.warns():
             T(de=1)
 
-        with pytest.warns(DeprecationWarning, match='prefer'):
+        with pytest.warns(match='prefer'):
             T(det=1)
 
         with pytest.raises(Exception):

@@ -1,4 +1,4 @@
-from typing import Optional, Callable, Type, Dict, Set, List, Union
+from typing import Optional, Callable, Type, Dict, Set, List, Union, Tuple
 from .field import SchemaField
 
 from .options import Options, RuntimeOptions
@@ -22,11 +22,22 @@ class BaseParser:
     }
 
     @classmethod
+    def resolve_parser(cls, obj):
+        global __parsers__
+        if obj in __parsers__:
+            return __parsers__[obj]
+        parser = getattr(obj, '__parser__', None)
+        if isinstance(parser, cls):
+            return parser
+        return None
+
+    @classmethod
     def apply_for(cls, obj, no_cache: bool = False, options: Options = None) -> 'BaseParser':
         if isinstance(obj, cls):
             return obj
         global __parsers__
-        key = (cls, obj)
+        # key = (cls, obj)
+        key = obj
         if not no_cache and key in __parsers__:
             cached: 'BaseParser' = __parsers__[key]
             # if options is not identical, make a new one
@@ -40,7 +51,7 @@ class BaseParser:
     def __init__(self, obj, options: Options = None):
         self.obj = obj
         self.options: Options = options or self.options_cls()
-        self.forward_refs: Dict[str, ForwardRef] = {}  # store unresolved ref
+        self.forward_refs: Dict[str, Tuple[ForwardRef, dict]] = {}  # store unresolved ref
         self.fields: Dict[str, SchemaField] = {}
         self.exclude_vars: Set[str] = set(self.DEFAULT_EXCLUDE_VARS)
         # these data structures are designed to speed up the parsing
@@ -151,24 +162,18 @@ class BaseParser:
             return self.obj.__globals__
         return sys.modules[self.module_name].__dict__
 
-    def __iter__(self):
-        return iter(self.fields)
-
     def __getitem__(self, item):
         return self.fields[item]
 
     def __contains__(self, item):
         return item in self.fields
 
-    def __len__(self):
-        return len(self.fields)
-
     def resolve_forward_refs(self, local_vars=None, ignore_errors: bool = True):
         if not self.forward_refs:
             return False
         resolved = False
         for name in list(self.forward_refs):
-            ref = self.forward_refs[name]
+            ref, constraints = self.forward_refs[name]
             try:
                 evaluate_forward_ref(ref, self.globals, local_vars)
                 if ref.__forward_evaluated__:
@@ -184,7 +189,7 @@ class BaseParser:
                     if __origin:
                         ref.__forward_value__ = self.rule_cls.parse_annotation(
                             annotation=value,
-                            constraints=getattr(ref, '__constraints__', None),
+                            constraints=constraints,
                             global_vars=self.globals,
                             forward_refs=self.forward_refs,
                             forward_key=name
@@ -237,8 +242,8 @@ class BaseParser:
                     attr_alias_map[alias] = field.attname
                     # include equal
 
-            if field.case_insensitive:
-                case_insensitive_names.update(*field.aliases, key)
+            if field.is_case_insensitive(self.options):
+                case_insensitive_names.update({*field.aliases, key})
 
         # for key, field in self.fields.items():
         #     if key in alias_map:
@@ -246,7 +251,7 @@ class BaseParser:
 
         if case_insensitive_names:
             for key, field in self.fields.items():
-                if not field.case_insensitive:
+                if not field.is_case_insensitive(self.options):
                     lower_keys = set(a.lower() for a in field.aliases).union({key.lower()})
                     inter = case_insensitive_names.intersection(lower_keys)
                     if inter:
@@ -263,6 +268,7 @@ class BaseParser:
         for key, field in self.fields.items():
             field.apply_fields(
                 self.fields,
+                excluded_vars=self.exclude_vars,
                 alias_map=alias_map,
                 attr_alias_map=attr_alias_map
             )

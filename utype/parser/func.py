@@ -215,9 +215,6 @@ class FunctionParser(BaseParser):
     def __repr__(self):
         return f'<{self.__class__.__name__}: {self.obj.__qualname__}>'
 
-    def __call__(self, *args, **kwargs):
-        pass
-
     def generate_fields(self):
         exclude_vars = self.exclude_vars
         fields = []
@@ -299,6 +296,7 @@ class FunctionParser(BaseParser):
                     parse_params=parse_params,
                     parse_result=parse_result
                 )
+        f.__parser__ = self
         return f
 
     def parse_pos_type(self, index: int, value, options: RuntimeOptions):
@@ -363,6 +361,7 @@ class FunctionParser(BaseParser):
                 # this position is definitely after parsed_args
                 # because required args is always (we enforce check) ahead of default args
                 parsed_args.append(default)
+                parsed_keys.append(field.attname)       # need to append parsed as well
 
         parsed_kwargs = self.parse_data(
             kwargs,
@@ -559,3 +558,6 @@ class FunctionParser(BaseParser):
             #     result = await result
             result = self.parse_result(result, options=options)
         return result
+
+    # def __call__(self, *args, **kwargs):
+    #     return self.sync_call(args, kwargs)

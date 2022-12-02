@@ -1,5 +1,5 @@
 import typing
-from typing import Union, Type, Optional, List, Literal, Dict, Any, TypeVar, Tuple, Callable
+from typing import Union, Type, Optional, List, Literal, Dict, Any, TypeVar, Tuple, AnyStr
 import inspect
 from ..utils.compat import get_origin, get_args, ForwardRef, evaluate_forward_ref
 from ..utils.transform import TypeTransformer, register_transformer
@@ -11,14 +11,13 @@ from functools import partial
 
 import re
 import warnings
-from collections.abc import Sequence
 from collections import deque, Mapping, OrderedDict, Callable, Generator, AsyncGenerator
 from decimal import Decimal
 
 T = typing.TypeVar('T')
 
 NUM_TYPES = (int, float, Decimal)
-SEQ_TYPES = (list, tuple, set, frozenset, deque, Sequence)
+SEQ_TYPES = (list, tuple, set, frozenset, deque)
 MAP_TYPES = (dict, Mapping)
 OPERATOR_NAMES = {
     '&': 'AllOf',
@@ -46,10 +45,10 @@ def resolve_forward_type(t):
 
 
 def register_forward_ref(annotation,
-                         constraints=None,
-                         global_vars=None,
-                         forward_refs=None,
-                         forward_key=None):
+                         constraints: dict = None,
+                         global_vars: Dict[str, Any] = None,
+                         forward_refs: Dict[str, Tuple[ForwardRef, dict]] = None,
+                         forward_key: str = None):
 
     if not isinstance(annotation, ForwardRef):
         return
@@ -68,9 +67,6 @@ def register_forward_ref(annotation,
 
     if not evaluated:
         if isinstance(forward_refs, dict):
-            if hasattr(annotation, '__constraints__'):
-                annotation = ForwardRef(annotation.__forward_arg__)
-            annotation.__constraints__ = constraints
             # class A:
             #   attr1: 'forward' = Field(gt=1)
             #   attr2: 'forward' = Field(gt=2)
@@ -78,11 +74,11 @@ def register_forward_ref(annotation,
             forward_refs.setdefault(
                 f'${forward_key}' if forward_key else annotation.__forward_arg__,
                 # use a $ to differ from forward arg
-                annotation
+                (annotation, constraints)
             )
             # still not evaluated
             return annotation
-        raise TypeError(f'{repr(forward_key)}: Unsupported ForwardRef: {annotation}')
+        # raise TypeError(f'{repr(forward_key)}: Unsupported ForwardRef: {annotation}')
     return annotation
 
 
@@ -103,6 +99,26 @@ class LogicalType(type):    # noqa
             return origin.resolve_combined_origin()
         return None
 
+    @classmethod
+    def _parse_arg(mcs, arg):
+        if arg is None:
+            return type(None)
+
+        if isinstance(arg, ForwardRef):
+            return arg
+
+        if isinstance(arg, type):
+            return arg
+
+        __origin = get_origin(arg)
+        if __origin:
+            # like List[str] Literal["value"]
+            _new_args = get_args(arg)
+        else:
+            __origin = Literal
+            _new_args = (arg,)
+        return Rule.annotate(__origin, *_new_args)
+
     def resolve_forward_refs(cls):
         if not cls.combinator:
             return
@@ -110,6 +126,8 @@ class LogicalType(type):    # noqa
         resolved = False
         for i, arg in enumerate(cls.args):
             arg, resolved = resolve_forward_type(arg)
+            if resolved:
+                arg = cls._parse_arg(arg)
             args.append(arg)
         if resolved:
             # only adjust args if resolved
@@ -117,7 +135,7 @@ class LogicalType(type):    # noqa
         return resolved
 
     def register_forward_refs(cls, global_vars: Dict[str, Any] = None,
-                              forward_refs: Dict[str, ForwardRef] = None,
+                              forward_refs=None,
                               forward_key: str = None):
         if not cls.combinator:
             return
@@ -132,6 +150,7 @@ class LogicalType(type):    # noqa
                     forward_refs=forward_refs,
                     forward_key=key
                 )
+                arg = cls._parse_arg(arg)
                 registered = True
             elif isinstance(arg, LogicalType) and arg.combinator:
                 if arg.register_forward_refs(
@@ -150,24 +169,10 @@ class LogicalType(type):    # noqa
     def combine(mcs, operator: str, *args):
         __args = []
         for arg in args:
-            if arg is None:
-                arg = type(None)
-
-            elif isinstance(arg, str):
+            if isinstance(arg, str):
                 arg = ForwardRef(arg)
 
-            elif isinstance(arg, ForwardRef):
-                pass
-
-            elif not isinstance(arg, type):
-                __origin = get_origin(arg)
-                if __origin:
-                    # like List[str] Literal["value"]
-                    _new_args = get_args(arg)
-                else:
-                    __origin = Literal
-                    _new_args = (arg,)
-                arg = Rule.annotate(__origin, *_new_args)
+            arg = mcs._parse_arg(arg)
 
             if arg in __args:
                 # avoid duplicate
@@ -186,7 +191,6 @@ class LogicalType(type):    # noqa
             right_parts = other.args
         else:
             right_parts = other if isinstance(other, tuple) else (other,)
-        # print('LR:', left_parts, right_parts)
         args = (*right_parts, *left_parts) if reverse else (*left_parts, *right_parts)
         return cls.combine(comb, *args)
 
@@ -334,7 +338,6 @@ class LogicalType(type):    # noqa
         return value
 
     def __call__(cls, *args, **kwargs):
-        # print('CALL:', *args, **kwargs)
         if cls.combinator:
             return cls.apply_logic(*args, **kwargs)
         return cls.apply(*args, **kwargs)
@@ -377,6 +380,7 @@ class Constraints:
     def origin_type(self, t: type):
         if isinstance(t, type):
             self.rule_cls.__origin__ = t
+            self.rule_cls.__origin_transformer__ = self.rule_cls.transformer_cls.resolver_transformer(t)
 
     def valid_length(self, bounds: dict):
         length = bounds.get('length')
@@ -436,6 +440,9 @@ class Constraints:
         le = bounds.get('le')
 
         t = self.origin_type
+        if t == bool:
+            raise TypeError(f'bool type does not support bounds')
+
         if gt is not None:
             if not callable(gt):
                 _min_t = type(gt)
@@ -480,12 +487,24 @@ class Constraints:
         _t = _max_t or _min_t
         if _t:
             if self.origin_type:
-                if not issubclass(self.origin_type, _t) and \
-                        not issubclass(_t, self.origin_type):
-                    if {self.origin_type, _t} == {int, float}:
-                        pass
-                    else:
-                        raise TypeError(f"Rule range type {_t} must equal to value type {self.origin_type}")
+                if isinstance(self.origin_type, LogicalType) and self.origin_type.combinator:
+                    resolved = False
+                    for arg in self.origin_type.__args__:
+                        if {arg, _t} == {int, float}:
+                            resolved = True
+                            break
+                        if issubclass(arg, _t):
+                            resolved = True
+                            break
+                    if not resolved:
+                        raise TypeError(f"Rule range type {_t} not resolved in type: {self.origin_type}")
+
+                else:
+                    if not issubclass(self.origin_type, _t):
+                        if {self.origin_type, _t} == {int, float}:
+                            pass
+                        else:
+                            raise TypeError(f"Rule range type {_t} must equal to value type {self.origin_type}")
             else:
                 self.origin_type = _t
 
@@ -505,9 +524,17 @@ class Constraints:
                 raise TypeError(f'Constraint: {repr(key)} should be {value_types} object, got {val}')
             if origin_types:
                 if self.origin_type:
-                    if not issubclass(self.origin_type, origin_types):
-                        raise TypeError(f'Constraint: {repr(key)} is only for type: '
-                                        f'{origin_types}, got {self.origin_type}')
+                    if isinstance(self.origin_type, LogicalType) and self.origin_type.combinator:
+                        if not any(issubclass(tp, origin_types) for tp in self.origin_type.__args__):
+                            raise TypeError(f'Constraint: {repr(key)} is only for type: '
+                                            f'{origin_types}, got {self.origin_type.__args__}')
+                    else:
+                        if origin_types == NUM_TYPES and self.origin_type == bool:
+                            # bool is subclass of int
+                            raise TypeError(f'Constraint: {repr(key)} is only for type: {origin_types}, got bool')
+                        if not issubclass(self.origin_type, origin_types):
+                            raise TypeError(f'Constraint: {repr(key)} is only for type: '
+                                            f'{origin_types}, got {self.origin_type}')
                 else:
                     # set the type if missing
                     self.origin_type = origin_types[0]
@@ -516,6 +543,8 @@ class Constraints:
         if 'const' in constraints:
             const = constraints['const']
             if self.origin_type:
+                if isinstance(self.origin_type, LogicalType):
+                    raise TypeError(f'Rule const: {repr(const)} cannot apply to LogicalType')
                 if not isinstance(const, self.origin_type):
                     raise TypeError(f'Rule const: {repr(const)} not instance of type: {self.origin_type}')
             # else:
@@ -544,13 +573,25 @@ class Constraints:
             return {'enum': enum}   # ignore other constraints
 
         constraints = {k: v for k, v in constraints.items() if v is not None}
+
         if 'max_contains' in constraints or 'min_contains' in constraints:
+            max_contains = constraints.get('max_contains')
+            min_contains = constraints.get('min_contains')
+
+            if max_contains is not None and min_contains is not None:
+                if max_contains < min_contains:
+                    raise ValueError(f'Rule with max_contains: {max_contains} is little than min_contains')
+
             if 'contains' not in constraints:
                 raise ValueError(f'Rule with max_contains/min_contains must set <contains> constraint')
+
+            pop(constraints, 'max_contains')
+            pop(constraints, 'min_contains')
 
         if 'unique_items' in constraints and not constraints['unique_items']:
             # only True is valid
             pop(constraints, 'unique_items')
+
         # other constraints other that const is considered not-null
         self.valid_types(constraints)
         self.valid_bounds(constraints)
@@ -774,6 +815,10 @@ class Constraints:
             return type(value)(lst)     # noqa
         return value
 
+    # mark as hasattr
+    max_contains = None
+    min_contains = None
+
     @property
     def rule_max_contains(self):
         return getattr(self.rule_cls, 'max_contains', 0)
@@ -796,7 +841,7 @@ class Rule(metaclass=LogicalType):
     __origin_transformer__: Callable = None
     __args_parser__: Callable = None
 
-    __validators__: List[Tuple[str, Any, Callable]]
+    __validators__: List[Tuple[str, Any, Callable]] = []
     __constraints__: List[str] = [
         # define the constraints and it's order
         'gt',
@@ -956,12 +1001,19 @@ class Rule(metaclass=LogicalType):
     def annotate(cls, type_=None, *args_,
                  constraints: Dict[str, Any] = None,
                  global_vars: Dict[str, Any] = None,
-                 forward_refs: Dict[str, ForwardRef] = None
+                 forward_refs=None
                  ):
         args = []
         ellipsis_args = False
 
-        if type_ == Literal:
+        if type_ == Any:
+            if args_:
+                warnings.warn(f'Any type cannot specify args: {args_}')
+            if constraints:
+                warnings.warn(f'Any type cannot specify constraints: {constraints}')
+            return Rule
+
+        elif type_ == Literal:
             # special for literal type
             constraints = constraints or {}
             if len(args_) == 1:
@@ -974,7 +1026,16 @@ class Rule(metaclass=LogicalType):
         else:
             for arg in args_:
                 if isinstance(arg, TypeVar):
+                    type_cons: tuple = getattr(arg, '__constraints__', None)
+                    if type_cons:
+                        arg = LogicalType.any_of(*type_cons)
+                    else:
+                        # stand for any
+                        # TODO: support type var validation
+                        arg = Rule
+                    args.append(arg)
                     continue
+
                 if arg is ...:
                     if not issubclass(type_, tuple):
                         raise ValueError(f'{cls} args: {args_} with ... only apply to tuple, got {type_}')
@@ -997,6 +1058,8 @@ class Rule(metaclass=LogicalType):
         name = cls.__name__
         if type_ == Union:
             type_ = LogicalType.any_of(*args)
+            # clear the args for union
+            args = []
 
         if isinstance(type_, LogicalType):
             # if type_.combinator:
@@ -1051,6 +1114,10 @@ class Rule(metaclass=LogicalType):
                 forward_refs=forward_refs,
                 forward_key=forward_key
             )
+            if isinstance(annotation, ForwardRef):
+                # if annotation still cannot be resolved by global vars
+                # directly return
+                return annotation
 
         if inspect.isclass(annotation):
             # no constraints, we can directly use it
@@ -1074,6 +1141,8 @@ class Rule(metaclass=LogicalType):
                 # no constraints, we can directly use it
                 return annotation
         elif annotation:
+            if annotation is Any:
+                return Rule     # use empty rule as any
             origin = get_origin(annotation)
             if origin:
                 args = get_args(annotation) or ()
@@ -1100,7 +1169,6 @@ class Rule(metaclass=LogicalType):
 
     @classmethod
     def apply(cls, value, __options__: RuntimeOptions = None):
-        # print('APPLY:', value, __options__)
         # use __options__ instead of options is to identify much clearer with other subclass init kwargs
         options = __options__.clone() if __options__ else cls.options_cls()
         # IMPORTANT:
@@ -1112,12 +1180,17 @@ class Rule(metaclass=LogicalType):
             # no matter cls.__transformer__ is None or not
             try:
                 value = trans.apply(value, cls.__origin__, func=cls.__origin_transformer__)
-                # print('VALUE:', repr(value), cls.__origin__)
             except Exception as e:
                 error = exc.ParseError(origin_exc=e)
                 # if type cannot convert, the following args and constraints cannot validate
                 # can just abort and stop collect errors if it is specified
                 options.handle_error(error, force_raise=True)
+
+            if value is None:
+                # do not continue if value is None after parse
+                # optional / AnyOf(..., None) may happen to this
+                # we just parse args and check constraints for not-None value
+                return value
 
         if cls.__args_parser__:
             value = cls.__args_parser__(value, trans)
@@ -1150,7 +1223,6 @@ class Rule(metaclass=LogicalType):
         return value
 
     def __init__(self, value):
-        # print('INIT:', value)
         self._value = self.apply(value)
 
     def __repr__(self):
@@ -1236,7 +1308,6 @@ class Rule(metaclass=LogicalType):
 
         for i, item in enumerate(value):
             try:
-                # print('TRANS:', item, arg_type)
                 result.append(trans.apply(item, arg_type, func=arg_transformer))
             except Exception as e:
                 error = exc.ParseError(

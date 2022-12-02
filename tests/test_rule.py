@@ -1,5 +1,5 @@
 from utype import Rule, Options, exc
-from utype.utils.transform import TypeTransformer, register_transformer
+from utype.utils.transform import TypeTransformer, register_transformer, DateFormat
 from utype import types
 import uuid
 import pytest
@@ -225,7 +225,7 @@ class TestRule:
                     True,
                     True
                 )
-                for key, fmt in TypeTransformer.DATETIME_FORMATS
+                for k, fmt in DateFormat.__dict__.items() if k.startswith('DATETIME')
             ]
             + [
                 ('2022-01-02', datetime(2022, 1, 2), True, True),
@@ -233,15 +233,19 @@ class TestRule:
                 (dt.date(), datetime(2022, 1, 2), True, True),
                 (dt.timestamp(), dt.replace(tzinfo=timezone.utc), True, True),
                 (int(dt.timestamp()), dt.replace(tzinfo=timezone.utc), True, True),
-                (str(dt.timestamp() * 1000), dt.replace(tzinfo=timezone.utc), True, True),
-                (str(dt.timestamp() * 1000).encode(), dt.replace(tzinfo=timezone.utc), True, True),
+                # str / bytes timestamp to datetime in consider explicit cast
+                # this behaviour leave to further discussion
+                (str(dt.timestamp() * 1000), dt.replace(tzinfo=timezone.utc), False, True),
+                (str(dt.timestamp() * 1000).encode(), dt.replace(tzinfo=timezone.utc), False, True),
             ],
             timedelta: [
                 (0, timedelta(seconds=0), True, True),
                 (10, timedelta(seconds=10), True, True),
-                ("0", timedelta(seconds=0), False, True),
-                ("-10.1", timedelta(seconds=-10.1), False, True),
-                (b"-10.1", timedelta(seconds=-10.1), False, True),
+                # "0" still match the Duration regex, does not consider an explicit cast
+                # this behaviour leave to further discussion
+                ("0", timedelta(seconds=0), True, True),
+                ("-10.1", timedelta(seconds=-10.1), True, True),
+                (b"-10.1", timedelta(seconds=-10.1), True, True),
                 ('P1DT00H00M00S', timedelta(days=1), True, True),
                 (b'P1DT00H00M00S', timedelta(days=1), True, True)
             ],
@@ -274,22 +278,23 @@ class TestRule:
                 ("{1: 2}", {1: 2}, False, True),     # python syntax
                 (b"{1: 2}", {1: 2}, False, True),
                 (b'{"a": 1}', {"a": 1}, False, True),
-                ("k1=v1&k2=v2", {"k1": "v1", "k2": "v2"}, False, True),  # querystring syntax
+                ("k1=v1&k2=v2", {"k1": ["v1"], "k2": ["v2"]}, False, True),  # querystring syntax
                 ('k1=v1;k2=v2', {"k1": "v1", "k2": "v2"}, False, True),  # cookie syntax
                 ('k1=v1; k2=v2; k3=v3', {"k1": "v1", "k2": "v2", "k3": "v3"}, False, True),  # cookie syntax
                 ('k1=v1, k2=v2, k3=v3', {"k1": "v1", "k2": "v2", "k3": "v3"}, False, True),
-                ([("a", 1), ("b", 2)], {"a": 1, "b": 2}, True, True),   # list of tuple can directly pass dict(...)
-                ([["a", 1], ["b", 2]], {"a": 1, "b": 2}, True, True),
-                ({("a", 1), ("b", 2)}, {"a": 1, "b": 2}, True, True),
+                ([("a", 1), ("b", 2)], {"a": 1, "b": 2}, False, True),   # list of tuple can directly pass dict(...)
+                ([["a", 1], ["b", 2]], {"a": 1, "b": 2}, False, True),
+                ({("a", 1), ("b", 2)}, {"a": 1, "b": 2}, False, True),
                 ([{'a': 1}], {'a': 1}, False, True),
                 ([{'a': 1}, {'b': 2}], {'a': 1}, False, False),
+                (MyMapping({1: 2}), {1: 2}, True, True),
             ],
             MyMapping: [
                 ({1: 2}, MyMapping({1: 2}), True, True),  # python syntax
                 ("{1: 2}", MyMapping({1: 2}), False, True),  # python syntax
                 ('{"a": true, "b": null}', MyMapping({"a": True, "b": None}), False, True),
-                ("k1=v1&k2=v2", MyMapping({"k1": "v1", "k2": "v2"}), False, True),  # querystring syntax
-                ([("a", 1), ("b", 2)], MyMapping({"a": 1, "b": 2}), True, True),
+                ("k1=v1&k2=v2", MyMapping({"k1": ["v1"], "k2": ["v2"]}), False, True),  # querystring syntax
+                ([("a", 1), ("b", 2)], MyMapping({"a": 1, "b": 2}), False, True),
                 # list of tuple can directly pass dict(...)
             ],
             list: [

@@ -3,6 +3,7 @@ Python type hint standard may vary from versions
 """
 
 import sys
+import typing
 from typing import (  # type: ignore
     TYPE_CHECKING,
     AbstractSet,

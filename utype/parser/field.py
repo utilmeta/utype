@@ -20,7 +20,7 @@ class Field:
                  alias: Union[str, Callable] = None,
                  alias_from: Union[str, List[str], Callable] = None,
                  # can also be a generator
-                 case_insensitive: bool = False,
+                 case_insensitive: bool = None,
                  # alias_for: str = None,     we may cancel alias for and replace it with alias
                  required: Union[bool, str] = None,
                  # required='rw'
@@ -34,6 +34,7 @@ class Field:
                  # null: bool = False,
                  # use null in type like Optional[int] / int | None
                  default=...,
+                 default_factory: Callable = None,
                  deprecated: Union[bool, str] = False,
                  discriminator=None,    # discriminate the schema union by it's field
                  no_input: Union[bool, str, Callable] = False,
@@ -101,6 +102,13 @@ class Field:
 
         if default is not ...:
             required = False
+            if default_factory:
+                raise ValueError(f'Field: default: {repr(default)} and default factory cannot set both')
+
+        if default_factory:
+            required = False
+            if not callable(default_factory):
+                raise ValueError(f'Field: default_factory: {repr(default_factory)} must be a callable')
 
         if required is None:
             required = self.DEFAULT_REQUIRED
@@ -109,6 +117,7 @@ class Field:
             if mode:
                 if no_input not in mode:
                     raise ValueError(f'Field no_input: {repr(no_input)} is not in mode: {repr(mode)}')
+
         if isinstance(no_output, str):
             if mode:
                 if no_output not in mode:
@@ -127,6 +136,7 @@ class Field:
         self.immutable = immutable
         self.required = required
         self.default = default
+        self.default_factory = default_factory
         self.unprovided = unprovided
         self.dependencies = dependencies
         self.discriminator = discriminator
@@ -167,7 +177,7 @@ class Field:
 
     @property
     def no_default(self):
-        return self.default is ...
+        return self.default is ... and not self.default_factory
 
     def get_alias(self, attname: str, generator=None):
         alias = attname
@@ -264,7 +274,6 @@ class SchemaField:
                  aliases: Set[str] = None,
                  field_property: property = None,
                  output_type: type = None,
-                 options: Options = None,
                  final: bool = False
                  ):
 
@@ -273,10 +282,9 @@ class SchemaField:
         self.output_type = output_type
         self.field = field
         self.property = field_property
-        self.options = options
         self.final = final
 
-        if self.case_insensitive:
+        if self.field.case_insensitive:
             name = name.lower()
             if aliases:
                 aliases = [a.lower() for a in aliases]
@@ -310,14 +318,17 @@ class SchemaField:
                                 f'which does not support discriminator')
 
             if comb.combinator == '|' or comb.combinator == '^':
-                from ..schema import SchemaMeta
+                from .cls import ClassParser
                 for arg in comb.args:
-                    if not isinstance(arg, SchemaMeta):
+                    cls_parser = ClassParser.resolve_parser(arg)
+                    if not cls_parser:
                         raise ValueError(f'Field: {repr(self.attname)} specify a discriminator: '
                                          f'{repr(self.field.discriminator)}, but got a type: {arg} '
-                                         f'that not instance of SchemaMeta')
+                                         f'that not support, must be a data class '
+                                         f'(like subclass of DataClass / Schema or '
+                                         f'use @dataclass to decorate a class)')
 
-                    field = arg.__get_field__(self.field.discriminator)
+                    field = cls_parser.get_field(self.field.discriminator)
                     if not isinstance(field, SchemaField):
                         raise ValueError(f'Field: {repr(self.attname)} specify a discriminator: '
                                          f'{repr(self.field.discriminator)}, but is was not find in type: '
@@ -345,7 +356,12 @@ class SchemaField:
                                 f'with combinator: {repr(comb.combinator)} which does not support discriminator, '
                                 f'only "^"(OneOf) or "|"(AnyOf) support')
 
-    def apply_fields(self, fields: Dict[str, 'SchemaField'], alias_map: dict, attr_alias_map: dict):
+    def apply_fields(self,
+                     fields: Dict[str, 'SchemaField'],
+                     excluded_vars: Set[str],
+                     alias_map: dict,
+                     attr_alias_map: dict
+                     ):
         """
         take the field
         """
@@ -360,6 +376,8 @@ class SchemaField:
                 if dep in alias_map:
                     dep = alias_map[dep]
                 if dep not in fields:
+                    if dep in excluded_vars:
+                        continue
                     raise ValueError(f'Field(name={repr(self.name)}) dependency: {repr(dep)} not exists')
                 if dep not in dependencies:
                     dependencies.append(dep)
@@ -375,6 +393,7 @@ class SchemaField:
             if to not in fields:
                 raise ValueError(f'Field(name={repr(self.name)}) is deprecated,'
                                  f' but prefer field : {repr(to)} not exists')
+            self.deprecated_to = to
 
     def resolve_forward_refs(self):
         self.type, r = resolve_forward_type(self.type)
@@ -385,29 +404,15 @@ class SchemaField:
         return self.field.required or not self.field.no_default
 
     @property
-    def default(self):
-        return self.field.default
-
-    @property
     def immutable(self):
         if self.final:
             return True
         return self.field.immutable
 
-    @property
-    def case_insensitive(self):
-        if self.options:
-            if self.options.case_insensitive is not None:
-                return self.options.case_insensitive
-        return self.field.case_insensitive
-
-    # @property
-    # def has_default(self):
-    #     return self.field.default is not ...
-    #
-    # @property
-    # def has_unprovided(self):
-    #     return self.field.unprovided is not ...
+    def is_case_insensitive(self, options: Options) -> bool:
+        if self.field.case_insensitive is not None:
+            return bool(self.field.case_insensitive)
+        return bool(options.case_insensitive)
 
     def get_unprovided(self, options: Options):
         # options = options or self.options
@@ -429,10 +434,15 @@ class SchemaField:
             default = options.force_default
         elif self.field.default is not ...:
             default = self.field.default
+        elif self.field.default_factory:
+            try:
+                default = self.field.default_factory()
+            except Exception as e:
+                # we should directly raise the error since it is a "ServerError" instead of a parse error
+                # we just want to add some info here to help debug
+                raise e.__class__(f'Field(name={repr(self.name)}) generate default failed with error: {e}') from e
         else:
             return ...
-        if callable(default):
-            return default()
         return copy_value(default)
 
     def get_on_error(self, options: RuntimeOptions):
@@ -454,28 +464,34 @@ class SchemaField:
         return self.field.required in options.mode
 
     def no_input(self, value, options: RuntimeOptions):
-        if isinstance(self.field.no_input, bool):
-            return self.field.no_input
-        if callable(self.field.no_input):
-            return self.field.no_input(value)
+        no_input = self.field.no_input(value) if callable(self.field.no_input) else self.field.no_input
+
         if not options.mode:
             # no mode
-            return False
+            return no_input if isinstance(no_input, bool) else False
+
+        if isinstance(no_input, (str, list, set, tuple)):
+            return options.mode in no_input
+
         if self.field.mode:
             return options.mode not in self.field.mode
-        return options.mode in self.field.no_input
+
+        return bool(no_input)
 
     def no_output(self, value, options: RuntimeOptions):
-        if isinstance(self.field.no_output, bool):
-            return self.field.no_output
-        if callable(self.field.no_output):
-            return self.field.no_output(value)
+        no_output = self.field.no_output(value) if callable(self.field.no_output) else self.field.no_output
+
         if not options.mode:
             # no mode
-            return False
+            return no_output if isinstance(no_output, bool) else False
+
+        if isinstance(no_output, (str, list, set, tuple)):
+            return options.mode in no_output
+
         if self.field.mode:
             return options.mode not in self.field.mode
-        return options.mode in self.field.no_output
+
+        return bool(no_output)
 
     def check_function(self):
         if not self.field.required and self.field.no_default:
@@ -609,7 +625,6 @@ class SchemaField:
             forward_refs=forward_refs,
             forward_key=attname
         )
-
         return cls(
             attname=attname,
             name=field.get_alias(attname, generator=options.alias_generator if options else None),
@@ -618,6 +633,6 @@ class SchemaField:
             output_type=output_type or input_type,
             field=field,
             field_property=prop,
-            options=options,
+            # options=options,
             final=final
         )

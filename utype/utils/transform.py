@@ -12,9 +12,9 @@ from .functional import multi
 from enum import Enum
 from decimal import Decimal
 from uuid import UUID
-
+from .exceptions import TypeMismatchError
 if TYPE_CHECKING:
-    from ..options import RuntimeOptions
+    from ..parser.options import RuntimeOptions
 
 __transformers__ = []
 __cache__ = {}
@@ -125,10 +125,12 @@ class TypeTransformer:
                  options: 'RuntimeOptions',
                  no_explicit_cast: bool = None,
                  no_data_loss: bool = None,
+                 unresolved_types: str = None
                  ):
         self.options = options
         self.no_explicit_cast = no_explicit_cast if no_explicit_cast is not None else options.no_explicit_cast
         self.no_data_loss = no_data_loss if no_data_loss is not None else options.no_data_loss
+        self.unresolved_types = unresolved_types if unresolved_types is not None else options.unresolved_types
 
     def __repr__(self):
         return f'{self.__class__.__name__}(no_explicit_cast={self.no_explicit_cast}, no_data_loss={self.no_data_loss})'
@@ -326,14 +328,35 @@ class TypeTransformer:
     def to_dict(self, data, t) -> dict:
         if isinstance(data, t):
             return data
-        try:
+        if isinstance(data, Mapping):
             return t(data)
-            # directly return
-        except (TypeError, ValueError):
-            pass
 
         if self.no_explicit_cast:
             raise TypeError
+
+        if self.no_data_loss:
+            if isinstance(data, (list, set, tuple)):
+                result = {}
+                try:
+                    for item in data:
+                        # dict([{'a': 1, 'b': 2}]) == {'a': 'b'}
+                        # is consider a data loss
+                        if isinstance(item, (dict, Mapping)):
+                            raise TypeError
+                        key, val = item
+                        result[key] = val
+                    return t(result)
+                except (TypeError, ValueError):
+                    pass
+        else:
+            try:
+                # try for iterable of key, value pairs
+                # but data loss may happen in this case
+                # like dict([{"a": 1, "b": 2}]) == {"a": "b"}
+                return t(data)
+                # directly return
+            except (TypeError, ValueError):
+                pass
 
         data = self._from_byte_like(
             self._attempt_from(data)
@@ -583,7 +606,19 @@ class TypeTransformer:
                 data = self(data, member_type)
         return t(data)  # noqa
 
+    def handle_unresolved(self, data, t):
+        if isinstance(t, type) and isinstance(data, t):
+            # we just loosely match the isinstance for unresolved types
+            return data
+        if self.unresolved_types == 'throw':
+            raise TypeMismatchError(value=data, type=t)
+        elif self.unresolved_types == 'init':
+            return t(data)
+        return data
+
     def apply(self, data, t, func=None):
+        if not func:
+            return self(data, t)
         if type(data) == t:
             # strict equal. not isinstance, like datetime is instance of date
             return data
@@ -591,8 +626,6 @@ class TypeTransformer:
             if not t.__forward_evaluated__:
                 raise TypeError(f'ForwardRef: {t} not evaluated')
             t = t.__forward_value__
-        if not func:
-            return t(data)
         return func(self, data, t)
 
     def __call__(self, data, t):
@@ -605,7 +638,7 @@ class TypeTransformer:
             return data
         transformer = self.resolver_transformer(t)
         if not transformer:
-            return t(data)
+            return self.handle_unresolved(data, t)
         return transformer(self, data, t)
 
 

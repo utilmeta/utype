@@ -9,7 +9,7 @@ setup(
     author='XuLin Zhou',
     author_email='zxl@utilmeta.com',
     keywords="utype type schema meta-type validation data-model type-transform parser json-schema",
-    python_requires='>=3.6',
+    python_requires='>=3.7',
     license="https://utilmeta.com/terms/license",
     url="https://utype.io",
     project_urls={

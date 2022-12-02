@@ -1,28 +1,24 @@
-from typing import Any, Iterable
+from typing import Any, Iterable, Callable, Type
 import warnings
 from .parser.func import FunctionParser
 from .parser.cls import ClassParser
 from .parser.options import Options
+from .parser.rule import Rule
 
 
-def parse(f=None, *, mode: str = None,
-          options=None,
+def parse(f=None, *,
+          parser_cls: Type[FunctionParser] = FunctionParser,
+          options: Options = None,
+          no_cache: bool = False,
           ignore_params: bool = False,
           ignore_result: bool = False):
     if ignore_params and ignore_result:
         warnings.warn(f'you turn off both params and result parse in @parse decorator,'
                       f' which is basically meaningless...')
 
-    if mode:
-        if options:
-            options = options & Options(mode=mode)
-        else:
-            options = Options(mode=mode)
-
     def decorator(func):
-        parser = FunctionParser.apply_for(func)
+        parser = parser_cls.apply_for(func, options=options, no_cache=no_cache)
         return parser.wrap(
-            options=options,
             parse_params=not ignore_params,
             parse_result=not ignore_result
         )
@@ -34,23 +30,46 @@ def parse(f=None, *, mode: str = None,
 
 def dataclass(
     obj=None, *,
+    parser_cls: Type[ClassParser] = ClassParser,
     options: Options = None,
-    init: bool = True,
-    repr: bool = True,   # noqa
-    setattr: bool = False,  # noqa
-    delattr: bool = False   # noqa
+    no_cache: bool = False,
+    allow_runtime: bool = False,
+    set_properties: bool = False,
+    init_super: bool = False,
+    init_attributes: bool = True,
+    init_properties: bool = False,
+    post_init: Callable = None,
+    post_setattr: Callable = None,
+    post_delattr: Callable = None,
+    repr: bool = True,  # noqa
 ):
     def decorator(cls):
-        parser = ClassParser.apply_for(cls)
-        return parser.wrap(
-            options=options,
-            parse_params=not ignore_params,
-            parse_result=not ignore_result
+        parser = parser_cls.apply_for(cls, options=options, no_cache=no_cache)
+
+        parser.make_init(
+            init_super=init_super,
+            allow_runtime=allow_runtime,
+            set_attributes=init_attributes,
+            coerce_property=init_properties,
+            post_init=post_init
         )
+        if repr:
+            parser.make_repr()
+        if set_properties:
+            parser.assign_properties(
+                post_setattr=post_setattr,
+                post_delattr=post_delattr
+            )
+
+        return parser.obj
+    if obj:
+        return decorator(obj)
+    return decorator
 
 
 def apply(
-    rule_cls=None, *,
+    rule_cls: Type[Rule] = Rule, *,
+    strict: bool = True,
     const: Any = ...,
     enum: Iterable = None,
     gt=None,
@@ -71,8 +90,10 @@ def apply(
     min_contains: int = None,
     unique_items: bool = None,
 ):
-    pass
+    if rule_cls:
+        pass
 
 
 def handle(*func_and_errors):
+    # implement in next version
     pass

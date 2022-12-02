@@ -44,6 +44,11 @@ class RuntimeOptionsMixin:
     invalid_keys: Literal['exclude', 'preserve', 'throw'] = 'throw'
     invalid_values: Literal['exclude', 'preserve', 'throw'] = 'throw'
 
+    unresolved_types: Literal['ignore', 'init', 'throw'] = 'throw'
+    # 'ignore': just ignore type transform and retain the input value
+    # 'init':   use t(data) to init unresolved type, and throw the error if raised
+    # 'throw':  throw the error if data is not as type
+
     ignore_error_property: bool = False
     ignore_no_input: bool = False
     ignore_no_output: bool = False
@@ -63,12 +68,12 @@ class RuntimeOptionsMixin:
     no_default: bool = False
     # do not take default value (leave it unprovided)
     data_first_search: Optional[bool] = False
+    mode: str = None
 
 
 class RuntimeOptions(RuntimeOptionsMixin):
-    override: bool
+    override: bool = False
     depth: int
-    mode: str = None
 
     def __init__(self, context: 'RuntimeOptions' = None,
                  cls=None,
@@ -92,6 +97,12 @@ class RuntimeOptions(RuntimeOptionsMixin):
             for key, val in options.items():
                 if hasattr(RuntimeOptionsMixin, key):
                     self.__dict__[key] = val
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}(cls={self.cls}, options={self.options})'
+
+    def __str__(self):
+        return self.__repr__()
 
     def clone(self):
         return self.__class__(
@@ -153,7 +164,7 @@ class RuntimeOptions(RuntimeOptionsMixin):
 
 class Options(RuntimeOptionsMixin):
     # -- PARAMS
-    case_insensitive: bool = False
+    case_insensitive: bool = None
     alias_from_generator: Union[Callable, List[Callable]] = None
     alias_generator: Callable = None
     unprovided_attribute: Any = ...
@@ -167,28 +178,31 @@ class Options(RuntimeOptionsMixin):
                  override: bool = False,
                  immutable: bool = False,
                  collect_errors: bool = False,
-                 max_errors: int = None,
+                 max_errors: int = 0,
                  max_properties: int = None,
                  min_properties: int = None,
-                 no_explicit_cast: Optional[bool] = None,
-                 no_data_loss: Optional[bool] = None,
+                 no_explicit_cast: Optional[bool] = False,
+                 no_data_loss: Optional[bool] = False,
                  addition: Union[bool, type, None] = None,
                  invalid_items: Literal['exclude', 'preserve', 'throw'] = 'throw',
                  invalid_keys: Literal['exclude', 'preserve', 'throw'] = 'throw',
                  invalid_values: Literal['exclude', 'preserve', 'throw'] = 'throw',
+                 unresolved_types: Literal['ignore', 'init', 'throw'] = 'throw',
+                 # you can define your own unresolved behaviour by inherit
+                 # TypeTransformer and tweak handle_unresolved()
                  ignore_error_property: bool = False,
                  force_default: Any = ...,
-                 no_default: bool = None,
-                 ignore_required: bool = None,
-                 force_required: bool = None,
+                 no_default: bool = False,
+                 ignore_required: bool = False,
+                 force_required: bool = False,
                  ignore_no_input: bool = False,
                  ignore_no_output: bool = False,
-                 ignore_constraints: bool = None,   # for Rule, ignore constraints, only transform type
+                 ignore_constraints: bool = False,   # for Rule, ignore constraints, only transform type
                  alias_from_generator: Union[Callable, List[Callable]] = None,
                  alias_generator: Callable = None,
                  ignore_alias_conflict: bool = None,
                  allowed_runtime_options: Union[str, None, List[str]] = '*',
-                 case_insensitive: bool = False,
+                 case_insensitive: bool = None,
                  max_depth: int = None,
                  unprovided_attribute: Any = ...,
                  data_first_search: Optional[bool] = False
@@ -226,6 +240,13 @@ class Options(RuntimeOptionsMixin):
         self._options = options
 
     _option_names = [k for k, v in inspect.signature(__init__).parameters.items() if k != 'self']
+
+    def __repr__(self):
+        options = [f'{key}={repr(val)}' for key, val in self._options.items()]
+        return f'{self.__class__.__name__}(%s)' % ', '.join(options)
+
+    def __str__(self):
+        return self.__repr__()
 
     @classmethod
     def initialize(cls):

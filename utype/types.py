@@ -1,4 +1,4 @@
-from .rule import Rule
+from .parser.rule import Rule
 from collections import abc
 from .utils import exceptions as exc
 from decimal import Decimal
@@ -31,7 +31,6 @@ class Array(Rule):
     def __class_getitem__(cls, item) -> Type['Array']:
         if not isinstance(item, tuple):
             item = (item,)
-        print('CLS:', cls)
         return cls.annotate(cls.__origin__, *item)
 
     @classmethod
@@ -214,27 +213,27 @@ class Second(Int):
 
 class EmailStr(Str):
     format = 'email'
-    regex = '^[\\w-\\.]+@([\\w-]+\\.)+[\\w-]{2,4}$'
+    regex = r'([A-Za-z0-9]+[.-_])*[A-Za-z0-9]+@[A-Za-z0-9-]+(\.[A-Z|a-z]{2,})+'
 
 
-from pathlib import Path
-
-
-class FilePath(Path, Rule):
-    format = 'file-path'
-    is_dir: bool = False
-    is_abs: bool = None
-    is_link: bool = None
-    is_exists: bool = None
-    max_size: int
-    min_size: int
-
-
-class Directory(Path, Rule):
-    format = 'directory'
-    is_dir: bool = True
-    is_abs: bool = None
-    is_link: bool = None
-    is_exists: bool = None
-    max_files: int
-    min_files: int
+# from pathlib import Path
+#
+#
+# class FilePath(Path, Rule):
+#     format = 'file-path'
+#     is_dir: bool = False
+#     is_abs: bool = None
+#     is_link: bool = None
+#     is_exists: bool = None
+#     max_size: int
+#     min_size: int
+#
+#
+# class Directory(Path, Rule):
+#     format = 'directory'
+#     is_dir: bool = True
+#     is_abs: bool = None
+#     is_link: bool = None
+#     is_exists: bool = None
+#     max_files: int
+#     min_files: int

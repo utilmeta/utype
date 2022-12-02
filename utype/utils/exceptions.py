@@ -24,6 +24,15 @@ class ParseError(TypeError, ValueError):
         return self.msg
 
 
+class TypeMismatchError(ParseError):
+    @property
+    def formatted_message(self):
+        msg = f'type: {self.type} is unrecognized and forbid to auto-init'
+        if self.msg:
+            msg += f': {self.msg}'
+        return msg
+
+
 class ConstraintError(ParseError):
     def __init__(self, msg: str = None, *,
                  value: Any = None,
@@ -55,8 +64,15 @@ class ConstraintError(ParseError):
 class ExceedError(ParseError):
     # a key has excess the dict template and allow_excess=False in options
     def __init__(self, msg: str = None, excess_items: Union[list, set] = None, **kwargs):
-        super().__init__(msg, **kwargs)
         self.excess_items = excess_items
+        super().__init__(msg, **kwargs)
+
+    @property
+    def formatted_message(self):
+        msg = f'Items: {repr(self.excess_items)} is exceeded'
+        if self.msg:
+            msg += f': {self.msg}'
+        return msg
 
 
 class AliasConflictError(ParseError):
@@ -80,7 +96,12 @@ class PropertiesLackError(ParseError):
 
 
 class AbsenceError(ParseError):
-    pass
+    @property
+    def formatted_message(self):
+        msg = f'Required item: {repr(self.item)} is absence'
+        if self.msg:
+            msg += f': {self.msg}'
+        return msg
 
 
 class DependenciesAbsenceError(AbsenceError):

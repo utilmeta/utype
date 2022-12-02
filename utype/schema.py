@@ -1,15 +1,11 @@
 from .parser.rule import LogicalType
 from .parser.options import Options, RuntimeOptions
-from .utils.transform import register_transformer, TypeTransformer
-from .utils.functional import pop
-from collections.abc import Mapping
 from .parser.cls import ClassParser
-from typing import TypeVar, Type, Union
+from .parser.field import SchemaField
+from typing import Union
 
-T = TypeVar('T')
 
-
-class SchemaMeta(type):
+class LogicalMeta(type):
     __logical_type__ = LogicalType
 
     @property
@@ -21,26 +17,6 @@ class SchemaMeta(type):
         if '.' in name:
             name = ''.join([part.capitalize() if part.islower() else part for part in name.split('.')])
         return f'{cls.__module__}.{name}'
-
-    def __get_field__(cls, key: str):
-        return cls.__parser__.get_field(key)
-
-    def __init__(cls, name, bases: tuple, attrs: dict, **kwargs):
-        super().__init__(name, bases, attrs)
-        if not any(isinstance(base, SchemaMeta) for base in bases):
-            # first base classes
-            return
-        cls.__kwargs__ = kwargs
-        cls.__parser_cls__: Type[ClassParser] = getattr(cls, '__parser_cls__', ClassParser)
-        cls.__parser__ = cls.__parser_cls__.apply_for(cls)
-        cls.__options__ = cls.__parser__.options
-        # if cls.__parser__.init_parser:
-        #     # override the __init__ to provide type parsing for init function
-        #     cls.__init__ = cls.__parser__.init_parser.function
-
-        for key, field in cls.__parser__.fields.items():
-            if not field.property:
-                setattr(cls, field.attname, field)
 
     def __and__(cls, other):
         if isinstance(other, LogicalType):
@@ -74,11 +50,26 @@ class SchemaMeta(type):
         return cls.__logical_type__.combine('~', cls)
 
 
-class DataClass(metaclass=SchemaMeta):
+class DataClass(metaclass=LogicalMeta):
     __parser_cls__ = ClassParser
     __parser__: ClassParser
     __options__: Options
-    __mode__: str = None
+    # __mode__: str = None
+
+    def __init_subclass__(cls, **kwargs):
+        options = getattr(cls, '__options__', None)
+        cls.__parser__ = parser = cls.__parser_cls__.apply_for(cls, options=options)
+        cls.__options__ = cls.__parser__.options
+
+        parser.make_init(
+            init_super=False,
+            allow_runtime=True,
+            set_attributes=True,
+            coerce_property=True,
+            post_init=cls.__post_init__
+        )
+        parser.make_repr()
+        parser.assign_properties()
 
     def __class_getitem__(cls, item):
         pass
@@ -91,11 +82,28 @@ class DataClass(metaclass=SchemaMeta):
         self.__validate__(options)
 
 
-class Schema(dict, metaclass=SchemaMeta):
+class Schema(dict, metaclass=LogicalMeta):
     __parser_cls__ = ClassParser
     __parser__: ClassParser
     __options__: Options
-    __mode__: str = None
+    # __mode__: str = None
+
+    def __init_subclass__(cls, **kwargs):
+        options = getattr(cls, '__options__', None)
+        cls.__parser__ = parser = cls.__parser_cls__.apply_for(cls, options=options)
+        cls.__options__ = cls.__parser__.options
+
+        parser.make_init(
+            init_super=True,
+            allow_runtime=True,
+            set_attributes=True,
+            coerce_property=True,
+            post_init=cls.__post_init__
+        )
+        parser.assign_properties(
+            post_setattr=cls.__post_setattr__,
+            post_delattr=cls.__post_delattr__
+        )
 
     def __class_getitem__(cls, item):
         pass
@@ -107,14 +115,14 @@ class Schema(dict, metaclass=SchemaMeta):
         items = []
         for key, val in self.items():
             field = self.__parser__.get_field(key)
-            name = field.name if field else key
+            name = field.attname if field else key
             items.append(f'{name}={repr(val)}')
         values = ', '.join(items)
         return f'{self.__name__}({values})'
 
     @property
     def __name__(self):
-        return getattr(self.__class__, '__qualname__', self.__class__.__name__)
+        return self.__parser__.name
 
     def __repr__(self):
         return self.__str__()
@@ -148,25 +156,7 @@ class Schema(dict, metaclass=SchemaMeta):
         if not field.no_output(value, options=options):
             super().__setitem__(field.name, value)
 
-    def __setattr__(self, alias: str, value):
-        field = self.__parser__.get_field(alias)
-        options = self.__options__.make_runtime(__class__, force_error=True)
-        if not field:
-            if alias in self.__parser__.exclude_vars:
-                raise AttributeError(f'{self.__class__}: Attempt to set excluded attribute: {repr(alias)}')
-            # addition = self.__parser__.parse_addition(alias, value, options=options)
-            # if addition is ...:
-            #     # ignore addition
-            #     return
-            return super().__setattr__(alias, value)
-
-        if self.__options__.immutable or field.immutable:
-            raise AttributeError(f'{self.__name__}: '
-                                 f'Attempt to set immutable attribute: [{repr(alias)}]')
-
-        value = field.parse_value(value, options=options)
-        super().__setattr__(field.attname, value)
-
+    def __post_setattr__(self, field: SchemaField, value, options: RuntimeOptions):
         if not field.no_output(value, options=options):
             if field.property:
                 value = getattr(self, field.attname)
@@ -176,6 +166,11 @@ class Schema(dict, metaclass=SchemaMeta):
             # no output
             if field.name in self:
                 super().__delitem__(field.name)
+
+    def __post_delattr__(self, field: SchemaField, options: RuntimeOptions):
+        if field.name in self:
+            super().__delitem__(field.name)
+        super().__delattr__(field.attname)
 
     def __delitem__(self, key: str):
         if self.__options__.immutable:
@@ -193,20 +188,6 @@ class Schema(dict, metaclass=SchemaMeta):
         super().__delitem__(field.name)
         if hasattr(self, field.attname):
             super().__delattr__(field.attname)
-
-    def __delattr__(self, key: str):
-        field = self.__parser__.get_field(key)
-        if not field:
-            return super().__delattr__(key)
-        if self.__options__.immutable or field.immutable:
-            raise AttributeError(f'{self.__name__}: '
-                                 f'Attempt to delete immutable attribute: [{repr(key)}]')
-        options = self.__options__.make_runtime(__class__, force_error=True)
-        if field.is_required(options):
-            raise AttributeError(f'{self.__name__}: Attempt to delete required schema key: {repr(key)}')
-        if field.name in self:
-            super().__delitem__(field.name)
-        super().__delattr__(field.attname)
 
     def popitem(self):
         if self.__options__.immutable:
@@ -239,15 +220,5 @@ class Schema(dict, metaclass=SchemaMeta):
         return super().clear()
 
 
-@register_transformer(metaclass=SchemaMeta)
-def transform(transformer: TypeTransformer, data, cls: SchemaMeta):
-    if not isinstance(data, (dict, Mapping)):
-        if transformer.no_explicit_cast:
-            raise TypeError(f'invalid input type for {cls}, should be dict or Mapping')
-        else:
-            data = transformer(data, dict)
-    if not transformer.options.vacuum:
-        if not cls.__options__.allowed_runtime_options:
-            # pass the runtime options
-            data.update(__options__=transformer.options)
-    return cls(**data)
+DataClass.__init_subclass__()
+Schema.__init_subclass__()
