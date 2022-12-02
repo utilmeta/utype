@@ -1,11 +1,18 @@
 from .base import BaseParser
 from .func import FunctionParser
 from ..utils.compat import is_classvar, is_final
+from ..utils.functional import pop
+from typing import Callable
 import inspect
 
 
 class ClassParser(BaseParser):
     function_parser_cls = FunctionParser
+
+    def __init__(self, obj, *args, **kwargs):
+        if not inspect.isclass(obj):
+            raise TypeError(f'{self.__class__}: object need to be a class, got {obj}')
+        super().__init__(obj, *args, **kwargs)
 
     def setup(self):
         self.generate_from_bases()
@@ -92,9 +99,6 @@ class ClassParser(BaseParser):
         self.fields.update(field_map)
 
     def generate_from_bases(self):
-        if not inspect.isclass(self.obj):
-            return
-
         fields = {}
         alias_map = {}
         attr_alias_map = {}
@@ -127,11 +131,69 @@ class ClassParser(BaseParser):
         self.attr_alias_map = attr_alias_map
         self.case_insensitive_names = case_insensitive_names
 
+    def make_init(self,
+                  init_super: bool = False,
+                  allow_runtime: bool = False,
+                  set_attributes: bool = False,
+                  coerce_property: bool = False,
+                  post_init: Callable = None
+                  ):
+
+        def __init__(_obj_self, **kwargs):
+            options = self.options.make_runtime(
+                self.obj,
+                options=pop(kwargs, '__options__') if allow_runtime else None
+            )
+
+            values = self(kwargs, options=options)
+
+            if set_attributes:
+                for key, field in self.fields.items():
+                    if key not in values:
+                        value = field.get_unprovided(self.options)
+                        if value is ...:
+                            if field.attname in _obj_self.__dict__:
+                                # delete attr for that unprovided value
+                                # any access to this attribute will raise AttributeError
+                                _obj_self.__dict__.pop(field.attname)
+                            continue
+                    elif field.no_output(values[key], options=options):
+                        value = values.pop(key)
+                    else:
+                        value = values[key]
+                    _obj_self.__dict__[field.attname] = value
+
+            if coerce_property:
+                for key, field in self.property_fields.items():
+                    if key in values:
+                        if not field.no_input(values[key], options=options):
+                            setattr(_obj_self, field.attname, values[key])
+    
+                    if field.dependencies.issubset(values):
+                        value = getattr(_obj_self, field.attname)
+    
+                        if not field.no_output(value, options=options):
+                            values[key] = value
+                            # do not apply cache here
+                            # when updating it will get nasty
+                            # _obj_self.__dict__[field.attname] = value
+
+            if init_super:
+                super().__init__(values)
+
+            if post_init:
+                post_init(_obj_self, values, options)
+
+        return __init__
+
     def generate_init_parser(self):
-        if not inspect.isclass(self.obj):
+        init_func = self.obj.__dict__.get('__init__')
+
+        if isinstance(init_func, FunctionParser):
+            # if init_func is already decorated like a Wrapper
+            # we do not touch it either
             return
 
-        init_func = self.obj.__dict__.get('__init__')
         if not inspect.isfunction(init_func):
             # if init_func is already decorated like a Wrapper
             # we do not touch it either

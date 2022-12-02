@@ -1,11 +1,7 @@
 import utype
 import typing
-from utype import Field
+from utype import Field, exc
 import pytest
-
-@utype.parse
-def func():
-    pass
 
 
 class TestFunc:
@@ -77,3 +73,54 @@ class TestFunc:
                 pos_and_kw: int = 1
             ):
                 pass
+
+    async def test_async_generator(self):
+        import utype
+        from typing import AsyncGenerator
+        import asyncio
+
+        @utype.parse
+        async def waiter(rounds: int = utype.Field(gt=0)) -> AsyncGenerator[int, float]:
+            assert isinstance(rounds, int)
+            i = rounds
+            while i:
+                wait = yield str(i)
+                if wait:
+                    assert isinstance(wait, float)
+                    await asyncio.sleep(wait)
+                i -= 1
+
+        wait_gen = waiter('2')
+        async for index in wait_gen:
+            assert isinstance(index, int)
+            await wait_gen.asend(b'0.05')
+            # wait for 0.05 seconds
+
+        with pytest.raises(exc.ParseError):
+            waiter(-3)
+
+        with pytest.raises(exc.ParseError):
+            a = waiter(1)
+            async for index in a:
+                await wait_gen.asend(b'abc')
+
+    def test_generator(self):
+        from typing import Generator
+
+        def f(i) -> Generator[str, int, bool]:
+            yield str(i)
+            return i + 1
+
+        k = f(1)
+
+        next(k)
+
+        try:
+            next(k)
+        except StopIteration as e:
+            print(repr(e.value))
+
+        try:
+            next(k)
+        except StopIteration as e:
+            print(repr(e.value))

@@ -12,7 +12,7 @@ from functools import partial
 import re
 import warnings
 from collections.abc import Sequence
-from collections import deque, Mapping, OrderedDict
+from collections import deque, Mapping, OrderedDict, Callable, Generator, AsyncGenerator
 from decimal import Decimal
 
 T = typing.TypeVar('T')
@@ -26,6 +26,12 @@ OPERATOR_NAMES = {
     '^': 'OneOf',
     '~': 'Not',
 }
+NONE_ARG_ALLOWED_TYPES = (
+    Callable,
+    Union,
+    Generator,
+    AsyncGenerator
+)
 
 
 def resolve_forward_type(t):
@@ -911,6 +917,14 @@ class Rule(metaclass=LogicalType):
                         # we will resolve it later
                         arg_transformers.append(None)
                         continue
+                if arg is None:
+                    arg_transformers.append(None)
+                    if cls.__origin__ and issubclass(cls.__origin__, NONE_ARG_ALLOWED_TYPES):
+                        continue
+                    warnings.warn(f'None arg: {arg} detected where origin type: {cls.__origin__} is not in '
+                                  f'{NONE_ARG_ALLOWED_TYPES}')
+                    continue
+
                 if not isinstance(arg, type):
                     raise TypeError(f'Invalid arg: {arg}, must be a class')
                 transformer = cls.transformer_cls.resolver_transformer(arg)
@@ -965,6 +979,10 @@ class Rule(metaclass=LogicalType):
                     if not issubclass(type_, tuple):
                         raise ValueError(f'{cls} args: {args_} with ... only apply to tuple, got {type_}')
                     ellipsis_args = True
+                    continue
+                if arg is None:
+                    # some origin like Generator / AsyncGenerator / Union / Callable need None arg
+                    args.append(arg)
                     continue
                 annotation = cls.parse_annotation(arg, global_vars=global_vars, forward_refs=forward_refs)
                 # this annotation can be a ForwardRef
@@ -1192,7 +1210,7 @@ class Rule(metaclass=LogicalType):
 
         for i, (arg, func) in enumerate(zip(cls.__args__, cls.__arg_transformers__)):
             if i >= len(value):
-                raise exc.AbsenceError(f"prefixItems required prefix: [{i}] not provided", absence_item=i)
+                raise exc.AbsenceError(f"prefixItems required prefix: [{i}] not provided", item=i)
             try:
                 result.append(trans.apply(value[i], arg, func=func))
             except Exception as e:
@@ -1284,6 +1302,13 @@ class Rule(metaclass=LogicalType):
                     continue
             result[key] = value
         return result
+
+
+@register_transformer(Callable, allow_subclasses=False)
+def transform_callable(transformer: TypeTransformer, value, t):
+    if not callable(value):
+        raise TypeError
+    return value
 
 
 @register_transformer(metaclass=LogicalType)

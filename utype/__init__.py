@@ -8,7 +8,7 @@ from .utils import exceptions as exc
 from .decorator import parse, handle, apply
 
 
-VERSION = (0, 1, 1, None)
+VERSION = (0, 2, 0, None)
 
 
 def _get_version():

@@ -1,13 +1,14 @@
-from typing import Iterable, Tuple, List, Generator
+from typing import Tuple, List
 from .options import Options, RuntimeOptions
 from ..utils.functional import pop
 from ..utils import exceptions as exc
-from .rule import resolve_forward_type
+from .rule import resolve_forward_type, Rule
 from .field import SchemaField
 import inspect
 from .base import BaseParser
 from functools import wraps, cached_property
-from collections.abc import Generator, AsyncGenerator
+from collections.abc import Generator, AsyncGenerator, Iterator, AsyncIterator, Iterable, AsyncIterable
+import warnings
 
 
 LAMBDA_NAME = (lambda: None).__name__
@@ -144,24 +145,49 @@ class FunctionParser(BaseParser):
         self.generator_yield_type = None
         self.generator_return_type = None
         # Generator[Yield, Send, Return] or Iterator[Yield, Return]
-        self.async_generator_send_type = None
-        self.async_generator_yield_type = None
+        # self.async_generator_send_type = None
+        # self.async_generator_yield_type = None
         # AsyncGenerator[Yield, Send] or AsyncIterator[Yield]
 
         if self.pos_annotation:
             self.position_type = self.parse_annotation(annotation=self.pos_annotation)
-        if self.return_annotation:
-            self.return_type = self.parse_annotation(annotation=self.return_annotation)
 
-        if self.is_generator:
-            # https://docs.python.org/3/library/typing.html#typing.Generator
-            pass
+        self.generate_return_types()
 
-    def validate_return_type(self):
+    @property
+    def do_parse_generator(self):
+        return (self.is_generator or self.is_async_generator) and \
+               (self.generator_send_type or self.generator_yield_type or self.generator_return_type)
+
+    def generate_return_types(self):
         # see if the return type match the function
         # focus on sync / async
         # generator / coroutine / async generator
-        pass
+        if not self.return_annotation:
+            return
+
+        self.return_type = self.parse_annotation(annotation=self.return_annotation)
+
+        # https://docs.python.org/3/library/typing.html#typing.Generator
+        if self.return_type and issubclass(self.return_type, Rule):
+            if self.is_generator:
+                if self.return_type.__origin__ in (Iterable, Iterator):
+                    self.generator_yield_type = self.return_type.__args__[0]
+                elif self.return_type.__origin__ == Generator:
+                    self.generator_yield_type, self.generator_send_type, self.generator_return_type = \
+                        self.return_type.__args__
+                else:
+                    warnings.warn(f'Invalid return type annotation: {self.return_annotation} '
+                                  f'for generator function, should be Generator[...] / Iterator[...] / Iterable[...]')
+            elif self.is_async_generator:
+                if self.return_type.__origin__ in (AsyncIterable, AsyncIterator):
+                    self.generator_yield_type = self.return_type.__args__[0]
+                elif self.return_type.__origin__ == AsyncGenerator:
+                    self.generator_yield_type, self.generator_send_type = self.return_type.__args__
+                else:
+                    warnings.warn(f'Invalid return type annotation: {self.return_annotation} '
+                                  f'for async generator function, should be '
+                                  f'AsyncGenerator[...] / AsyncIterator[...] / AsyncIterable[...]')
 
     @cached_property
     def positional_fields(self):
@@ -245,13 +271,20 @@ class FunctionParser(BaseParser):
              parse_params: bool = None,
              parse_result: bool = None):
 
-        options = options or self.options
-        if self.is_asynchronous:
+        options = self.options.make_runtime(options=options)
+        if self.is_async_generator:
+            f = self.get_async_generator(
+                options=options,
+                first_reserve=first_reserve,
+                parse_params=parse_params,
+                parse_result=parse_result
+            )
+        elif self.is_coroutine:
             @wraps(self.obj)
             async def f(*args, **kwargs):
                 return await self.async_call(
                     args, kwargs,
-                    options=options.make_runtime(),
+                    options=options,
                     first_reserve=first_reserve,
                     parse_params=parse_params,
                     parse_result=parse_result
@@ -261,7 +294,7 @@ class FunctionParser(BaseParser):
             def f(*args, **kwargs):     # noqa
                 return self.sync_call(
                     args, kwargs,
-                    options=options.make_runtime(),
+                    options=options,
                     first_reserve=first_reserve,
                     parse_params=parse_params,
                     parse_result=parse_result
@@ -396,34 +429,102 @@ class FunctionParser(BaseParser):
         return result
 
     def sync_generator(self, generator: Generator, options: RuntimeOptions):
-        i = 9
-        for item in generator:
+        i = 0
+        while True:
             try:
-                yield options.transformer(item, self.generator_item_type)
-            except Exception as e:
-                error = exc.ParseError(
-                    item=f'<return.generator.item[{i}]>',
-                    value=item,
-                    type=self.generator_item_type,
-                    origin_exc=e
-                )
-                options.handle_error(error, force_raise=True)
-            i += 1
+                item = next(generator)
+            except StopIteration as err:
+                result = err.value
+                if result is None or not self.generator_return_type:
+                    # raise the same StopIteration
+                    raise
+                try:
+                    result = options.transformer(result, self.generator_return_type)
+                except Exception as e:
+                    error = exc.ParseError(
+                        item=f'<generator.return>',
+                        value=result,
+                        type=self.generator_return_type,
+                        origin_exc=e
+                    )
+                    options.handle_error(error, force_raise=True)
+                return result
+            else:
+                if self.generator_yield_type:
+                    try:
+                        item = options.transformer(item, self.generator_yield_type)
+                    except Exception as e:
+                        error = exc.ParseError(
+                            item=f'<generator.yield[{i}]>',
+                            value=item,
+                            type=self.generator_yield_type,
+                            origin_exc=e
+                        )
+                        options.handle_error(error, force_raise=True)
 
-    def async_generator(self, generator: AsyncGenerator, options: RuntimeOptions):
-        i = 9
-        async for item in generator:
-            try:
-                yield options.transformer(item, self.generator_item_type)
-            except Exception as e:
-                error = exc.ParseError(
-                    item=f'<return.generator.item[{i}]>',
-                    value=item,
-                    type=self.generator_item_type,
-                    origin_exc=e
-                )
-                options.handle_error(error, force_raise=True)
-            i += 1
+                sent = yield item
+
+                if sent is not None:
+                    if self.generator_send_type:
+                        try:
+                            sent = options.transformer(sent, self.generator_send_type)
+                        except Exception as e:
+                            error = exc.ParseError(
+                                item=f'<generator.send[{i}]>',
+                                value=sent,
+                                type=self.generator_send_type,
+                                origin_exc=e
+                            )
+                            options.handle_error(error, force_raise=True)
+                    generator.send(sent)
+                i += 1
+
+    def get_async_generator(self, options: RuntimeOptions,
+                            first_reserve: bool = None,
+                            parse_params: bool = None,
+                            parse_result: bool = None,
+                            ):
+        @wraps(self.obj)
+        async def async_generator(*args, **kwargs):
+            args, kwargs = self.get_params(
+                args, kwargs,
+                options=options,
+                first_reserve=first_reserve,
+                parse_params=parse_params
+            )
+            func = self.obj
+            generator = func(*args, **kwargs)
+            i = 0
+            async for item in generator:
+                if parse_result and self.generator_yield_type:
+                    try:
+                        item = options.transformer(item, self.generator_yield_type)
+                    except Exception as e:
+                        error = exc.ParseError(
+                            item=f'<asyncgenerator.yield[{i}]>',
+                            value=item,
+                            type=self.generator_yield_type,
+                            origin_exc=e
+                        )
+                        options.handle_error(error, force_raise=True)
+
+                sent = yield item
+
+                if sent is not None:
+                    if parse_result and self.generator_send_type:
+                        try:
+                            sent = options.transformer(sent, self.generator_send_type)
+                        except Exception as e:
+                            error = exc.ParseError(
+                                item=f'<asyncgenerator.send[{i}]>',
+                                value=sent,
+                                type=self.generator_send_type,
+                                origin_exc=e
+                            )
+                            options.handle_error(error, force_raise=True)
+                    await generator.asend(sent)
+                i += 1
+        return async_generator
 
     def sync_call(self, args: tuple, kwargs: dict, options: RuntimeOptions,
                   first_reserve=None, parse_params: bool = None, parse_result: bool = None):
@@ -436,10 +537,8 @@ class FunctionParser(BaseParser):
         func = self.obj
         result = func(*args, **kwargs)
         if parse_result:
-            if self.is_generator:
-                if self.generator_item_type:
-                    return self.sync_generator(result)
-                return result
+            if self.do_parse_generator:
+                return self.sync_generator(result, options=options)
             result = self.parse_result(result, options=options)
         return result
 
@@ -453,12 +552,10 @@ class FunctionParser(BaseParser):
         )
         func = self.obj
         result = await func(*args, **kwargs)
-        if inspect.iscoroutine(result):
-            result = await result
         if parse_result:
+            # we may not want to change the result form even if it's another coroutine
+            # we leave to user to await it to avoid changing the actual logic of the function
+            # while inspect.iscoroutine(result):
+            #     result = await result
             result = self.parse_result(result, options=options)
         return result
-
-
-class GeneratorParser(FunctionParser):
-    pass

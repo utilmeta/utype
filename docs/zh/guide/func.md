@@ -35,6 +35,14 @@ ArticleInfo(id=1, slug='my-article', info={'alice': 1, 'bob': 2})
 	虽然按照类型的声明，我们不应该在代码中这样调用函数，但是如果调用函数的是来自网络的 HTTP 请求，就可能会出现例子中的情况
 
 
+### `@classmethod`
+
+
+### `@staticmethod`
+
+
+### `@property`
+
 
 ### 异步函数
 

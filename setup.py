@@ -14,7 +14,7 @@ setup(
     url="https://utype.io",
     project_urls={
         "Project Home": "https://utype.io",
-        "Documentation": "https://utype.io/docs",
+        "Documentation": "https://utype.io",
         "Source Code": "https://github.com/utilmeta/utype",
     },
     packages=find_packages(exclude=["tests.*", "tests"]),

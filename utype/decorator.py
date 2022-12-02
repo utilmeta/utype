@@ -1,6 +1,7 @@
 from typing import Any, Iterable
 import warnings
 from .parser.func import FunctionParser
+from .parser.cls import ClassParser
 from .parser.options import Options
 
 
@@ -31,8 +32,21 @@ def parse(f=None, *, mode: str = None,
     return decorator
 
 
-def dataclass(cls, *, params=None):
-    pass
+def dataclass(
+    obj=None, *,
+    options: Options = None,
+    init: bool = True,
+    repr: bool = True,   # noqa
+    setattr: bool = False,  # noqa
+    delattr: bool = False   # noqa
+):
+    def decorator(cls):
+        parser = ClassParser.apply_for(cls)
+        return parser.wrap(
+            options=options,
+            parse_params=not ignore_params,
+            parse_result=not ignore_result
+        )
 
 
 def apply(

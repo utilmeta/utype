@@ -1,5 +1,5 @@
 from .parser.rule import LogicalType
-from .parser.options import Options
+from .parser.options import Options, RuntimeOptions
 from .utils.transform import register_transformer, TypeTransformer
 from .utils.functional import pop
 from collections.abc import Mapping
@@ -83,46 +83,12 @@ class DataClass(metaclass=SchemaMeta):
     def __class_getitem__(cls, item):
         pass
 
-    def __validate__(self):
+    def __validate__(self, options=None):
         pass
 
-    # def __init__(self, **data):
-    #     if not self.__parser__.options.no_runtime_options:
-    #         options = pop(data, Attr.OPTIONS)
-    #
-    #         if isinstance(options, Options):
-    #             # anti-deserialize
-    #             self.__options__ = self.__options__ & options
-    #
-    #     values = self.__parser__(data, options=self.__options__)
-    #
-    #     for key, field in self.__parser__.fields.items():
-    #         if key not in values:
-    #             if field.has_unprovided:
-    #                 value = ''
-    #             else:
-    #                 continue
-    #         elif field.no_output:
-    #             value = values.pop(key)
-    #         else:
-    #             value = values[key]
-    #         self.__dict__[field.attname] = value
-    #
-    #     for key, field in self.__parser__.property_fields.items():
-    #         if not field.no_input:
-    #             if key in values:
-    #                 setattr(self, field.attname, values[key])
-    #             else:
-    #                 continue
-    #         if not field.no_output:
-    #             if field.dependencies.issubset(values):
-    #                 value = getattr(self, field.attname)
-    #                 values[key] = value
-    #                 self.__dict__[field.attname] = value
-    #
-    #     super().__init__(values)
-    #
-    #     self.__validate__()
+    def __post_init__(self, options: RuntimeOptions):
+        self.__runtime_options__ = options
+        self.__validate__(options)
 
 
 class Schema(dict, metaclass=SchemaMeta):
@@ -153,42 +119,9 @@ class Schema(dict, metaclass=SchemaMeta):
     def __repr__(self):
         return self.__str__()
 
-    def __init__(self, **data):
-        options = self.__options__.make_runtime(__class__, options=pop(data, '__options__'))
-        values = self.__parser__(data, options=options)
-
-        for key, field in self.__parser__.fields.items():
-            if key not in values:
-                value = field.get_unprovided(self.__options__)
-                if value is ...:
-                    if field.attname in self.__dict__:
-                        # delete attr for that unprovided value
-                        # any access to this attribute will raise AttributeError
-                        self.__dict__.pop(field.attname)
-                    continue
-            elif field.no_output(values[key], options=options):
-                value = values.pop(key)
-            else:
-                value = values[key]
-            self.__dict__[field.attname] = value
-
-        for key, field in self.__parser__.property_fields.items():
-            if key in values:
-                if not field.no_input(values[key], options=options):
-                    setattr(self, field.attname, values[key])
-
-            if field.dependencies.issubset(values):
-                value = getattr(self, field.attname)
-
-                if not field.no_output(value, options=options):
-                    values[key] = value
-                    # do not apply cache here
-                    # when updating it will get nasty
-                    # self.__dict__[field.attname] = value
-
-        super().__init__(values)
+    def __post_init__(self, values, options: RuntimeOptions):
         self.__runtime_options__ = options
-        # self.__validate__(options)
+        self.__validate__(options)
 
     def __setitem__(self, alias: str, value):
         if self.__options__.immutable:

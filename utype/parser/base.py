@@ -22,14 +22,17 @@ class BaseParser:
     }
 
     @classmethod
-    def apply_for(cls, obj, no_cache: bool = False) -> 'BaseParser':
+    def apply_for(cls, obj, no_cache: bool = False, options: Options = None) -> 'BaseParser':
         if isinstance(obj, cls):
             return obj
         global __parsers__
         key = (cls, obj)
         if not no_cache and key in __parsers__:
-            return __parsers__[key]
-        inst = cls(obj)
+            cached: 'BaseParser' = __parsers__[key]
+            # if options is not identical, make a new one
+            if not options or options == cached.options:
+                return cached
+        inst = cls(obj, options=options)
         if not no_cache:
             __parsers__[key] = inst
         return inst

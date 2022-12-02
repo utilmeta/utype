@@ -96,6 +96,42 @@ except utype.exc.ParseError as e:
 	print(e)
 ```
 
+utype 不仅支持解析普通函数，还支持生成器函数，异步函数和异步生成器函数，用法一致
+```python
+import utype  
+from typing import AsyncGenerator  
+import asyncio  
+  
+@utype.parse  
+async def waiter(rounds: int = utype.Field(gt=0)) -> AsyncGenerator[int, float]:  
+    assert isinstance(rounds, int)  
+    i = rounds  
+    while i:  
+        wait = yield str(i)  
+        if wait:  
+            assert isinstance(wait, float)  
+            await asyncio.sleep(wait)  
+        i -= 1  
+  
+async def wait():  
+    wait_gen = waiter('2')  
+    async for index in wait_gen:  
+        assert isinstance(index, int)  
+        try:  
+            await wait_gen.asend(b'0.5')  
+            # wait for 0.5 seconds  
+        except StopAsyncIteration:  
+            return  
+  
+if __name__ == '__main__':  
+    asyncio.run(wait())
+```
+
+!!! note
+	`AsyncGenerator` 中有两个参数，第一个表示 `yield` 出的值的类型，第二个表示 `asend` 发送的值的类型
+
+可以看到，虽然我们在参数和 `yield` 中使用了字符等类型，它们全部都按照声明转化为了期望的数字类型（当然在无法完成转化时会抛出一个高可读性的错误）
+
 
 ### 类型的逻辑运算
 utype 支持 Python 的原生逻辑运算符，能够对类型与数据结构进行逻辑运算，包括
