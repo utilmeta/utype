@@ -13,5 +13,5 @@ __pycache__/
 *.sqlite3
 */restats
 /.ext
-# .ext/ is used to store pre-developer files that helps development
+# .ext/ is used to store per-developer files that helps development
 /.pytest_cache

@@ -12,10 +12,10 @@ VERSION = (0, 2, 0, None)
 
 
 def _get_version():
-    pre_release = VERSION[3] if len(VERSION) > 3 else ''
-    version = '.'.join([str(v) for v in VERSION[:3]])
+    pre_release = VERSION[3] if len(VERSION) > 3 else ""
+    version = ".".join([str(v) for v in VERSION[:3]])
     if pre_release:
-        version += f'-{pre_release}'
+        version += f"-{pre_release}"
     return version
 
 

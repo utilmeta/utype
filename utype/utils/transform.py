@@ -13,6 +13,7 @@ from enum import Enum
 from decimal import Decimal
 from uuid import UUID
 from .exceptions import TypeMismatchError
+
 if TYPE_CHECKING:
     from ..parser.options import RuntimeOptions
 
@@ -20,10 +21,15 @@ __transformers__ = []
 __cache__ = {}
 
 
-def register_transformer(*classes, attr=None,
-                         detector=None, metaclass=None,
-                         to=None,       # register to a specific type transformer class
-                         allow_subclasses: bool = True, priority: int = 0):
+def register_transformer(
+    *classes,
+    attr=None,
+    detector=None,
+    metaclass=None,
+    to=None,  # register to a specific type transformer class
+    allow_subclasses: bool = True,
+    priority: int = 0,
+):
     # detect class by issubclass or hasattr
     # this method can override
     # the latest function will have the final effect
@@ -31,13 +37,19 @@ def register_transformer(*classes, attr=None,
 
     if not detector:
         if not classes and not attr and not metaclass:
-            raise ValueError(f'register_transformer must provide any of classes, metaclass, attr, detector')
+            raise ValueError(
+                f"register_transformer must provide any of classes, metaclass, attr, detector"
+            )
 
         for c in classes:
-            assert inspect.isclass(c), f'register_transformer classes must be class, got {c}'
+            assert inspect.isclass(
+                c
+            ), f"register_transformer classes must be class, got {c}"
 
         if attr:
-            assert isinstance(attr, str), f'register_transformer classes must be str, got {attr}'
+            assert isinstance(
+                attr, str
+            ), f"register_transformer classes must be str, got {attr}"
 
         def detector(_cls):
             if classes:
@@ -69,71 +81,85 @@ def register_transformer(*classes, attr=None,
 
 class DateFormat:
     DATETIME = "%Y-%m-%d %H:%M:%S"
-    DATETIME_DF = '%Y-%m-%d %H:%M:%S.%f'
-    DATETIME_F = '%Y-%m-%d %H:%M:%S %f'
-    DATETIME_P = '%Y-%m-%d %I:%M:%S %p'
+    DATETIME_DF = "%Y-%m-%d %H:%M:%S.%f"
+    DATETIME_F = "%Y-%m-%d %H:%M:%S %f"
+    DATETIME_P = "%Y-%m-%d %I:%M:%S %p"
     DATETIME_T = "%Y-%m-%dT%H:%M:%S"
     DATETIME_TZ = "%Y-%m-%dT%H:%M:%SZ"
     DATETIME_TFZ = "%Y-%m-%dT%H:%M:%S.%fZ"
     DATETIME_TF = "%Y-%m-%dT%H:%M:%S.%f"
     DATETIME_ISO = "%Y-%m-%dT%H:%M:%S.%fTZD"
-    DATETIME_GMT = '%a, %d %b %Y %H:%M:%S GMT'
-    DATETIME_PS = '%a %b %d %H:%M:%S %Y'
-    DATETIME_GMT2 = '%b %d %H:%M:%S %Y GMT'
-    DATE = '%Y-%m-%d'
+    DATETIME_GMT = "%a, %d %b %Y %H:%M:%S GMT"
+    DATETIME_PS = "%a %b %d %H:%M:%S %Y"
+    DATETIME_GMT2 = "%b %d %H:%M:%S %Y GMT"
+    DATE = "%Y-%m-%d"
     # TIME = '%H:%M:%S'
 
 
 class TypeTransformer:
     CACHE_TRANSFORMERS = True
-    DATETIME_FORMATS = [v for k, v in DateFormat.__dict__.items() if k.startswith('DATE')]
+    DATETIME_FORMATS = [
+        v for k, v in DateFormat.__dict__.items() if k.startswith("DATE")
+    ]
     EPOCH = datetime(1970, 1, 1)
     MS_WATERSHED = int(2e10)
-    ARRAY_SEPARATORS = (',', ';')
-    NULL_VALUES = ('none', 'nil', 'null')
-    FALSE_VALUES = ('0', 'false', 'no', 'off', 'f')
-    TRUE_VALUES = ('1', 'true', 'yes', 'on', 't', 'y')
+    ARRAY_SEPARATORS = (",", ";")
+    NULL_VALUES = ("none", "nil", "null")
+    FALSE_VALUES = ("0", "false", "no", "off", "f")
+    TRUE_VALUES = ("1", "true", "yes", "on", "t", "y")
     STRUCTURE_BRACKET = [
-        '{}',
-        '[]',
-        '()',
+        "{}",
+        "[]",
+        "()",
     ]
     DURATION_REGS = [
         re.compile(
-            r'^'
-            r'(?:(?P<days>-?\d+) (days?, )?)?'
-            r'((?:(?P<hours>-?\d+):)(?=\d+:\d+))?'
-            r'(?:(?P<minutes>-?\d+):)?'
-            r'(?P<seconds>-?\d+)'
-            r'(?:\.(?P<microseconds>\d{1,6})\d{0,6})?'
-            r'$'
+            r"^"
+            r"(?:(?P<days>-?\d+) (days?, )?)?"
+            r"((?:(?P<hours>-?\d+):)(?=\d+:\d+))?"
+            r"(?:(?P<minutes>-?\d+):)?"
+            r"(?P<seconds>-?\d+)"
+            r"(?:\.(?P<microseconds>\d{1,6})\d{0,6})?"
+            r"$"
         ),  # Support the sections of ISO 8601 date representation that are accepted by timedelta
         re.compile(
-            r'^(?P<sign>[-+]?)'
-            r'P'
-            r'(?:(?P<days>\d+(.\d+)?)D)?'
-            r'(?:T'
-            r'(?:(?P<hours>\d+(.\d+)?)H)?'
-            r'(?:(?P<minutes>\d+(.\d+)?)M)?'
-            r'(?:(?P<seconds>\d+(.\d+)?)S)?'
-            r')?'
-            r'$'
-        )
+            r"^(?P<sign>[-+]?)"
+            r"P"
+            r"(?:(?P<days>\d+(.\d+)?)D)?"
+            r"(?:T"
+            r"(?:(?P<hours>\d+(.\d+)?)H)?"
+            r"(?:(?P<minutes>\d+(.\d+)?)M)?"
+            r"(?:(?P<seconds>\d+(.\d+)?)S)?"
+            r")?"
+            r"$"
+        ),
     ]
 
-    def __init__(self,
-                 options: 'RuntimeOptions',
-                 no_explicit_cast: bool = None,
-                 no_data_loss: bool = None,
-                 unresolved_types: str = None
-                 ):
+    def __init__(
+        self,
+        options: "RuntimeOptions",
+        no_explicit_cast: bool = None,
+        no_data_loss: bool = None,
+        unresolved_types: str = None,
+    ):
         self.options = options
-        self.no_explicit_cast = no_explicit_cast if no_explicit_cast is not None else options.no_explicit_cast
-        self.no_data_loss = no_data_loss if no_data_loss is not None else options.no_data_loss
-        self.unresolved_types = unresolved_types if unresolved_types is not None else options.unresolved_types
+        self.no_explicit_cast = (
+            no_explicit_cast
+            if no_explicit_cast is not None
+            else options.no_explicit_cast
+        )
+        self.no_data_loss = (
+            no_data_loss if no_data_loss is not None else options.no_data_loss
+        )
+        self.unresolved_types = (
+            unresolved_types
+            if unresolved_types is not None
+            else options.unresolved_types
+        )
 
     def __repr__(self):
-        return f'{self.__class__.__name__}(no_explicit_cast={self.no_explicit_cast}, no_data_loss={self.no_data_loss})'
+        return f"{self.__class__.__name__}(no_explicit_cast={self.no_explicit_cast}, no_data_loss={self.no_data_loss})"
+
     # @property
     # def strict(self):
     #     return self.options.strict_transform
@@ -142,7 +168,7 @@ class TypeTransformer:
     def resolver_transformer(cls, t: type) -> Optional[Callable]:
         # resolve to it's subclass if both subclass and baseclass is provided
         # like Schema type will not resolve to dict
-        if hasattr(t, '__transformer__') and callable(t.__transformer__):
+        if hasattr(t, "__transformer__") and callable(t.__transformer__):
             # this type already got a callable transformer, do not resolve then
             return t.__transformer__
         global __cache__
@@ -185,13 +211,11 @@ class TypeTransformer:
         if isinstance(data, (bytes, bytearray, memoryview)):
             if isinstance(data, memoryview):
                 data = bytes(data)
-            return data.decode(errors='strict' if self.no_data_loss else 'ignore')
+            return data.decode(errors="strict" if self.no_data_loss else "ignore")
         return data
 
     def _attempt_from_number(self, data):
-        data = self._from_byte_like(
-            self._attempt_from(data)
-        )
+        data = self._from_byte_like(self._attempt_from(data))
         if isinstance(data, datetime):
             return data.timestamp()
         elif isinstance(data, timedelta):
@@ -229,7 +253,7 @@ class TypeTransformer:
             # we will follow the type
             return data
         value = self.to_array_types(data, list)
-        if not getattr(t, '__abstractmethods__', None):
+        if not getattr(t, "__abstractmethods__", None):
             return t(value)
         # if type is still abstracted, just returning the list result
         return value
@@ -240,7 +264,7 @@ class TypeTransformer:
             # we will follow the type
             return data
         value = self.to_dict(data, dict)
-        if not getattr(t, '__abstractmethods__', None):
+        if not getattr(t, "__abstractmethods__", None):
             return t(value)
         return value
 
@@ -248,9 +272,7 @@ class TypeTransformer:
     def to_str(self, data, t: Type[str]):
         if isinstance(data, str):
             return t(data)
-        data = self._from_byte_like(
-            self._attempt_from(data)
-        )
+        data = self._from_byte_like(self._attempt_from(data))
         if self.no_explicit_cast and not isinstance(data, str):
             raise TypeError
         return t(data)
@@ -277,7 +299,7 @@ class TypeTransformer:
         if isinstance(data, t):
             return data
 
-        if multi(data):     # same group
+        if multi(data):  # same group
             return t(data)
 
         if self.no_explicit_cast:
@@ -292,11 +314,15 @@ class TypeTransformer:
             # [{"a": b}]
             # {1, 2, 3}
             # a,b,c
-            if any(data.startswith(v[0]) and data.endswith(v[1]) for v in self.STRUCTURE_BRACKET):
+            if any(
+                data.startswith(v[0]) and data.endswith(v[1])
+                for v in self.STRUCTURE_BRACKET
+            ):
                 try:
                     data = json.loads(data)
                 except json.JSONDecodeError:
                     import ast
+
                     data = ast.literal_eval(data)
                     if multi(data):
                         return t(data)
@@ -358,34 +384,40 @@ class TypeTransformer:
             except (TypeError, ValueError):
                 pass
 
-        data = self._from_byte_like(
-            self._attempt_from(data)
-        )
+        data = self._from_byte_like(self._attempt_from(data))
 
         if isinstance(data, str):
             try:
                 return t(json.loads(data, strict=self.no_data_loss))  # noqa
             except json.decoder.JSONDecodeError:
                 data = data.strip()
-                if any(data.startswith(v[0]) and data.endswith(v[1]) for v in self.STRUCTURE_BRACKET):
+                if any(
+                    data.startswith(v[0]) and data.endswith(v[1])
+                    for v in self.STRUCTURE_BRACKET
+                ):
                     import ast
+
                     res = self._attempt_from(ast.literal_eval(data))
                     if isinstance(res, dict):
                         # maybe set
                         return res
                     raise TypeError
-                if '=' in data:
-                    if '&' in data:
+                if "=" in data:
+                    if "&" in data:
                         # a=b&c=d   querystring index
                         from urllib.parse import parse_qs
+
                         return parse_qs(data)
-                    spliter = ';' if ';' in data else ','
+                    spliter = ";" if ";" in data else ","
                     # cookie syntax or comma separate syntax
-                    return {value.split('=')[0].strip(): value.split('=')[1].strip()
-                            for value in data.split(spliter)}
+                    return {
+                        value.split("=")[0].strip(): value.split("=")[1].strip()
+                        for value in data.split(spliter)
+                    }
                 raise TypeError
 
         from xml.etree.ElementTree import Element
+
         if isinstance(data, Element):
             return t(data.attrib)  # noqa
 
@@ -446,7 +478,7 @@ class TypeTransformer:
 
         return t(str(data).strip())  # noqa
 
-    @register_transformer(bool)     # after int
+    @register_transformer(bool)  # after int
     def to_bool(self, data, t=bool):
         if isinstance(data, bool):
             return t(data)
@@ -469,11 +501,13 @@ class TypeTransformer:
             raise TypeError
         return bool(data)
 
-    @register_transformer(date, allow_subclasses=False)     # datetime is a subclass of date
+    @register_transformer(
+        date, allow_subclasses=False
+    )  # datetime is a subclass of date
     def to_date(self, data, t: Type[date]) -> date:
         if isinstance(data, datetime):
             if self.no_data_loss:
-                raise ValueError(f'Invalid date: {data}, must be date')
+                raise ValueError(f"Invalid date: {data}, must be date")
             return data.date()
         elif isinstance(data, t):
             return data
@@ -481,7 +515,7 @@ class TypeTransformer:
         dt = self.to_datetime(data, datetime)
         if self.no_data_loss:
             if dt.time() != time(0, 0):
-                raise ValueError(f'Invalid date: {data}, got time part: {dt.time()}')
+                raise ValueError(f"Invalid date: {data}, got time part: {dt.time()}")
         return dt.date()
 
     @register_transformer(datetime)
@@ -489,7 +523,7 @@ class TypeTransformer:
         if isinstance(data, t):
             return data
         elif isinstance(data, date):
-            return t(year=data.year, month=data.month, day=data.day)        # noqa
+            return t(year=data.year, month=data.month, day=data.day)  # noqa
 
         data = self._attempt_from(data)
         try:
@@ -506,7 +540,7 @@ class TypeTransformer:
         for f in self.DATETIME_FORMATS:
             try:
                 val = t.strptime(data, f)
-                if data.endswith('GMT') or data.endswith('Z') and 'T' in data:
+                if data.endswith("GMT") or data.endswith("Z") and "T" in data:
                     val = val.replace(tzinfo=timezone.utc)
                 return val
             except (TypeError, ValueError, re.error):
@@ -518,9 +552,7 @@ class TypeTransformer:
     def to_timedelta(self, data, t: Type[timedelta]) -> timedelta:
         if isinstance(data, t):
             return data
-        data = self._from_byte_like(
-            self._attempt_from(data)
-        )
+        data = self._from_byte_like(self._attempt_from(data))
         try:
             num = self.to_float(data, float)
         except (TypeError, ValueError):
@@ -535,18 +567,27 @@ class TypeTransformer:
                 if not match:
                     continue
                 kw = match.groupdict()
-                sign = -1 if kw.pop('sign', '+') == '-' else 1
-                if kw.get('microseconds'):
-                    kw['microseconds'] = kw['microseconds'].ljust(6, '0')
+                sign = -1 if kw.pop("sign", "+") == "-" else 1
+                if kw.get("microseconds"):
+                    kw["microseconds"] = kw["microseconds"].ljust(6, "0")
 
-                if kw.get('seconds') and kw.get('microseconds') and kw['seconds'].startswith('-'):
-                    kw['microseconds'] = '-' + kw['microseconds']
+                if (
+                    kw.get("seconds")
+                    and kw.get("microseconds")
+                    and kw["seconds"].startswith("-")
+                ):
+                    kw["microseconds"] = "-" + kw["microseconds"]
                 kw_ = {k: float(v) for k, v in kw.items() if v is not None}
                 return sign * t(**kw_)
             if self.no_explicit_cast:
-                raise ValueError(f'Invalid timedelta: {data}')
+                raise ValueError(f"Invalid timedelta: {data}")
             tm = time.fromisoformat(data)
-            return t(hours=tm.hour, minutes=tm.minute, seconds=tm.second, microseconds=tm.microsecond)
+            return t(
+                hours=tm.hour,
+                minutes=tm.minute,
+                seconds=tm.second,
+                microseconds=tm.microsecond,
+            )
         raise TypeError
 
     @register_transformer(time)
@@ -600,7 +641,7 @@ class TypeTransformer:
         if not self.no_data_loss:
             if data in t.__members__:  # noqa
                 return t.__members__[data]  # noqa
-        member_type = getattr(t, '_member_type_', None)
+        member_type = getattr(t, "_member_type_", None)
         if member_type and member_type != object:
             if type(data) != member_type:
                 data = self(data, member_type)
@@ -610,9 +651,9 @@ class TypeTransformer:
         if isinstance(t, type) and isinstance(data, t):
             # we just loosely match the isinstance for unresolved types
             return data
-        if self.unresolved_types == 'throw':
+        if self.unresolved_types == "throw":
             raise TypeMismatchError(value=data, type=t)
-        elif self.unresolved_types == 'init':
+        elif self.unresolved_types == "init":
             return t(data)
         return data
 
@@ -624,14 +665,14 @@ class TypeTransformer:
             return data
         if isinstance(t, ForwardRef):
             if not t.__forward_evaluated__:
-                raise TypeError(f'ForwardRef: {t} not evaluated')
+                raise TypeError(f"ForwardRef: {t} not evaluated")
             t = t.__forward_value__
         return func(self, data, t)
 
     def __call__(self, data, t):
         if isinstance(t, ForwardRef):
             if not t.__forward_evaluated__:
-                raise TypeError(f'ForwardRef: {t} not evaluated')
+                raise TypeError(f"ForwardRef: {t} not evaluated")
             t = t.__forward_value__
         if type(data) == t:
             # strict equal. not isinstance, like datetime is instance of date

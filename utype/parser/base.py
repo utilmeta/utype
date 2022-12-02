@@ -16,30 +16,29 @@ class BaseParser:
     options_cls = Options
     schema_field_cls = SchemaField
 
-    DEFAULT_EXCLUDE_VARS = {
-        '__options__',
-        '__class__'
-    }
+    DEFAULT_EXCLUDE_VARS = {"__options__", "__class__"}
 
     @classmethod
     def resolve_parser(cls, obj):
         global __parsers__
         if obj in __parsers__:
             return __parsers__[obj]
-        parser = getattr(obj, '__parser__', None)
+        parser = getattr(obj, "__parser__", None)
         if isinstance(parser, cls):
             return parser
         return None
 
     @classmethod
-    def apply_for(cls, obj, no_cache: bool = False, options: Options = None) -> 'BaseParser':
+    def apply_for(
+        cls, obj, no_cache: bool = False, options: Options = None
+    ) -> "BaseParser":
         if isinstance(obj, cls):
             return obj
         global __parsers__
         # key = (cls, obj)
         key = obj
         if not no_cache and key in __parsers__:
-            cached: 'BaseParser' = __parsers__[key]
+            cached: "BaseParser" = __parsers__[key]
             # if options is not identical, make a new one
             if not options or options == cached.options:
                 return cached
@@ -51,7 +50,9 @@ class BaseParser:
     def __init__(self, obj, options: Options = None):
         self.obj = obj
         self.options: Options = options or self.options_cls()
-        self.forward_refs: Dict[str, Tuple[ForwardRef, dict]] = {}  # store unresolved ref
+        self.forward_refs: Dict[
+            str, Tuple[ForwardRef, dict]
+        ] = {}  # store unresolved ref
         self.fields: Dict[str, SchemaField] = {}
         self.exclude_vars: Set[str] = set(self.DEFAULT_EXCLUDE_VARS)
         # these data structures are designed to speed up the parsing
@@ -81,7 +82,7 @@ class BaseParser:
         return self.rule_cls.parse_annotation(
             annotation=annotation,
             forward_refs=self.forward_refs,
-            global_vars=self.globals
+            global_vars=self.globals,
         )
 
     @cached_property
@@ -94,10 +95,12 @@ class BaseParser:
 
     def validate_fields(self):
         if self.options.allowed_runtime_options:
-            if '__options__' in self.fields:
-                raise ValueError(f'{self.obj} did not specify no_runtime_options=True, '
-                                 f'so name "__options__" is used to passing runtime options, which is conflicted'
-                                 f' with field {self.fields["__options__"]}')
+            if "__options__" in self.fields:
+                raise ValueError(
+                    f"{self.obj} did not specify no_runtime_options=True, "
+                    f'so name "__options__" is used to passing runtime options, which is conflicted'
+                    f' with field {self.fields["__options__"]}'
+                )
 
     def _get_field_from(self, fields: dict, key: str) -> Optional[SchemaField]:
         if key in fields:
@@ -136,8 +139,12 @@ class BaseParser:
             # explicitly specified
             self.data_first_search = self.options.data_first_search
             return
-        if self.case_insensitive_names or self.field_alias_map or \
-                self.options.ignore_required or self.options.addition:
+        if (
+            self.case_insensitive_names
+            or self.field_alias_map
+            or self.options.ignore_required
+            or self.options.addition
+        ):
             # in those cases data first is faster than field first
             self.data_first_search = True
         else:
@@ -153,11 +160,11 @@ class BaseParser:
 
     @property
     def obj_name(self):
-        return getattr(self.obj, '__qualname__', None) or getattr(self.obj, '__name__')
+        return getattr(self.obj, "__qualname__", None) or getattr(self.obj, "__name__")
 
     @property
     def globals(self):
-        if hasattr(self.obj, '__globals__'):
+        if hasattr(self.obj, "__globals__"):
             # like a function
             return self.obj.__globals__
         return sys.modules[self.module_name].__dict__
@@ -192,7 +199,7 @@ class BaseParser:
                             constraints=constraints,
                             global_vars=self.globals,
                             forward_refs=self.forward_refs,
-                            forward_key=name
+                            forward_key=name,
                         )
                     else:
                         # maybe just ref to some const
@@ -201,7 +208,7 @@ class BaseParser:
                         # as the typing star
                         ref.__forward_value__ = self.rule_cls.annotate(
                             type_=type(value),
-                            constraints={'const': ref.__forward_value__}
+                            constraints={"const": ref.__forward_value__},
                         )
                     resolved = True
                     self.forward_refs.pop(name)
@@ -218,7 +225,7 @@ class BaseParser:
 
     @classmethod
     def validate_field_name(cls, name: str):
-        if name.startswith('_'):
+        if name.startswith("_"):
             return False
         return True
 
@@ -231,12 +238,14 @@ class BaseParser:
         case_insensitive_names = set()
 
         for key, field in self.fields.items():
-            if field.aliases:   # not contains the name
+            if field.aliases:  # not contains the name
                 for alias in field.aliases:
                     if key != alias:
                         if alias in alias_map:
-                            raise ValueError(f'{self.obj}: alias: [{repr(alias)}] '
-                                             f'conflict with field: [{repr(alias_map[alias])}]')
+                            raise ValueError(
+                                f"{self.obj}: alias: [{repr(alias)}] "
+                                f"conflict with field: [{repr(alias_map[alias])}]"
+                            )
                         alias_map[alias] = key
                     # if field.attname != alias:
                     attr_alias_map[alias] = field.attname
@@ -252,11 +261,15 @@ class BaseParser:
         if case_insensitive_names:
             for key, field in self.fields.items():
                 if not field.is_case_insensitive(self.options):
-                    lower_keys = set(a.lower() for a in field.aliases).union({key.lower()})
+                    lower_keys = set(a.lower() for a in field.aliases).union(
+                        {key.lower()}
+                    )
                     inter = case_insensitive_names.intersection(lower_keys)
                     if inter:
-                        raise ValueError(f'{self.obj}: case sensitive field: [{repr(key)}] '
-                                         f'conflict with case insensitive field in {inter}')
+                        raise ValueError(
+                            f"{self.obj}: case sensitive field: [{repr(key)}] "
+                            f"conflict with case insensitive field in {inter}"
+                        )
 
         # a: str = Field(alias_from=['a1', 'a2'], case_insensitive=True)
         # b: str = Field(alias='A2', alias_from=['A1'])
@@ -270,12 +283,12 @@ class BaseParser:
                 self.fields,
                 excluded_vars=self.exclude_vars,
                 alias_map=alias_map,
-                attr_alias_map=attr_alias_map
+                attr_alias_map=attr_alias_map,
             )
 
     @property
     def __ref__(self):
-        return f'{self.obj.__module__}.{self.obj.__qualname__}'
+        return f"{self.obj.__module__}.{self.obj.__qualname__}"
 
     @property
     def cls(self):
@@ -291,29 +304,39 @@ class BaseParser:
         # raise error if collected
         return result
 
-    def parse_data(self, data: dict, options: RuntimeOptions,
-                   as_attname: bool = None,
-                   excluded_keys: List[str] = None):
+    def parse_data(
+        self,
+        data: dict,
+        options: RuntimeOptions,
+        as_attname: bool = None,
+        excluded_keys: List[str] = None,
+    ):
         if options.max_properties:
             if len(data) > options.max_properties:
-                options.handle_error(exc.PropertiesExceedError(
-                    max_properties=options.max_properties, properties_num=len(data)))
+                options.handle_error(
+                    exc.PropertiesExceedError(
+                        max_properties=options.max_properties, properties_num=len(data)
+                    )
+                )
         if options.min_properties:
             if len(data) < options.min_properties:
-                options.handle_error(exc.PropertiesLackError(
-                    min_properties=options.min_properties, properties_num=len(data)))
-        dfs = options.data_first_search if options.data_first_search is not None else self.data_first_search
+                options.handle_error(
+                    exc.PropertiesLackError(
+                        min_properties=options.min_properties, properties_num=len(data)
+                    )
+                )
+        dfs = (
+            options.data_first_search
+            if options.data_first_search is not None
+            else self.data_first_search
+        )
         if dfs:
             result = self.data_first_parse(
-                data, options,
-                excluded_keys=excluded_keys,
-                as_attname=as_attname
+                data, options, excluded_keys=excluded_keys, as_attname=as_attname
             )
         else:
             result = self.field_first_parse(
-                data, options,
-                excluded_keys=excluded_keys,
-                as_attname=as_attname
+                data, options, excluded_keys=excluded_keys, as_attname=as_attname
             )
         return result
 
@@ -334,17 +357,20 @@ class BaseParser:
             try:
                 value = options.transformer(value, addition_type)
             except Exception as e:
-                options.handle_error(exc.ParseError(
-                    item=key,
-                    value=value,
-                    type=addition_type,
-                    origin_exc=e
-                ))
+                options.handle_error(
+                    exc.ParseError(
+                        item=key, value=value, type=addition_type, origin_exc=e
+                    )
+                )
         return value
 
-    def data_first_parse(self, data: dict, options: RuntimeOptions,
-                         as_attname: bool = False,
-                         excluded_keys: List[str] = None):
+    def data_first_parse(
+        self,
+        data: dict,
+        options: RuntimeOptions,
+        as_attname: bool = False,
+        excluded_keys: List[str] = None,
+    ):
         addition = {}
         result = {}
         dependencies = set()
@@ -363,8 +389,7 @@ class BaseParser:
 
             name = field.attname if as_attname else field.name
 
-            if (name in result) or \
-                    (excluded_keys and name in excluded_keys):
+            if (name in result) or (excluded_keys and name in excluded_keys):
                 if options.ignore_alias_conflicts:
                     continue
                 options.handle_error(exc.AliasConflictError(item=name, value=value))
@@ -377,7 +402,9 @@ class BaseParser:
             result[name] = parsed
 
             if field.dependencies:
-                dependencies.update(field.attr_dependencies if as_attname else field.dependencies)
+                dependencies.update(
+                    field.attr_dependencies if as_attname else field.dependencies
+                )
 
         if not options.ignore_required:
             # if required field is ignored. we do not need to check for required fields
@@ -402,7 +429,9 @@ class BaseParser:
             diff = dependencies.difference(dependant)
             if diff:
                 # some dependencies not provided
-                options.handle_error(exc.DependenciesAbsenceError(absence_dependencies=diff))
+                options.handle_error(
+                    exc.DependenciesAbsenceError(absence_dependencies=diff)
+                )
 
         # check dependencies before addition
 
@@ -411,9 +440,13 @@ class BaseParser:
 
         return result
 
-    def field_first_parse(self, data: dict, options: RuntimeOptions,
-                          as_attname: bool = False,
-                          excluded_keys: List[str] = None):
+    def field_first_parse(
+        self,
+        data: dict,
+        options: RuntimeOptions,
+        as_attname: bool = False,
+        excluded_keys: List[str] = None,
+    ):
         if self.case_insensitive_names:
             _data = {}
             for k, v in data.items():
@@ -470,7 +503,9 @@ class BaseParser:
 
             result[name] = parsed
             if field.dependencies:
-                dependencies.update(field.attr_dependencies if as_attname else field.dependencies)
+                dependencies.update(
+                    field.attr_dependencies if as_attname else field.dependencies
+                )
 
         if dependencies:
             dependant = set(result)
@@ -480,7 +515,9 @@ class BaseParser:
             diff = dependencies.difference(dependant)
             if diff:
                 # some dependencies not provided
-                options.handle_error(exc.DependenciesAbsenceError(absence_dependencies=diff))
+                options.handle_error(
+                    exc.DependenciesAbsenceError(absence_dependencies=diff)
+                )
 
         # check dependencies before addition
 

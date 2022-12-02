@@ -1,5 +1,7 @@
 def multi(f):
-    return isinstance(f, (list, set, frozenset, tuple, type({}.values()), type({}.keys())))
+    return isinstance(
+        f, (list, set, frozenset, tuple, type({}.values()), type({}.keys()))
+    )
 
 
 def pop(data, key, default=None):

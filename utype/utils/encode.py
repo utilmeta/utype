@@ -8,7 +8,7 @@ from enum import Enum
 
 DEFAULT_DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 DEFAULT_DATE_FORMAT = "%Y-%m-%d"
-DEFAULT_TIME_FORMAT = '%H:%M:%S'
+DEFAULT_TIME_FORMAT = "%H:%M:%S"
 
 __encoders__ = {}
 
@@ -18,13 +18,19 @@ def register_encoder(*classes, attr=None, detector=None, allow_subclasses: bool 
 
     if not detector:
         if not classes and not attr:
-            raise ValueError(f'register_transformer must provide any of classes, attr, detector')
+            raise ValueError(
+                f"register_transformer must provide any of classes, attr, detector"
+            )
 
         for c in classes:
-            assert inspect.isclass(c), f'register_transformer classes must be class, got {c}'
+            assert inspect.isclass(
+                c
+            ), f"register_transformer classes must be class, got {c}"
 
         if attr:
-            assert isinstance(attr, str), f'register_transformer classes must be str, got {attr}'
+            assert isinstance(
+                attr, str
+            ), f"register_transformer classes must be str, got {attr}"
 
         def detector(_cls):
             if classes:
@@ -78,7 +84,7 @@ def from_mapping(encoder, data):
 
 @register_encoder(bytes)
 def from_bytes(encoder, data: bytes):
-    return data.decode('utf-8', errors='replace')
+    return data.decode("utf-8", errors="replace")
 
 
 @register_encoder(date)
@@ -121,6 +127,6 @@ def from_enum(encoder, en: Enum):
     return en.value
 
 
-@register_encoder(attr='__iter__')
+@register_encoder(attr="__iter__")
 def from_iterable(encoder, data):
     return list(data)

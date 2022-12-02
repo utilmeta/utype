@@ -14,11 +14,11 @@ class RuntimeOptionsMixin:
     # CAP_KEBAB_CASE_GENERATOR = AliasGenerator.cap_kebab
     # PASCAL_CASE_GENERATOR = AliasGenerator.pascal
 
-    EXCLUDE = 'exclude'
-    PRESERVE = 'preserve'
-    THROW = 'throw'
+    EXCLUDE = "exclude"
+    PRESERVE = "preserve"
+    THROW = "throw"
 
-    transformer_cls = TypeTransformer      # support custom with scope
+    transformer_cls = TypeTransformer  # support custom with scope
     collect_errors: bool = False
     max_errors: int = 0
     # if errors reach to this limit, just throw and do not collect further
@@ -40,11 +40,11 @@ class RuntimeOptionsMixin:
     # False: raise ExcessError
     # Exception: raise this error
     # note: another way for this params is to define a **kwargs: type in __init__
-    invalid_items: Literal['exclude', 'preserve', 'throw'] = 'throw'
-    invalid_keys: Literal['exclude', 'preserve', 'throw'] = 'throw'
-    invalid_values: Literal['exclude', 'preserve', 'throw'] = 'throw'
+    invalid_items: Literal["exclude", "preserve", "throw"] = "throw"
+    invalid_keys: Literal["exclude", "preserve", "throw"] = "throw"
+    invalid_values: Literal["exclude", "preserve", "throw"] = "throw"
 
-    unresolved_types: Literal['ignore', 'init', 'throw'] = 'throw'
+    unresolved_types: Literal["ignore", "init", "throw"] = "throw"
     # 'ignore': just ignore type transform and retain the input value
     # 'init':   use t(data) to init unresolved type, and throw the error if raised
     # 'throw':  throw the error if data is not as type
@@ -75,11 +75,14 @@ class RuntimeOptions(RuntimeOptionsMixin):
     override: bool = False
     depth: int
 
-    def __init__(self, context: 'RuntimeOptions' = None,
-                 cls=None,
-                 force_error: bool = False,
-                 error_hooks: dict = None,
-                 options: dict = None):
+    def __init__(
+        self,
+        context: "RuntimeOptions" = None,
+        cls=None,
+        force_error: bool = False,
+        error_hooks: dict = None,
+        options: dict = None,
+    ):
 
         self.context = context
         self.depth = (context.depth + 1) if context else 0
@@ -99,7 +102,7 @@ class RuntimeOptions(RuntimeOptionsMixin):
                     self.__dict__[key] = val
 
     def __repr__(self):
-        return f'{self.__class__.__name__}(cls={self.cls}, options={self.options})'
+        return f"{self.__class__.__name__}(cls={self.cls}, options={self.options})"
 
     def __str__(self):
         return self.__repr__()
@@ -110,20 +113,20 @@ class RuntimeOptions(RuntimeOptionsMixin):
             cls=self.cls,
             force_error=self.force_error,
             options=self.options,
-            error_hooks=self.error_hooks
+            error_hooks=self.error_hooks,
         )
 
     @property
     def transformer(self) -> TypeTransformer:
         return self.transformer_cls(self)
 
-    def get_transformer(self,
-                        no_explicit_cast: bool = None,
-                        no_data_loss: bool = None,):
+    def get_transformer(
+        self,
+        no_explicit_cast: bool = None,
+        no_data_loss: bool = None,
+    ):
         return self.transformer_cls(
-            self,
-            no_explicit_cast=no_explicit_cast,
-            no_data_loss=no_data_loss
+            self, no_explicit_cast=no_explicit_cast, no_data_loss=no_data_loss
         )
 
     @property
@@ -149,9 +152,11 @@ class RuntimeOptions(RuntimeOptionsMixin):
     def clear_tmp_error(self):
         self.tmp_errors = []
 
-    def handle_error(self, e: Exception,
-                     force_raise: bool = False,
-                     ):
+    def handle_error(
+        self,
+        e: Exception,
+        force_raise: bool = False,
+    ):
         # err = Error(e)
         self.errors.append(e)
         if force_raise or not self.collect_errors or len(self.errors) > self.max_errors:
@@ -170,46 +175,48 @@ class Options(RuntimeOptionsMixin):
     unprovided_attribute: Any = ...
     immutable: bool = False
     override: bool = False
-    allowed_runtime_options: Union[str, None, List[str]] = '*'
+    allowed_runtime_options: Union[str, None, List[str]] = "*"
 
-    def __init__(self, *,
-                 mode: str = None,
-                 transformer_cls: Type[TypeTransformer] = TypeTransformer,
-                 override: bool = False,
-                 immutable: bool = False,
-                 collect_errors: bool = False,
-                 max_errors: int = 0,
-                 max_properties: int = None,
-                 min_properties: int = None,
-                 no_explicit_cast: Optional[bool] = False,
-                 no_data_loss: Optional[bool] = False,
-                 addition: Union[bool, type, None] = None,
-                 invalid_items: Literal['exclude', 'preserve', 'throw'] = 'throw',
-                 invalid_keys: Literal['exclude', 'preserve', 'throw'] = 'throw',
-                 invalid_values: Literal['exclude', 'preserve', 'throw'] = 'throw',
-                 unresolved_types: Literal['ignore', 'init', 'throw'] = 'throw',
-                 # you can define your own unresolved behaviour by inherit
-                 # TypeTransformer and tweak handle_unresolved()
-                 ignore_error_property: bool = False,
-                 force_default: Any = ...,
-                 no_default: bool = False,
-                 ignore_required: bool = False,
-                 force_required: bool = False,
-                 ignore_no_input: bool = False,
-                 ignore_no_output: bool = False,
-                 ignore_constraints: bool = False,   # for Rule, ignore constraints, only transform type
-                 alias_from_generator: Union[Callable, List[Callable]] = None,
-                 alias_generator: Callable = None,
-                 ignore_alias_conflict: bool = None,
-                 allowed_runtime_options: Union[str, None, List[str]] = '*',
-                 case_insensitive: bool = None,
-                 max_depth: int = None,
-                 unprovided_attribute: Any = ...,
-                 data_first_search: Optional[bool] = False
-                 # if this value is a subclass of Exception, then raise that error if attr is unprovided
-                 # if this value is another callable (like dict, list), return value()
-                 # otherwise return this value directly when attr is unprovided
-                 ):
+    def __init__(
+        self,
+        *,
+        mode: str = None,
+        transformer_cls: Type[TypeTransformer] = TypeTransformer,
+        override: bool = False,
+        immutable: bool = False,
+        collect_errors: bool = False,
+        max_errors: int = 0,
+        max_properties: int = None,
+        min_properties: int = None,
+        no_explicit_cast: Optional[bool] = False,
+        no_data_loss: Optional[bool] = False,
+        addition: Union[bool, type, None] = None,
+        invalid_items: Literal["exclude", "preserve", "throw"] = "throw",
+        invalid_keys: Literal["exclude", "preserve", "throw"] = "throw",
+        invalid_values: Literal["exclude", "preserve", "throw"] = "throw",
+        unresolved_types: Literal["ignore", "init", "throw"] = "throw",
+        # you can define your own unresolved behaviour by inherit
+        # TypeTransformer and tweak handle_unresolved()
+        ignore_error_property: bool = False,
+        force_default: Any = ...,
+        no_default: bool = False,
+        ignore_required: bool = False,
+        force_required: bool = False,
+        ignore_no_input: bool = False,
+        ignore_no_output: bool = False,
+        ignore_constraints: bool = False,  # for Rule, ignore constraints, only transform type
+        alias_from_generator: Union[Callable, List[Callable]] = None,
+        alias_generator: Callable = None,
+        ignore_alias_conflict: bool = None,
+        allowed_runtime_options: Union[str, None, List[str]] = "*",
+        case_insensitive: bool = None,
+        max_depth: int = None,
+        unprovided_attribute: Any = ...,
+        data_first_search: Optional[bool] = False
+        # if this value is a subclass of Exception, then raise that error if attr is unprovided
+        # if this value is another callable (like dict, list), return value()
+        # otherwise return this value directly when attr is unprovided
+    ):
 
         if no_data_loss:
             if addition is None:
@@ -220,15 +227,21 @@ class Options(RuntimeOptionsMixin):
         if multi(alias_from_generator):
             for g in alias_from_generator:
                 if not callable(g):
-                    raise TypeError(f'Options.alias_from_generator must be a callable or a list of callable')
+                    raise TypeError(
+                        f"Options.alias_from_generator must be a callable or a list of callable"
+                    )
 
         elif alias_from_generator:
             if not callable(alias_from_generator):
-                raise TypeError(f'Options.alias_from_generator must be a callable or a list of callable')
+                raise TypeError(
+                    f"Options.alias_from_generator must be a callable or a list of callable"
+                )
 
         if force_default is not ...:
             if no_default:
-                raise ValueError('Options force_default and no_default can not both specify')
+                raise ValueError(
+                    "Options force_default and no_default can not both specify"
+                )
 
         options = {}
         for key, val in locals().items():
@@ -239,11 +252,13 @@ class Options(RuntimeOptionsMixin):
                 options[key] = val
         self._options = options
 
-    _option_names = [k for k, v in inspect.signature(__init__).parameters.items() if k != 'self']
+    _option_names = [
+        k for k, v in inspect.signature(__init__).parameters.items() if k != "self"
+    ]
 
     def __repr__(self):
-        options = [f'{key}={repr(val)}' for key, val in self._options.items()]
-        return f'{self.__class__.__name__}(%s)' % ', '.join(options)
+        options = [f"{key}={repr(val)}" for key, val in self._options.items()]
+        return f"{self.__class__.__name__}(%s)" % ", ".join(options)
 
     def __str__(self):
         return self.__repr__()
@@ -260,9 +275,12 @@ class Options(RuntimeOptionsMixin):
     def vacuum(self):
         return not self._options
 
-    def make_runtime(self, cls=None,
-                     force_error: bool = False,
-                     options: Union['RuntimeOptions', 'Options'] = None) -> RuntimeOptions:
+    def make_runtime(
+        self,
+        cls=None,
+        force_error: bool = False,
+        options: Union["RuntimeOptions", "Options"] = None,
+    ) -> RuntimeOptions:
         kwargs = dict(self._options)
 
         # if options is Options, it's the first
@@ -270,10 +288,12 @@ class Options(RuntimeOptionsMixin):
         context = None
         if isinstance(options, Options):
             spec = options._options
-            if self.allowed_runtime_options == '*':
+            if self.allowed_runtime_options == "*":
                 pass
             elif self.allowed_runtime_options:
-                spec = {k: v for k, v in spec.items() if k in self.allowed_runtime_options}
+                spec = {
+                    k: v for k, v in spec.items() if k in self.allowed_runtime_options
+                }
             else:
                 spec = {}
 
@@ -288,10 +308,7 @@ class Options(RuntimeOptionsMixin):
                 kwargs = context.options
 
         return RuntimeOptions(
-            context=context,
-            cls=cls,
-            options=kwargs,
-            force_error=force_error
+            context=context, cls=cls, options=kwargs, force_error=force_error
         )
 
     def clone(self):
@@ -299,7 +316,7 @@ class Options(RuntimeOptionsMixin):
         return self.make_runtime()
 
     @classmethod
-    def generate_from(cls, *options) -> 'Options':
+    def generate_from(cls, *options) -> "Options":
         if not options:
             return cls()
         res = None
@@ -310,7 +327,9 @@ class Options(RuntimeOptionsMixin):
                 if issubclass(opt, Options):
                     opt = opt.initialize()
                 else:
-                    opt = {k: v for k, v in opt.__dict__.items() if k in cls._option_names}
+                    opt = {
+                        k: v for k, v in opt.__dict__.items() if k in cls._option_names
+                    }
             if isinstance(opt, dict):  # accept from dict
                 opt = cls(**opt)
             if not isinstance(opt, Options):
@@ -323,7 +342,7 @@ class Options(RuntimeOptionsMixin):
                 res &= opt
         return res or cls()
 
-    def __and__(self, other: 'Options') -> 'Options':
+    def __and__(self, other: "Options") -> "Options":
         if not isinstance(other, Options) or other.vacuum:
             return self
         if self.vacuum:

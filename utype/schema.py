@@ -14,40 +14,45 @@ class LogicalMeta(type):
             name = cls.__qualname__
         except AttributeError:
             name = cls.__name__
-        if '.' in name:
-            name = ''.join([part.capitalize() if part.islower() else part for part in name.split('.')])
-        return f'{cls.__module__}.{name}'
+        if "." in name:
+            name = "".join(
+                [
+                    part.capitalize() if part.islower() else part
+                    for part in name.split(".")
+                ]
+            )
+        return f"{cls.__module__}.{name}"
 
     def __and__(cls, other):
         if isinstance(other, LogicalType):
-            return other.__rand__(cls)      # noqa
-        return cls.__logical_type__.combine('&', cls, other)
+            return other.__rand__(cls)  # noqa
+        return cls.__logical_type__.combine("&", cls, other)
 
     def __rand__(cls, other):
-        return cls.__logical_type__.combine('&', other, cls)
+        return cls.__logical_type__.combine("&", other, cls)
 
     def __or__(cls, other):
-        if getattr(other, '__origin__', None) == Union:
-            return cls.__logical_type__.combine('|', cls, *other.__args__)
+        if getattr(other, "__origin__", None) == Union:
+            return cls.__logical_type__.combine("|", cls, *other.__args__)
         if isinstance(other, LogicalType):
-            return other.__ror__(cls)      # noqa
-        return cls.__logical_type__.combine('|', cls, other)
+            return other.__ror__(cls)  # noqa
+        return cls.__logical_type__.combine("|", cls, other)
 
     def __ror__(cls, other):
-        if getattr(other, '__origin__', None) == Union:
-            return cls.__logical_type__.combine('|', *other.__args__, cls)
-        return cls.__logical_type__.combine('|', other, cls)
+        if getattr(other, "__origin__", None) == Union:
+            return cls.__logical_type__.combine("|", *other.__args__, cls)
+        return cls.__logical_type__.combine("|", other, cls)
 
     def __xor__(cls, other):
         if isinstance(other, LogicalType):
-            return other.__rxor__(cls)      # noqa
-        return cls.__logical_type__.combine('^', cls, other)
+            return other.__rxor__(cls)  # noqa
+        return cls.__logical_type__.combine("^", cls, other)
 
     def __rxor__(cls, other):
-        return cls.__logical_type__.combine('^', other, cls)
+        return cls.__logical_type__.combine("^", other, cls)
 
     def __invert__(cls):
-        return cls.__logical_type__.combine('~', cls)
+        return cls.__logical_type__.combine("~", cls)
 
 
 class DataClass(metaclass=LogicalMeta):
@@ -57,7 +62,7 @@ class DataClass(metaclass=LogicalMeta):
     # __mode__: str = None
 
     def __init_subclass__(cls, **kwargs):
-        options = getattr(cls, '__options__', None)
+        options = getattr(cls, "__options__", None)
         cls.__parser__ = parser = cls.__parser_cls__.apply_for(cls, options=options)
         cls.__options__ = cls.__parser__.options
 
@@ -66,7 +71,7 @@ class DataClass(metaclass=LogicalMeta):
             allow_runtime=True,
             set_attributes=True,
             coerce_property=True,
-            post_init=cls.__post_init__
+            post_init=cls.__post_init__,
         )
         parser.make_repr()
         parser.assign_properties()
@@ -89,7 +94,7 @@ class Schema(dict, metaclass=LogicalMeta):
     # __mode__: str = None
 
     def __init_subclass__(cls, **kwargs):
-        options = getattr(cls, '__options__', None)
+        options = getattr(cls, "__options__", None)
         cls.__parser__ = parser = cls.__parser_cls__.apply_for(cls, options=options)
         cls.__options__ = cls.__parser__.options
 
@@ -98,11 +103,10 @@ class Schema(dict, metaclass=LogicalMeta):
             allow_runtime=True,
             set_attributes=True,
             coerce_property=True,
-            post_init=cls.__post_init__
+            post_init=cls.__post_init__,
         )
         parser.assign_properties(
-            post_setattr=cls.__post_setattr__,
-            post_delattr=cls.__post_delattr__
+            post_setattr=cls.__post_setattr__, post_delattr=cls.__post_delattr__
         )
 
     def __class_getitem__(cls, item):
@@ -116,9 +120,9 @@ class Schema(dict, metaclass=LogicalMeta):
         for key, val in self.items():
             field = self.__parser__.get_field(key)
             name = field.attname if field else key
-            items.append(f'{name}={repr(val)}')
-        values = ', '.join(items)
-        return f'{self.__name__}({values})'
+            items.append(f"{name}={repr(val)}")
+        values = ", ".join(items)
+        return f"{self.__name__}({values})"
 
     @property
     def __name__(self):
@@ -133,14 +137,18 @@ class Schema(dict, metaclass=LogicalMeta):
 
     def __setitem__(self, alias: str, value):
         if self.__options__.immutable:
-            raise AttributeError(f'{self.__class__}: '
-                                 f'Attempt to set item: [{repr(alias)}] in immutable schema')
+            raise AttributeError(
+                f"{self.__class__}: "
+                f"Attempt to set item: [{repr(alias)}] in immutable schema"
+            )
 
         field = self.__parser__.get_field(alias)
         options = self.__options__.make_runtime(__class__, force_error=True)
         if not field:
             if alias in self.__parser__.exclude_vars:
-                raise AttributeError(f'{self.__class__}: Attempt to set excluded attribute: {repr(alias)}')
+                raise AttributeError(
+                    f"{self.__class__}: Attempt to set excluded attribute: {repr(alias)}"
+                )
             addition = self.__parser__.parse_addition(alias, value, options=options)
             if addition is ...:
                 # ignore addition
@@ -148,9 +156,12 @@ class Schema(dict, metaclass=LogicalMeta):
             return super().__setitem__(alias, value)
 
         if field.immutable:
-            raise AttributeError(f'{self.__class__}: '
-                                 f'Attempt to set immutable item: [{repr(alias)}]')
-        value = field.parse_value(value, options=self.__options__.make_runtime(__class__))
+            raise AttributeError(
+                f"{self.__class__}: " f"Attempt to set immutable item: [{repr(alias)}]"
+            )
+        value = field.parse_value(
+            value, options=self.__options__.make_runtime(__class__)
+        )
         self.__dict__[field.attname] = value
 
         if not field.no_output(value, options=options):
@@ -174,49 +185,67 @@ class Schema(dict, metaclass=LogicalMeta):
 
     def __delitem__(self, key: str):
         if self.__options__.immutable:
-            raise AttributeError(f'{self.__class__}: '
-                                 f'Attempt to delete item: [{repr(key)}] in immutable schema')
+            raise AttributeError(
+                f"{self.__class__}: "
+                f"Attempt to delete item: [{repr(key)}] in immutable schema"
+            )
         field = self.__parser__.get_field(key)
         if not field:
             return super().__delitem__(key)
         if field.immutable:
-            raise AttributeError(f'{self.__name__}: '
-                                 f'Attempt to delete immutable item: [{repr(key)}]')
+            raise AttributeError(
+                f"{self.__name__}: " f"Attempt to delete immutable item: [{repr(key)}]"
+            )
         options = self.__options__.make_runtime(__class__, force_error=True)
         if field.is_required(options):
-            raise AttributeError(f'{self.__name__}: Attempt to delete required schema key: {key}')
+            raise AttributeError(
+                f"{self.__name__}: Attempt to delete required schema key: {key}"
+            )
         super().__delitem__(field.name)
         if hasattr(self, field.attname):
             super().__delattr__(field.attname)
 
     def popitem(self):
         if self.__options__.immutable:
-            raise TypeError(f'{self.__name__}: Attempt to popitem in immutable schema')
+            raise TypeError(f"{self.__name__}: Attempt to popitem in immutable schema")
         return super().popitem()
 
     def pop(self, key: str):
         if self.__options__.immutable:
-            raise AttributeError(f'{self.__class__}: '
-                                 f'Attempt to pop item: [{repr(key)}] in immutable schema')
+            raise AttributeError(
+                f"{self.__class__}: "
+                f"Attempt to pop item: [{repr(key)}] in immutable schema"
+            )
         field = self.__parser__.get_field(key)
         if not field:
             return super().pop(field.name)
         if field.immutable:
-            raise AttributeError(f'{self.__name__}: '
-                                 f'Attempt to pop immutable item: [{repr(key)}]')
+            raise AttributeError(
+                f"{self.__name__}: " f"Attempt to pop immutable item: [{repr(key)}]"
+            )
         options = self.__options__.make_runtime(__class__, force_error=True)
         if field.is_required(options):
-            raise TypeError(f'{self.__name__}: Attempt to delete required schema key: {repr(key)}')
+            raise TypeError(
+                f"{self.__name__}: Attempt to delete required schema key: {repr(key)}"
+            )
         return super().pop(field.name)
 
     def update(self, __m=None, **kwargs):
         if self.__options__.immutable:
-            raise AttributeError(f'{self.__name__}: Attempt to update in Options(immutable=True) schema')
-        return super().update(self.__parser__(__m or kwargs, options=Options(ignore_required=True).make_runtime()))
+            raise AttributeError(
+                f"{self.__name__}: Attempt to update in Options(immutable=True) schema"
+            )
+        return super().update(
+            self.__parser__(
+                __m or kwargs, options=Options(ignore_required=True).make_runtime()
+            )
+        )
 
     def clear(self):
         if self.__options__.immutable:
-            raise TypeError(f'{self.__name__}: Attempt to clear in Options(immutable=True) schema')
+            raise TypeError(
+                f"{self.__name__}: Attempt to clear in Options(immutable=True) schema"
+            )
         return super().clear()
 
 

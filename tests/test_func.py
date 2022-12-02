@@ -21,27 +21,28 @@ class TestFunc:
         @utype.parse
         def get_article_info(
             query: ArticleQuery,
-            body: typing.List[typing.Dict[str, int]] = utype.Field(default_factory=list)
+            body: typing.List[typing.Dict[str, int]] = utype.Field(
+                default_factory=list
+            ),
         ) -> ArticleInfo:
             likes = {}
             for item in body:
                 likes.update(item)
-            return {
-                'id': query.id,
-                'slug': query.slug,
-                'likes': likes
-            }
+            return {"id": query.id, "slug": query.slug, "likes": likes}
 
-        assert get_article_info(query='id=1&slug=my-article', body=b'[{"alice": 1}, {"bob": 2}]') == \
-               ArticleInfo(id=1, slug='my-article', likes={'alice': 1, 'bob': 2})
+        assert get_article_info(
+            query="id=1&slug=my-article", body=b'[{"alice": 1}, {"bob": 2}]'
+        ) == ArticleInfo(id=1, slug="my-article", likes={"alice": 1, "bob": 2})
 
     def test_args_assign(self):
         @utype.parse
         def complex_func(
             po1: str = Field(required=True),
-            po2: int = Field(default_factory=str), /,
-            pos_and_kw: int = Field(default=1, alias_from=['pw1', 'pw2']), *,
-            kw_only1: str = Field(case_insensitive=True)
+            po2: int = Field(default_factory=str),
+            /,
+            pos_and_kw: int = Field(default=1, alias_from=["pw1", "pw2"]),
+            *,
+            kw_only1: str = Field(case_insensitive=True),
         ):
             pass
 
@@ -91,11 +92,11 @@ class TestFunc:
                     await asyncio.sleep(wait)
                 i -= 1
 
-        wait_gen = waiter('2')
+        wait_gen = waiter("2")
         async for index in wait_gen:
             assert isinstance(index, int)
             try:
-                await wait_gen.asend(b'0.05')
+                await wait_gen.asend(b"0.05")
                 # wait for 0.05 seconds
             except StopAsyncIteration:
                 pass
@@ -108,6 +109,6 @@ class TestFunc:
         with pytest.raises(exc.ParseError):
             async for index in wait_gen:
                 try:
-                    await wait_gen.asend(b'abc')
+                    await wait_gen.asend(b"abc")
                 except StopAsyncIteration:
                     pass

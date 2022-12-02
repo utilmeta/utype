@@ -16,14 +16,15 @@ async def waiter(rounds: int = utype.Field(gt=0)) -> AsyncGenerator[int, float]:
 
 
 async def test():
-    wait_gen = waiter('-1')
+    wait_gen = waiter("-1")
     async for index in wait_gen:
         assert isinstance(index, int)
         try:
-            await wait_gen.asend(b'0.5')
+            await wait_gen.asend(b"0.5")
             # wait for 0.5 seconds
         except StopAsyncIteration:
             return
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     asyncio.run(test())

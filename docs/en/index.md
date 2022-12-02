@@ -7,6 +7,6 @@ utype is a data type & schema declaration & parsing library based on Python type
 pip install -U utype
 ```
 
-utype requires Python >= 3.6
+utype requires Python >= 3.7
 
 ## Basic Usage

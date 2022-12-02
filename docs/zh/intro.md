@@ -14,7 +14,7 @@ pip install -U utype
 ```
 
 !!! note
-	utype 需要 Python 版本大于 3.6
+	utype 需要 Python 版本大于 3.7
 
 
 ## 2. 用法示例
@@ -29,7 +29,7 @@ class PositiveInt(int, Rule):
 assert PositiveInt(b'3') == 3
 
 try:
-	PositiveInt(-0.5)
+    PositiveInt(-0.5)
 except exc.ParseError as e:
 	print(e)
 	"""

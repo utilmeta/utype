@@ -6,21 +6,25 @@ from .parser.options import Options
 from .parser.rule import Rule
 
 
-def parse(f=None, *,
-          parser_cls: Type[FunctionParser] = FunctionParser,
-          options: Options = None,
-          no_cache: bool = False,
-          ignore_params: bool = False,
-          ignore_result: bool = False):
+def parse(
+    f=None,
+    *,
+    parser_cls: Type[FunctionParser] = FunctionParser,
+    options: Options = None,
+    no_cache: bool = False,
+    ignore_params: bool = False,
+    ignore_result: bool = False,
+):
     if ignore_params and ignore_result:
-        warnings.warn(f'you turn off both params and result parse in @parse decorator,'
-                      f' which is basically meaningless...')
+        warnings.warn(
+            f"you turn off both params and result parse in @parse decorator,"
+            f" which is basically meaningless..."
+        )
 
     def decorator(func):
         parser = parser_cls.apply_for(func, options=options, no_cache=no_cache)
         return parser.wrap(
-            parse_params=not ignore_params,
-            parse_result=not ignore_result
+            parse_params=not ignore_params, parse_result=not ignore_result
         )
 
     if f:
@@ -29,7 +33,8 @@ def parse(f=None, *,
 
 
 def dataclass(
-    obj=None, *,
+    obj=None,
+    *,
     parser_cls: Type[ClassParser] = ClassParser,
     options: Options = None,
     no_cache: bool = False,
@@ -51,24 +56,25 @@ def dataclass(
             allow_runtime=allow_runtime,
             set_attributes=init_attributes,
             coerce_property=init_properties,
-            post_init=post_init
+            post_init=post_init,
         )
         if repr:
             parser.make_repr()
         if set_properties:
             parser.assign_properties(
-                post_setattr=post_setattr,
-                post_delattr=post_delattr
+                post_setattr=post_setattr, post_delattr=post_delattr
             )
 
         return parser.obj
+
     if obj:
         return decorator(obj)
     return decorator
 
 
 def apply(
-    rule_cls: Type[Rule] = Rule, *,
+    rule_cls: Type[Rule] = Rule,
+    *,
     strict: bool = True,
     const: Any = ...,
     enum: Iterable = None,

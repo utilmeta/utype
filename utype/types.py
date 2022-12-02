@@ -4,12 +4,13 @@ from .utils import exceptions as exc
 from decimal import Decimal
 from typing import Union, Type
 from enum import Enum
+
 # from typing import TypeVar
 # T = TypeVar('T')
 
 
 class Number(Rule):
-    primitive = 'number'
+    primitive = "number"
 
     @classmethod
     def check_type(cls, t):
@@ -19,7 +20,7 @@ class Number(Rule):
 
 class Array(Rule):
     __origin__ = abc.Iterable
-    primitive = 'array'
+    primitive = "array"
     contains: type
     max_contains: int
     min_contains: int
@@ -28,7 +29,7 @@ class Array(Rule):
     def __iter__(self):
         raise NotImplementedError
 
-    def __class_getitem__(cls, item) -> Type['Array']:
+    def __class_getitem__(cls, item) -> Type["Array"]:
         if not isinstance(item, tuple):
             item = (item,)
         return cls.annotate(cls.__origin__, *item)
@@ -36,35 +37,47 @@ class Array(Rule):
     @classmethod
     def check_type(cls, t):
         # must be an iterable
-        assert hasattr(t, '__iter__')
+        assert hasattr(t, "__iter__")
 
 
 class Object(Rule):
-    primitive = 'object'
+    primitive = "object"
 
     def __iter__(self):
         raise NotImplementedError
 
     def __class_getitem__(cls, params):
         if len(params) != 2:
-            raise TypeError(f'{cls} should use {cls}[KeyType, ValType] with 2 params, got {params}')
+            raise TypeError(
+                f"{cls} should use {cls}[KeyType, ValType] with 2 params, got {params}"
+            )
         return cls.annotate(cls.__origin__, *params)
 
     @classmethod
     def check_type(cls, t):
         # must be an iterable
-        assert hasattr(t, '__iter__') and hasattr(t, 'items')
+        assert hasattr(t, "__iter__") and hasattr(t, "items")
 
 
-class Float(float, Number): pass
-class Int(int, Number): pass
-class Str(str, Rule): pass
-class Bool(str, Rule): pass
+class Float(float, Number):
+    pass
+
+
+class Int(int, Number):
+    pass
+
+
+class Str(str, Rule):
+    pass
+
+
+class Bool(str, Rule):
+    pass
 
 
 class Null(Rule):
     __origin__ = type(None)
-    primitive = 'null'
+    primitive = "null"
     # const = None
 
 
@@ -89,15 +102,16 @@ class NanFloat(Float):
     def apply(cls, value, __options__=None):
         value = super().apply(value, __options__)
         import math
+
         if not math.isnan(value):
             # do not use const = float('nan')
             # cause NaN can not use equal operator
-            raise exc.ConstraintError(constraint='const', constraint_value=float('nan'))
+            raise exc.ConstraintError(constraint="const", constraint_value=float("nan"))
         return value
 
 
 class InfinityFloat(Float):
-    enum = [float('inf'), float('-inf')]
+    enum = [float("inf"), float("-inf")]
 
 
 AbnormalFloat = NanFloat ^ InfinityFloat
@@ -113,12 +127,14 @@ class Timestamp(Float):
     """
     timestamps to represent datetime and date
     """
+
     ge = 0
-    format = 'timestamp'
+    format = "timestamp"
 
     @classmethod
     def apply(cls, value, __options__=None):
         import datetime
+
         if isinstance(value, datetime.datetime):
             value = value.timestamp()
         elif isinstance(value, datetime.timedelta):
@@ -126,14 +142,20 @@ class Timestamp(Float):
         super().apply(value, __options__)
 
 
-def enum_array(item_enum: Union[Type[Enum], list, tuple, set], item_type=None,
-               array_type=list, unique: bool = False, array_strict: bool = True) -> Type[Array]:
+def enum_array(
+    item_enum: Union[Type[Enum], list, tuple, set],
+    item_type=None,
+    array_type=list,
+    unique: bool = False,
+    array_strict: bool = True,
+) -> Type[Array]:
     """
     Make an array type, which item is one of the enum value
     """
     if isinstance(item_enum, Enum):
         EnumItem = item_enum
     else:
+
         class EnumItem(Rule):
             __origin__ = item_type
             enum = item_enum
@@ -151,7 +173,8 @@ class SlugStr(Str):
     """
     Slug str or URI
     """
-    format = 'slug'
+
+    format = "slug"
     regex = r"[a-z0-9]+(?:-[a-z0-9]+)*"
 
 
@@ -212,8 +235,8 @@ class Second(Int):
 
 
 class EmailStr(Str):
-    format = 'email'
-    regex = r'([A-Za-z0-9]+[.-_])*[A-Za-z0-9]+@[A-Za-z0-9-]+(\.[A-Z|a-z]{2,})+'
+    format = "email"
+    regex = r"([A-Za-z0-9]+[.-_])*[A-Za-z0-9]+@[A-Za-z0-9-]+(\.[A-Z|a-z]{2,})+"
 
 
 # from pathlib import Path

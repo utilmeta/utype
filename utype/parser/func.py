@@ -7,18 +7,29 @@ from .field import SchemaField
 import inspect
 from .base import BaseParser
 from functools import wraps, cached_property
-from collections.abc import Generator, AsyncGenerator, Iterator, AsyncIterator, Iterable, AsyncIterable
+from collections.abc import (
+    Generator,
+    AsyncGenerator,
+    Iterator,
+    AsyncIterator,
+    Iterable,
+    AsyncIterable,
+)
 import warnings
 
 
 LAMBDA_NAME = (lambda: None).__name__
-LOCALS_NAME = '<locals>'
+LOCALS_NAME = "<locals>"
 
 
 class FunctionParser(BaseParser):
     @classmethod
     def validate_function(cls, f):
-        return isinstance(f, (staticmethod, classmethod)) or inspect.ismethod(f) or inspect.isfunction(f)
+        return (
+            isinstance(f, (staticmethod, classmethod))
+            or inspect.ismethod(f)
+            or inspect.isfunction(f)
+        )
 
     @classmethod
     def analyze_func(cls, f):
@@ -32,7 +43,7 @@ class FunctionParser(BaseParser):
         elif inspect.ismethod(f):
             first_reserve = False
         elif not inspect.isfunction(f):
-            raise TypeError(f'Invalid function: {f}')
+            raise TypeError(f"Invalid function: {f}")
         return f, first_reserve
 
     @classmethod
@@ -41,16 +52,21 @@ class FunctionParser(BaseParser):
             f = f.__func__
         if not f:
             return None
-        return getattr(f, '__annotations__', {}).get('return')
+        return getattr(f, "__annotations__", {}).get("return")
 
     @classmethod
     def infer_instancemethod(cls, func):
-        return hasattr(func, '__qualname__') and func.__qualname__.endswith('.' + func.__name__) and \
-               not func.__qualname__.endswith(f'{LOCALS_NAME}.' + func.__name__)
+        return (
+            hasattr(func, "__qualname__")
+            and func.__qualname__.endswith("." + func.__name__)
+            and not func.__qualname__.endswith(f"{LOCALS_NAME}." + func.__name__)
+        )
 
     def __init__(self, func, options: Options = None):
         if not self.validate_function(func):
-            raise TypeError(f'{self.__class__}: invalid function or method: {func}, must be method or function')
+            raise TypeError(
+                f"{self.__class__}: invalid function or method: {func}, must be method or function"
+            )
 
         self.instancemethod = False
         self.classmethod = isinstance(func, classmethod)
@@ -85,7 +101,7 @@ class FunctionParser(BaseParser):
         self.kw_var = None  # only for function, **kwargs
         self.pos_var_index = None
         self.pos_var = None  # only for function, *args
-        self.pos_key_map = {}   # reverse version of arg index
+        self.pos_key_map = {}  # reverse version of arg index
         self.arg_index = {}
         self.max_args = 0
         self.min_args = 0
@@ -156,8 +172,11 @@ class FunctionParser(BaseParser):
 
     @property
     def do_parse_generator(self):
-        return (self.is_generator or self.is_async_generator) and \
-               (self.generator_send_type or self.generator_yield_type or self.generator_return_type)
+        return (self.is_generator or self.is_async_generator) and (
+            self.generator_send_type
+            or self.generator_yield_type
+            or self.generator_return_type
+        )
 
     def generate_return_types(self):
         # see if the return type match the function
@@ -174,20 +193,30 @@ class FunctionParser(BaseParser):
                 if self.return_type.__origin__ in (Iterable, Iterator):
                     self.generator_yield_type = self.return_type.__args__[0]
                 elif self.return_type.__origin__ == Generator:
-                    self.generator_yield_type, self.generator_send_type, self.generator_return_type = \
-                        self.return_type.__args__
+                    (
+                        self.generator_yield_type,
+                        self.generator_send_type,
+                        self.generator_return_type,
+                    ) = self.return_type.__args__
                 else:
-                    warnings.warn(f'Invalid return type annotation: {self.return_annotation} '
-                                  f'for generator function, should be Generator[...] / Iterator[...] / Iterable[...]')
+                    warnings.warn(
+                        f"Invalid return type annotation: {self.return_annotation} "
+                        f"for generator function, should be Generator[...] / Iterator[...] / Iterable[...]"
+                    )
             elif self.is_async_generator:
                 if self.return_type.__origin__ in (AsyncIterable, AsyncIterator):
                     self.generator_yield_type = self.return_type.__args__[0]
                 elif self.return_type.__origin__ == AsyncGenerator:
-                    self.generator_yield_type, self.generator_send_type = self.return_type.__args__
+                    (
+                        self.generator_yield_type,
+                        self.generator_send_type,
+                    ) = self.return_type.__args__
                 else:
-                    warnings.warn(f'Invalid return type annotation: {self.return_annotation} '
-                                  f'for async generator function, should be '
-                                  f'AsyncGenerator[...] / AsyncIterator[...] / AsyncIterable[...]')
+                    warnings.warn(
+                        f"Invalid return type annotation: {self.return_annotation} "
+                        f"for async generator function, should be "
+                        f"AsyncGenerator[...] / AsyncIterator[...] / AsyncIterable[...]"
+                    )
 
     @cached_property
     def positional_fields(self):
@@ -210,10 +239,10 @@ class FunctionParser(BaseParser):
         return fields
 
     def __str__(self):
-        return f'<{self.__class__.__name__}: {self.obj.__qualname__}>'
+        return f"<{self.__class__.__name__}: {self.obj.__qualname__}>"
 
     def __repr__(self):
-        return f'<{self.__class__.__name__}: {self.obj.__qualname__}>'
+        return f"<{self.__class__.__name__}: {self.obj.__qualname__}>"
 
     def generate_fields(self):
         exclude_vars = self.exclude_vars
@@ -225,23 +254,31 @@ class FunctionParser(BaseParser):
                 continue
             if param.kind in (param.VAR_KEYWORD, param.VAR_POSITIONAL):
                 continue
-            fields.append(self.schema_field_cls.generate(
-                attname=name,
-                annotation=param.annotation if param.annotation is not param.empty else None,
-                default=param.default if param.default is not param.empty else ...,
-                global_vars=self.globals,
-                forward_refs=self.forward_refs,
-                options=self.options
-            ))
+            fields.append(
+                self.schema_field_cls.generate(
+                    attname=name,
+                    annotation=param.annotation
+                    if param.annotation is not param.empty
+                    else None,
+                    default=param.default if param.default is not param.empty else ...,
+                    global_vars=self.globals,
+                    forward_refs=self.forward_refs,
+                    options=self.options,
+                )
+            )
 
         field_map = {}
         for field in fields:
             if field.name in field_map:
-                raise ValueError(f'{self.obj}: field name: {repr(field.name)} conflicted at '
-                                 f'{field}, {field_map[field.name]}')
+                raise ValueError(
+                    f"{self.obj}: field name: {repr(field.name)} conflicted at "
+                    f"{field}, {field_map[field.name]}"
+                )
             if not field.always_provided:
-                raise ValueError(f'{self.obj}: field(name={repr(field.name)}) is not required, '
-                                 f'you should set a default')
+                raise ValueError(
+                    f"{self.obj}: field(name={repr(field.name)}) is not required, "
+                    f"you should set a default"
+                )
             field_map[field.name] = field
         self.fields.update(field_map)
 
@@ -256,17 +293,19 @@ class FunctionParser(BaseParser):
 
     def resolve_forward_refs(self, local_vars=None, ignore_errors: bool = True):
         resolved = super().resolve_forward_refs(
-            local_vars=local_vars,
-            ignore_errors=ignore_errors
+            local_vars=local_vars, ignore_errors=ignore_errors
         )
         if resolved:
             self.position_type, r = resolve_forward_type(self.position_type)
             self.return_type, r = resolve_forward_type(self.return_type)
 
-    def wrap(self, options: Options = None,
-             first_reserve: bool = None,
-             parse_params: bool = None,
-             parse_result: bool = None):
+    def wrap(
+        self,
+        options: Options = None,
+        first_reserve: bool = None,
+        parse_params: bool = None,
+        parse_result: bool = None,
+    ):
 
         options = self.options.make_runtime(options=options)
         if self.is_async_generator:
@@ -274,28 +313,34 @@ class FunctionParser(BaseParser):
                 options=options,
                 first_reserve=first_reserve,
                 parse_params=parse_params,
-                parse_result=parse_result
+                parse_result=parse_result,
             )
         elif self.is_coroutine:
+
             @wraps(self.obj)
             async def f(*args, **kwargs):
                 return await self.async_call(
-                    args, kwargs,
+                    args,
+                    kwargs,
                     options=options,
                     first_reserve=first_reserve,
                     parse_params=parse_params,
-                    parse_result=parse_result
+                    parse_result=parse_result,
                 )
+
         else:
+
             @wraps(self.obj)
-            def f(*args, **kwargs):     # noqa
+            def f(*args, **kwargs):  # noqa
                 return self.sync_call(
-                    args, kwargs,
+                    args,
+                    kwargs,
                     options=options,
                     first_reserve=first_reserve,
                     parse_params=parse_params,
-                    parse_result=parse_result
+                    parse_result=parse_result,
                 )
+
         f.__parser__ = self
         return f
 
@@ -307,10 +352,7 @@ class FunctionParser(BaseParser):
                 value = options.transformer(value, pos_type)
             except Exception as e:
                 error = exc.ParseError(
-                    item=index,
-                    value=value,
-                    type=pos_type,
-                    origin_exc=e
+                    item=index, value=value, type=pos_type, origin_exc=e
                 )
                 if options.invalid_items == options.PRESERVE:
                     options.collect_waring(error.formatted_message)
@@ -322,7 +364,9 @@ class FunctionParser(BaseParser):
                     options.handle_error(error)
         return value
 
-    def parse_params(self, args: tuple, kwargs: dict, options: RuntimeOptions) -> Tuple[tuple, dict]:
+    def parse_params(
+        self, args: tuple, kwargs: dict, options: RuntimeOptions
+    ) -> Tuple[tuple, dict]:
         # def f(self, *args, arg1, arg2, **kwargs):
         # self.f(1, 2, 3)
         # def f(self, data):
@@ -361,30 +405,33 @@ class FunctionParser(BaseParser):
                 # this position is definitely after parsed_args
                 # because required args is always (we enforce check) ahead of default args
                 parsed_args.append(default)
-                parsed_keys.append(field.attname)       # need to append parsed as well
+                parsed_keys.append(field.attname)  # need to append parsed as well
 
         parsed_kwargs = self.parse_data(
-            kwargs,
-            options=options,
-            excluded_keys=parsed_keys,
-            as_attname=True
+            kwargs, options=options, excluded_keys=parsed_keys, as_attname=True
         )
 
         return tuple(parsed_args), parsed_kwargs
 
-    def get_params(self, args: tuple, kwargs: dict, options: RuntimeOptions,
-                   first_reserve=None, parse_params: bool = None):
+    def get_params(
+        self,
+        args: tuple,
+        kwargs: dict,
+        options: RuntimeOptions,
+        first_reserve=None,
+        parse_params: bool = None,
+    ):
         _ = None
         if first_reserve is None:
             first_reserve = self.first_reserve
         if first_reserve:
             if self.instancemethod or self.classmethod:
-                _self = pop(kwargs, '__self__')
+                _self = pop(kwargs, "__self__")
                 if self.classmethod:
                     if _self:
-                        _ = getattr(_self, '__class__', None)
+                        _ = getattr(_self, "__class__", None)
                     else:
-                        _ = pop(kwargs, '__class__')
+                        _ = pop(kwargs, "__class__")
                 elif _self:
                     _ = _self
             if args and not _:
@@ -419,10 +466,7 @@ class FunctionParser(BaseParser):
                 result = options.transformer(result, self.return_type)
             except Exception as e:
                 error = exc.ParseError(
-                    item='<return>',
-                    value=result,
-                    type=self.return_type,
-                    origin_exc=e
+                    item="<return>", value=result, type=self.return_type, origin_exc=e
                 )
                 options.handle_error(error)
         return result
@@ -441,10 +485,10 @@ class FunctionParser(BaseParser):
                     result = options.transformer(result, self.generator_return_type)
                 except Exception as e:
                     error = exc.ParseError(
-                        item=f'<generator.return>',
+                        item=f"<generator.return>",
                         value=result,
                         type=self.generator_return_type,
-                        origin_exc=e
+                        origin_exc=e,
                     )
                     options.handle_error(error, force_raise=True)
                 return result
@@ -454,10 +498,10 @@ class FunctionParser(BaseParser):
                         item = options.transformer(item, self.generator_yield_type)
                     except Exception as e:
                         error = exc.ParseError(
-                            item=f'<generator.yield[{i}]>',
+                            item=f"<generator.yield[{i}]>",
                             value=item,
                             type=self.generator_yield_type,
-                            origin_exc=e
+                            origin_exc=e,
                         )
                         options.handle_error(error, force_raise=True)
 
@@ -469,27 +513,30 @@ class FunctionParser(BaseParser):
                             sent = options.transformer(sent, self.generator_send_type)
                         except Exception as e:
                             error = exc.ParseError(
-                                item=f'<generator.send[{i}]>',
+                                item=f"<generator.send[{i}]>",
                                 value=sent,
                                 type=self.generator_send_type,
-                                origin_exc=e
+                                origin_exc=e,
                             )
                             options.handle_error(error, force_raise=True)
                     generator.send(sent)
                 i += 1
 
-    def get_async_generator(self, options: RuntimeOptions,
-                            first_reserve: bool = None,
-                            parse_params: bool = None,
-                            parse_result: bool = None,
-                            ):
+    def get_async_generator(
+        self,
+        options: RuntimeOptions,
+        first_reserve: bool = None,
+        parse_params: bool = None,
+        parse_result: bool = None,
+    ):
         @wraps(self.obj)
         async def async_generator(*args, **kwargs):
             args, kwargs = self.get_params(
-                args, kwargs,
+                args,
+                kwargs,
                 options=options,
                 first_reserve=first_reserve,
-                parse_params=parse_params
+                parse_params=parse_params,
             )
             func = self.obj
             generator = func(*args, **kwargs)
@@ -500,10 +547,10 @@ class FunctionParser(BaseParser):
                         item = options.transformer(item, self.generator_yield_type)
                     except Exception as e:
                         error = exc.ParseError(
-                            item=f'<asyncgenerator.yield[{i}]>',
+                            item=f"<asyncgenerator.yield[{i}]>",
                             value=item,
                             type=self.generator_yield_type,
-                            origin_exc=e
+                            origin_exc=e,
                         )
                         options.handle_error(error, force_raise=True)
 
@@ -515,23 +562,32 @@ class FunctionParser(BaseParser):
                             sent = options.transformer(sent, self.generator_send_type)
                         except Exception as e:
                             error = exc.ParseError(
-                                item=f'<asyncgenerator.send[{i}]>',
+                                item=f"<asyncgenerator.send[{i}]>",
                                 value=sent,
                                 type=self.generator_send_type,
-                                origin_exc=e
+                                origin_exc=e,
                             )
                             options.handle_error(error, force_raise=True)
                     await generator.asend(sent)
                 i += 1
+
         return async_generator
 
-    def sync_call(self, args: tuple, kwargs: dict, options: RuntimeOptions,
-                  first_reserve=None, parse_params: bool = None, parse_result: bool = None):
+    def sync_call(
+        self,
+        args: tuple,
+        kwargs: dict,
+        options: RuntimeOptions,
+        first_reserve=None,
+        parse_params: bool = None,
+        parse_result: bool = None,
+    ):
         args, kwargs = self.get_params(
-            args, kwargs,
+            args,
+            kwargs,
             options=options,
             first_reserve=first_reserve,
-            parse_params=parse_params
+            parse_params=parse_params,
         )
         func = self.obj
         result = func(*args, **kwargs)
@@ -541,13 +597,21 @@ class FunctionParser(BaseParser):
             result = self.parse_result(result, options=options)
         return result
 
-    async def async_call(self, args: tuple, kwargs: dict, options: RuntimeOptions,
-                         first_reserve=None, parse_params: bool = None, parse_result: bool = None):
+    async def async_call(
+        self,
+        args: tuple,
+        kwargs: dict,
+        options: RuntimeOptions,
+        first_reserve=None,
+        parse_params: bool = None,
+        parse_result: bool = None,
+    ):
         args, kwargs = self.get_params(
-            args, kwargs,
+            args,
+            kwargs,
             options=options,
             first_reserve=first_reserve,
-            parse_params=parse_params
+            parse_params=parse_params,
         )
         func = self.obj
         result = await func(*args, **kwargs)

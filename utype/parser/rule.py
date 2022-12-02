@@ -1,5 +1,16 @@
 import typing
-from typing import Union, Type, Optional, List, Literal, Dict, Any, TypeVar, Tuple, AnyStr
+from typing import (
+    Union,
+    Type,
+    Optional,
+    List,
+    Literal,
+    Dict,
+    Any,
+    TypeVar,
+    Tuple,
+    AnyStr,
+)
 import inspect
 from ..utils.compat import get_origin, get_args, ForwardRef, evaluate_forward_ref
 from ..utils.transform import TypeTransformer, register_transformer
@@ -14,23 +25,18 @@ import warnings
 from collections import deque, Mapping, OrderedDict, Callable, Generator, AsyncGenerator
 from decimal import Decimal
 
-T = typing.TypeVar('T')
+T = typing.TypeVar("T")
 
 NUM_TYPES = (int, float, Decimal)
 SEQ_TYPES = (list, tuple, set, frozenset, deque)
 MAP_TYPES = (dict, Mapping)
 OPERATOR_NAMES = {
-    '&': 'AllOf',
-    '|': 'AnyOf',
-    '^': 'OneOf',
-    '~': 'Not',
+    "&": "AllOf",
+    "|": "AnyOf",
+    "^": "OneOf",
+    "~": "Not",
 }
-NONE_ARG_ALLOWED_TYPES = (
-    Callable,
-    Union,
-    Generator,
-    AsyncGenerator
-)
+NONE_ARG_ALLOWED_TYPES = (Callable, Union, Generator, AsyncGenerator)
 
 
 def resolve_forward_type(t):
@@ -44,11 +50,13 @@ def resolve_forward_type(t):
     return t, False
 
 
-def register_forward_ref(annotation,
-                         constraints: dict = None,
-                         global_vars: Dict[str, Any] = None,
-                         forward_refs: Dict[str, Tuple[ForwardRef, dict]] = None,
-                         forward_key: str = None):
+def register_forward_ref(
+    annotation,
+    constraints: dict = None,
+    global_vars: Dict[str, Any] = None,
+    forward_refs: Dict[str, Tuple[ForwardRef, dict]] = None,
+    forward_key: str = None,
+):
 
     if not isinstance(annotation, ForwardRef):
         return
@@ -72,9 +80,9 @@ def register_forward_ref(annotation,
             #   attr2: 'forward' = Field(gt=2)
             # we use forward_key (attname) over forward_arg
             forward_refs.setdefault(
-                f'${forward_key}' if forward_key else annotation.__forward_arg__,
+                f"${forward_key}" if forward_key else annotation.__forward_arg__,
                 # use a $ to differ from forward arg
-                (annotation, constraints)
+                (annotation, constraints),
             )
             # still not evaluated
             return annotation
@@ -82,19 +90,19 @@ def register_forward_ref(annotation,
     return annotation
 
 
-class LogicalType(type):    # noqa
+class LogicalType(type):  # noqa
     @property
     def args(cls):
-        return cls.__dict__.get('__args__', [])
+        return cls.__dict__.get("__args__", [])
 
     @property
     def combinator(cls):
-        return cls.__dict__.get('__combinator__', None)
+        return cls.__dict__.get("__combinator__", None)
 
-    def resolve_combined_origin(cls) -> Optional['LogicalType']:
+    def resolve_combined_origin(cls) -> Optional["LogicalType"]:
         if cls.combinator:
             return cls
-        origin = getattr(cls, '__origin__', None)
+        origin = getattr(cls, "__origin__", None)
         if isinstance(origin, LogicalType):
             return origin.resolve_combined_origin()
         return None
@@ -131,38 +139,39 @@ class LogicalType(type):    # noqa
             args.append(arg)
         if resolved:
             # only adjust args if resolved
-            setattr(cls, '__args__', tuple(args))
+            setattr(cls, "__args__", tuple(args))
         return resolved
 
-    def register_forward_refs(cls, global_vars: Dict[str, Any] = None,
-                              forward_refs=None,
-                              forward_key: str = None):
+    def register_forward_refs(
+        cls,
+        global_vars: Dict[str, Any] = None,
+        forward_refs=None,
+        forward_key: str = None,
+    ):
         if not cls.combinator:
             return
         args = []
         registered = False
         for i, arg in enumerate(cls.args):
-            key = f'{forward_key}:{i}' if forward_key else str(i)
+            key = f"{forward_key}:{i}" if forward_key else str(i)
             if isinstance(arg, ForwardRef):
                 arg = register_forward_ref(
                     annotation=arg,
                     global_vars=global_vars,
                     forward_refs=forward_refs,
-                    forward_key=key
+                    forward_key=key,
                 )
                 arg = cls._parse_arg(arg)
                 registered = True
             elif isinstance(arg, LogicalType) and arg.combinator:
                 if arg.register_forward_refs(
-                    global_vars=global_vars,
-                    forward_refs=forward_refs,
-                    forward_key=key
+                    global_vars=global_vars, forward_refs=forward_refs, forward_key=key
                 ):
                     registered = True
             args.append(arg)
         if registered:
             # only adjust args if registered
-            setattr(cls, '__args__', tuple(args))
+            setattr(cls, "__args__", tuple(args))
         return registered
 
     @classmethod
@@ -179,8 +188,11 @@ class LogicalType(type):    # noqa
                 continue
             __args.append(arg)
 
-        return mcs(OPERATOR_NAMES.get(operator, operator), (), {   # noqa
-            '__args__': __args, '__combinator__': operator})             # noqa
+        return mcs(
+            OPERATOR_NAMES.get(operator, operator),
+            (),
+            {"__args__": __args, "__combinator__": operator},  # noqa
+        )  # noqa
 
     def combine_by(cls, comb: str, other, reverse: bool = False):
         if cls.combinator == comb:
@@ -196,46 +208,46 @@ class LogicalType(type):    # noqa
 
     @classmethod
     def all_of(mcs, *args):
-        return mcs.combine('&', *args)
+        return mcs.combine("&", *args)
 
     @classmethod
     def any_of(mcs, *args):
-        return mcs.combine('|', *args)
+        return mcs.combine("|", *args)
 
     @classmethod
     def one_of(mcs, *args):
-        return mcs.combine('^', *args)
+        return mcs.combine("^", *args)
 
     @classmethod
     def not_of(mcs, value):
-        return mcs.combine('~', value)
+        return mcs.combine("~", value)
 
     def __and__(cls, other):
-        return cls.combine_by('&', other)
+        return cls.combine_by("&", other)
 
     def __rand__(cls, other):
-        return cls.combine_by('&', other, reverse=True)
+        return cls.combine_by("&", other, reverse=True)
 
     def __or__(cls, other):
-        if getattr(other, '__origin__', None) == Union:
-            return cls.combine_by('|', other.__args__)
-        return cls.combine_by('|', other)
+        if getattr(other, "__origin__", None) == Union:
+            return cls.combine_by("|", other.__args__)
+        return cls.combine_by("|", other)
 
     def __ror__(cls, other):
-        if getattr(other, '__origin__', None) == Union:
-            return cls.combine_by('|', other.__args__, reverse=True)
-        return cls.combine_by('|', other, reverse=True)
+        if getattr(other, "__origin__", None) == Union:
+            return cls.combine_by("|", other.__args__, reverse=True)
+        return cls.combine_by("|", other, reverse=True)
 
     def __xor__(cls, other):
-        return cls.combine_by('^', other)
+        return cls.combine_by("^", other)
 
     def __rxor__(cls, other):
-        return cls.combine_by('^', other, reverse=True)
+        return cls.combine_by("^", other, reverse=True)
 
     def __invert__(cls):
-        if cls.combinator == '~':
+        if cls.combinator == "~":
             return cls.args[0]
-        return cls.combine('~', cls)
+        return cls.combine("~", cls)
 
     # def __getitem__(cls, item: T) -> typing.Iterable[T]:
     #     return item
@@ -244,23 +256,23 @@ class LogicalType(type):    # noqa
         def _repr(_arg):
             if isinstance(_arg, LogicalType):
                 return repr(_arg)
-            return getattr(_arg, '__name__', None) or repr(_arg)
+            return getattr(_arg, "__name__", None) or repr(_arg)
 
         if not cls.args:
-            origin = getattr(cls, '__origin__', None)
-            validators = getattr(cls, '__validators__', [])
-            constraints = ', '.join(f'{key}={val}' for key, val, c in validators)
-            origin_repr = ''
+            origin = getattr(cls, "__origin__", None)
+            validators = getattr(cls, "__validators__", [])
+            constraints = ", ".join(f"{key}={val}" for key, val, c in validators)
+            origin_repr = ""
             if origin:
                 origin_repr = _repr(origin)
                 if constraints:
-                    origin_repr += ', '
-            return f'{cls.__name__}({origin_repr}{constraints})'
+                    origin_repr += ", "
+            return f"{cls.__name__}({origin_repr}{constraints})"
 
-        args_repr = ', '.join([_repr(arg) for arg in cls.args])
-        l_par = '(' if cls.combinator else '['
-        r_par = ')' if cls.combinator else ']'
-        return f'{cls.__name__}{l_par}{args_repr}{r_par}'
+        args_repr = ", ".join([_repr(arg) for arg in cls.args])
+        l_par = "(" if cls.combinator else "["
+        r_par = ")" if cls.combinator else "]"
+        return f"{cls.__name__}{l_par}{args_repr}{r_par}"
 
     def __str__(cls):
         return repr(cls)
@@ -274,7 +286,7 @@ class LogicalType(type):    # noqa
         # we must do clone here (as the parser do make_runtime)
         # to prompt a new RuntimeOptions, to collect the error in this layer
 
-        if cls.combinator == '&':
+        if cls.combinator == "&":
             for con in cls.args:
                 try:
                     # each value transform will pass on to the next condition
@@ -285,7 +297,7 @@ class LogicalType(type):    # noqa
                     break
             return value
 
-        elif cls.combinator == '|':
+        elif cls.combinator == "|":
             # 1. check EXACT identical type
             for con in cls.args:
                 if type(value) == con:
@@ -300,7 +312,7 @@ class LogicalType(type):    # noqa
                 except Exception as e:
                     options.collect_tmp_error(e)
 
-        elif cls.combinator == '^':
+        elif cls.combinator == "^":
             # 1. check EXACT identical type
             # because args are de-duplicate, so value can only end up one type
             for con in cls.args:
@@ -314,8 +326,11 @@ class LogicalType(type):    # noqa
                     if xor is None:
                         xor = con
                     else:
-                        options.handle_error(exc.OneOfViolatedError(
-                            f'More than 1 conditions ({xor}, {con}) is True in XOR conditions'))
+                        options.handle_error(
+                            exc.OneOfViolatedError(
+                                f"More than 1 conditions ({xor}, {con}) is True in XOR conditions"
+                            )
+                        )
                         xor = None
                         break
                 except Exception as e:
@@ -325,16 +340,18 @@ class LogicalType(type):    # noqa
                 # only one condition is satisfied in XOR
                 options.clear_tmp_error()
 
-        elif cls.combinator == '~':
+        elif cls.combinator == "~":
             for con in cls.args:
                 try:
                     options.transformer(value, con)
-                    options.handle_error(exc.NegateViolatedError(f'Negate condition: {con} is violated'))
-                except Exception:   # noqa
+                    options.handle_error(
+                        exc.NegateViolatedError(f"Negate condition: {con} is violated")
+                    )
+                except Exception:  # noqa
                     pass
                     # value = cls._get_error_result(e, value, **kwargs)
 
-        options.raise_error()       # raise error if collected
+        options.raise_error()  # raise error if collected
         return value
 
     def __call__(cls, *args, **kwargs):
@@ -345,30 +362,30 @@ class LogicalType(type):    # noqa
 
 class Constraints:
     TYPE_SPEC_CONSTRAINTS = {
-        'max_digits': NUM_TYPES,
-        'round': NUM_TYPES,
-        'multiple_of': NUM_TYPES,
-        'unique_items': SEQ_TYPES,
-        'contains': SEQ_TYPES,
-        'max_contains': SEQ_TYPES,
-        'min_contains': SEQ_TYPES,
-        'dependencies': MAP_TYPES
+        "max_digits": NUM_TYPES,
+        "round": NUM_TYPES,
+        "multiple_of": NUM_TYPES,
+        "unique_items": SEQ_TYPES,
+        "contains": SEQ_TYPES,
+        "max_contains": SEQ_TYPES,
+        "min_contains": SEQ_TYPES,
+        "dependencies": MAP_TYPES,
     }
     CONSTRAINT_TYPES = {
-        'length': (int,),
-        'max_length': (int,),
-        'min_length': (int,),
-        'contains': (type,),
-        'min_contains': (int,),
-        'max_contains': (int,),
-        'round': (int,),
-        'max_digits': (int,),
-        'multiple_of': (int, float),
-        'unique_items': (bool,)
+        "length": (int,),
+        "max_length": (int,),
+        "min_length": (int,),
+        "contains": (type,),
+        "min_contains": (int,),
+        "max_contains": (int,),
+        "round": (int,),
+        "max_digits": (int,),
+        "multiple_of": (int, float),
+        "unique_items": (bool,),
     }
     # default type is resolved to "string"
 
-    def __init__(self, rule_cls: Type['Rule'], options: RuntimeOptions = None):
+    def __init__(self, rule_cls: Type["Rule"], options: RuntimeOptions = None):
         self.rule_cls = rule_cls
         self.options = options
 
@@ -380,75 +397,91 @@ class Constraints:
     def origin_type(self, t: type):
         if isinstance(t, type):
             self.rule_cls.__origin__ = t
-            self.rule_cls.__origin_transformer__ = self.rule_cls.transformer_cls.resolver_transformer(t)
+            self.rule_cls.__origin_transformer__ = (
+                self.rule_cls.transformer_cls.resolver_transformer(t)
+            )
 
     def valid_length(self, bounds: dict):
-        length = bounds.get('length')
-        max_length = bounds.get('max_length')
-        min_length = bounds.get('min_length')
+        length = bounds.get("length")
+        max_length = bounds.get("max_length")
+        min_length = bounds.get("min_length")
         if length is not None:
             if not (isinstance(length, int) and length >= 0):
-                raise ValueError(f'Rule length: {length} must be a int >= 0')
+                raise ValueError(f"Rule length: {length} must be a int >= 0")
             if min_length is not None:
                 if min_length > length:
-                    raise ValueError(f'Rule length: {length} and min_length: {min_length} both specified')
+                    raise ValueError(
+                        f"Rule length: {length} and min_length: {min_length} both specified"
+                    )
                 else:
-                    pop(bounds, 'min_length')
+                    pop(bounds, "min_length")
                     min_length = None
             if max_length is not None:
                 if max_length < length:
-                    raise ValueError(f'Rule length: {length} and max_length: {max_length} both specified')
+                    raise ValueError(
+                        f"Rule length: {length} and max_length: {max_length} both specified"
+                    )
                 else:
-                    pop(bounds, 'max_length')
+                    pop(bounds, "max_length")
                     max_length = None
         else:
             if min_length is not None:
                 if not (isinstance(min_length, int) and min_length >= 0):
-                    raise ValueError(f'Rule min_length: {min_length} must be a int >= 0')
+                    raise ValueError(
+                        f"Rule min_length: {min_length} must be a int >= 0"
+                    )
 
                 if not min_length:
-                    pop(bounds, 'min_length')
+                    pop(bounds, "min_length")
                     min_length = None
 
             if max_length is not None:
                 if not (isinstance(max_length, int) and max_length > 0):
-                    raise ValueError(f'Rule max_length: {max_length} must be a int > 0')
+                    raise ValueError(f"Rule max_length: {max_length} must be a int > 0")
                 if min_length is not None:
                     if max_length < min_length:
-                        raise ValueError(f'Rule max_length: {max_length} must >= min_length: {min_length}')
+                        raise ValueError(
+                            f"Rule max_length: {max_length} must >= min_length: {min_length}"
+                        )
 
         if {length, min_length, max_length} != {None}:
             # has length constraints, validate type
             if self.origin_type:
-                if not hasattr(self.origin_type, '__len__'):
+                if not hasattr(self.origin_type, "__len__"):
                     # just warning here, we will coerce to str in runtime
                     if issubclass(self.origin_type, (int, float, Decimal)):
-                        warnings.warn(f'Rule specify length constraints for type: {self.origin_type} '
-                                      f'that does not support length, we recommend to use '
-                                      f'"max_digits" and "round" for number types')
+                        warnings.warn(
+                            f"Rule specify length constraints for type: {self.origin_type} "
+                            f"that does not support length, we recommend to use "
+                            f'"max_digits" and "round" for number types'
+                        )
                     else:
-                        warnings.warn(f'Rule specify length constraints for type: {self.origin_type} '
-                                      f'that does not support length, value will be convert to str to validate length')
+                        warnings.warn(
+                            f"Rule specify length constraints for type: {self.origin_type} "
+                            f"that does not support length, value will be convert to str to validate length"
+                        )
 
     def valid_bounds(self, bounds: dict):
         _max = _min = None
         _max_t = _min_t = None
 
-        gt = bounds.get('gt')
-        ge = bounds.get('ge')
-        lt = bounds.get('lt')
-        le = bounds.get('le')
+        gt = bounds.get("gt")
+        ge = bounds.get("ge")
+        lt = bounds.get("lt")
+        le = bounds.get("le")
 
         t = self.origin_type
         if t == bool:
-            raise TypeError(f'bool type does not support bounds')
+            raise TypeError(f"bool type does not support bounds")
 
         if gt is not None:
             if not callable(gt):
                 _min_t = type(gt)
                 _min = gt
-            if t and not hasattr(t, '__le__'):
-                raise TypeError(f'Rule: type {t} does not support <gt> constraint for not providing __le__ method')
+            if t and not hasattr(t, "__le__"):
+                raise TypeError(
+                    f"Rule: type {t} does not support <gt> constraint for not providing __le__ method"
+                )
 
         if ge is not None:
             if _min is not None:
@@ -458,16 +491,20 @@ class Constraints:
                 _min_t = type(ge)
                 _min = ge
 
-            if t and not hasattr(t, '__lt__'):
-                raise TypeError(f'Rule: type {t} does not support <ge> constraint for not providing __lt__ method')
+            if t and not hasattr(t, "__lt__"):
+                raise TypeError(
+                    f"Rule: type {t} does not support <ge> constraint for not providing __lt__ method"
+                )
 
         if lt is not None:
             if not callable(lt):
                 _max_t = type(lt)
                 _max = lt
 
-            if t and not hasattr(t, '__ge__'):
-                raise TypeError(f'Rule: type {t} does not support <lt> constraint for not providing __ge__ method')
+            if t and not hasattr(t, "__ge__"):
+                raise TypeError(
+                    f"Rule: type {t} does not support <lt> constraint for not providing __ge__ method"
+                )
 
         if le is not None:
             if _max is not None:
@@ -477,17 +514,24 @@ class Constraints:
                 _max_t = type(le)
                 _max = le
 
-            if t and not hasattr(t, '__gt__'):
-                raise TypeError(f'Rule: type {t} does not support <le> constraint for not providing __gt__ method')
+            if t and not hasattr(t, "__gt__"):
+                raise TypeError(
+                    f"Rule: type {t} does not support <le> constraint for not providing __gt__ method"
+                )
 
         if _min_t and _max_t:
             if _min_t != _max_t:
-                raise ValueError(f"Rule gt/ge type {_min_t} must equal to lt/le type {_max_t}")
+                raise ValueError(
+                    f"Rule gt/ge type {_min_t} must equal to lt/le type {_max_t}"
+                )
 
         _t = _max_t or _min_t
         if _t:
             if self.origin_type:
-                if isinstance(self.origin_type, LogicalType) and self.origin_type.combinator:
+                if (
+                    isinstance(self.origin_type, LogicalType)
+                    and self.origin_type.combinator
+                ):
                     resolved = False
                     for arg in self.origin_type.__args__:
                         if {arg, _t} == {int, float}:
@@ -497,100 +541,134 @@ class Constraints:
                             resolved = True
                             break
                     if not resolved:
-                        raise TypeError(f"Rule range type {_t} not resolved in type: {self.origin_type}")
+                        raise TypeError(
+                            f"Rule range type {_t} not resolved in type: {self.origin_type}"
+                        )
 
                 else:
                     if not issubclass(self.origin_type, _t):
                         if {self.origin_type, _t} == {int, float}:
                             pass
                         else:
-                            raise TypeError(f"Rule range type {_t} must equal to value type {self.origin_type}")
+                            raise TypeError(
+                                f"Rule range type {_t} must equal to value type {self.origin_type}"
+                            )
             else:
                 self.origin_type = _t
 
             if _min is not None and _max is not None:
                 if _min >= _max:
-                    raise ValueError(f"Rule lt/le ({repr(_max)}) must > gt/ge ({repr(_min)})")
+                    raise ValueError(
+                        f"Rule lt/le ({repr(_max)}) must > gt/ge ({repr(_min)})"
+                    )
                 if isinstance(_max, int) and isinstance(_min, int):
                     if gt and lt:
                         if _max - _min < 2:
-                            raise ValueError(f"Rule int lt: {_max} - gt: {_min} must greater or equal than 2")
+                            raise ValueError(
+                                f"Rule int lt: {_max} - gt: {_min} must greater or equal than 2"
+                            )
 
     def valid_types(self, bounds: dict):
         for key, val in bounds.items():
             value_types = self.CONSTRAINT_TYPES.get(key)
             origin_types = self.TYPE_SPEC_CONSTRAINTS.get(key)
             if value_types and not isinstance(val, value_types):
-                raise TypeError(f'Constraint: {repr(key)} should be {value_types} object, got {val}')
+                raise TypeError(
+                    f"Constraint: {repr(key)} should be {value_types} object, got {val}"
+                )
             if origin_types:
                 if self.origin_type:
-                    if isinstance(self.origin_type, LogicalType) and self.origin_type.combinator:
-                        if not any(issubclass(tp, origin_types) for tp in self.origin_type.__args__):
-                            raise TypeError(f'Constraint: {repr(key)} is only for type: '
-                                            f'{origin_types}, got {self.origin_type.__args__}')
+                    if (
+                        isinstance(self.origin_type, LogicalType)
+                        and self.origin_type.combinator
+                    ):
+                        if not any(
+                            issubclass(tp, origin_types)
+                            for tp in self.origin_type.__args__
+                        ):
+                            raise TypeError(
+                                f"Constraint: {repr(key)} is only for type: "
+                                f"{origin_types}, got {self.origin_type.__args__}"
+                            )
                     else:
                         if origin_types == NUM_TYPES and self.origin_type == bool:
                             # bool is subclass of int
-                            raise TypeError(f'Constraint: {repr(key)} is only for type: {origin_types}, got bool')
+                            raise TypeError(
+                                f"Constraint: {repr(key)} is only for type: {origin_types}, got bool"
+                            )
                         if not issubclass(self.origin_type, origin_types):
-                            raise TypeError(f'Constraint: {repr(key)} is only for type: '
-                                            f'{origin_types}, got {self.origin_type}')
+                            raise TypeError(
+                                f"Constraint: {repr(key)} is only for type: "
+                                f"{origin_types}, got {self.origin_type}"
+                            )
                 else:
                     # set the type if missing
                     self.origin_type = origin_types[0]
 
     def validate_constraints(self, constraints: dict):
-        if 'const' in constraints:
-            const = constraints['const']
+        if "const" in constraints:
+            const = constraints["const"]
             if self.origin_type:
                 if isinstance(self.origin_type, LogicalType):
-                    raise TypeError(f'Rule const: {repr(const)} cannot apply to LogicalType')
+                    raise TypeError(
+                        f"Rule const: {repr(const)} cannot apply to LogicalType"
+                    )
                 if not isinstance(const, self.origin_type):
-                    raise TypeError(f'Rule const: {repr(const)} not instance of type: {self.origin_type}')
+                    raise TypeError(
+                        f"Rule const: {repr(const)} not instance of type: {self.origin_type}"
+                    )
             # else:
             #     # transform type before check const
             #     self.origin_type = type(const)
             # we do not force a type to const, it is up to developer to decide
             # whether to transform before const check
-            return {'const': const}      # ignore other constraints
-        elif 'enum' in constraints:
-            enum = constraints['enum']
+            return {"const": const}  # ignore other constraints
+        elif "enum" in constraints:
+            enum = constraints["enum"]
             if isinstance(enum, EnumMeta):
-                member_type = getattr(enum, '_member_type_', None)
+                member_type = getattr(enum, "_member_type_", None)
                 if member_type is object:
                     member_type = None
                 if member_type:
                     if self.origin_type:
                         if not issubclass(member_type, self.origin_type):
-                            raise TypeError(f'Rule enum member type: {member_type} is '
-                                            f'conflict with origin type: {self.origin_type}')
+                            raise TypeError(
+                                f"Rule enum member type: {member_type} is "
+                                f"conflict with origin type: {self.origin_type}"
+                            )
                     else:
                         self.origin_type = member_type
             elif multi(enum):
                 enum = list(enum)
             else:
-                raise TypeError(f'Invalid enum: {enum}, must be a Enum subclass of list/tuple/set')
-            return {'enum': enum}   # ignore other constraints
+                raise TypeError(
+                    f"Invalid enum: {enum}, must be a Enum subclass of list/tuple/set"
+                )
+            return {"enum": enum}  # ignore other constraints
 
         constraints = {k: v for k, v in constraints.items() if v is not None}
 
-        if 'max_contains' in constraints or 'min_contains' in constraints:
-            max_contains = constraints.get('max_contains')
-            min_contains = constraints.get('min_contains')
+        if "max_contains" in constraints or "min_contains" in constraints:
+            max_contains = constraints.get("max_contains")
+            min_contains = constraints.get("min_contains")
 
             if max_contains is not None and min_contains is not None:
                 if max_contains < min_contains:
-                    raise ValueError(f'Rule with max_contains: {max_contains} is little than min_contains')
+                    raise ValueError(
+                        f"Rule with max_contains: {max_contains} is little than min_contains"
+                    )
 
-            if 'contains' not in constraints:
-                raise ValueError(f'Rule with max_contains/min_contains must set <contains> constraint')
+            if "contains" not in constraints:
+                raise ValueError(
+                    f"Rule with max_contains/min_contains must set <contains> constraint"
+                )
 
-            pop(constraints, 'max_contains')
-            pop(constraints, 'min_contains')
+            pop(constraints, "max_contains")
+            pop(constraints, "min_contains")
 
-        if 'unique_items' in constraints and not constraints['unique_items']:
+        if "unique_items" in constraints and not constraints["unique_items"]:
             # only True is valid
-            pop(constraints, 'unique_items')
+            pop(constraints, "unique_items")
 
         # other constraints other that const is considered not-null
         self.valid_types(constraints)
@@ -626,7 +704,9 @@ class Constraints:
         constraints = self.validate_constraints(constraints)
         validators = []
         for key, val in constraints.items():
-            validators.append((key, getattr(self.rule_cls, key), getattr(self.__class__, key)))
+            validators.append(
+                (key, getattr(self.rule_cls, key), getattr(self.__class__, key))
+            )
         return validators
 
     @property
@@ -654,7 +734,7 @@ class Constraints:
         return value
 
     def max_digits(self, value, max_digits: int):
-        digits = abs(round(value))         # use abs to ignore the "-" operator
+        digits = abs(round(value))  # use abs to ignore the "-" operator
         if len(str(digits)) > max_digits:
             if self.strict:
                 raise ValueError
@@ -682,7 +762,7 @@ class Constraints:
                 if self.strict:
                     raise ValueError
                 else:
-                    value = _type(value)([v for v in value if v not in ex])     # noqa
+                    value = _type(value)([v for v in value if v not in ex])  # noqa
         else:
             if value in lst:
                 raise ValueError
@@ -742,7 +822,7 @@ class Constraints:
     def length(self, value, lg):
         v = value
         converted = False
-        if not hasattr(value, '__len__'):
+        if not hasattr(value, "__len__"):
             converted = True
             v = str(value)
         if len(v) != lg:
@@ -754,7 +834,7 @@ class Constraints:
     def max_length(self, value, m):
         v = value
         converted = False
-        if not hasattr(value, '__len__'):
+        if not hasattr(value, "__len__"):
             converted = True
             v = str(value)
         if len(v) > m:
@@ -765,7 +845,7 @@ class Constraints:
 
     def min_length(self, value, m):
         v = value
-        if not hasattr(value, '__len__'):
+        if not hasattr(value, "__len__"):
             v = str(value)
         if len(v) < m:
             raise ValueError
@@ -785,18 +865,18 @@ class Constraints:
             else:
                 contains += 1
         if not contains:
-            raise ValueError(f'{t} not contained in value')
+            raise ValueError(f"{t} not contained in value")
         if self.rule_min_contains and contains < self.rule_min_contains:
             raise exc.ConstraintError(
-                f'value contains {contains} of {t}, which is lower than min_contains',
-                constraint='min_contains',
-                constraint_value=self.rule_min_contains
+                f"value contains {contains} of {t}, which is lower than min_contains",
+                constraint="min_contains",
+                constraint_value=self.rule_min_contains,
             )
         if self.rule_max_contains and contains > self.rule_max_contains:
             raise exc.ConstraintError(
-                f'value contains {contains} of {t}, which is bigger than max_contains',
-                constraint='max_contains',
-                constraint_value=self.rule_max_contains
+                f"value contains {contains} of {t}, which is bigger than max_contains",
+                constraint="max_contains",
+                constraint_value=self.rule_max_contains,
             )
         return value
 
@@ -807,12 +887,12 @@ class Constraints:
         for val in value:
             if val in lst:
                 if self.strict:
-                    raise ValueError(f'value is not unique')
+                    raise ValueError(f"value is not unique")
                 continue
             lst.append(val)
         if not self.strict:
             # if not strict, just return a unique version of the input
-            return type(value)(lst)     # noqa
+            return type(value)(lst)  # noqa
         return value
 
     # mark as hasattr
@@ -821,11 +901,11 @@ class Constraints:
 
     @property
     def rule_max_contains(self):
-        return getattr(self.rule_cls, 'max_contains', 0)
+        return getattr(self.rule_cls, "max_contains", 0)
 
     @property
     def rule_min_contains(self):
-        return getattr(self.rule_cls, 'min_contains', 0)
+        return getattr(self.rule_cls, "min_contains", 0)
 
 
 class Rule(metaclass=LogicalType):
@@ -844,36 +924,38 @@ class Rule(metaclass=LogicalType):
     __validators__: List[Tuple[str, Any, Callable]] = []
     __constraints__: List[str] = [
         # define the constraints and it's order
-        'gt',
-        'ge',
-        'lt',
-        'le',
-        'const',
-        'enum',
-        'regex',
-        'length',
-        'max_length',
-        'min_length',
-        'round',
-        'multiple_of',
-        'max_digits',
-        'contains',
-        'max_contains',
-        'min_contains',
-        'unique_items'
+        "gt",
+        "ge",
+        "lt",
+        "le",
+        "const",
+        "enum",
+        "regex",
+        "length",
+        "max_length",
+        "min_length",
+        "round",
+        "multiple_of",
+        "max_digits",
+        "contains",
+        "max_contains",
+        "min_contains",
+        "unique_items",
     ]
     __transformer__: Callable
 
     # flag for document
-    primitive: Literal["null", "boolean", "object", "array", "integer", "number", "string"]
+    primitive: Literal[
+        "null", "boolean", "object", "array", "integer", "number", "string"
+    ]
     format: Optional[str]
-    extra: dict     # additional data to the generated schema document
+    extra: dict  # additional data to the generated schema document
 
     # constraints
-    gt: Any     # exclusiveMinimum
-    ge: Any     # minimum
-    lt: Any     # exclusiveMaximum
-    le: Any     # maximum
+    gt: Any  # exclusiveMinimum
+    ge: Any  # minimum
+    lt: Any  # exclusiveMaximum
+    le: Any  # maximum
     const: Any
     enum: Union[Enum, list, tuple, set]
     regex: str
@@ -915,10 +997,10 @@ class Rule(metaclass=LogicalType):
         for base in cls.__bases__:
             if issubclass(base, Rule):
                 if not class_getitem:
-                    class_getitem = getattr(base, '__class_getitem__', None)
+                    class_getitem = getattr(base, "__class_getitem__", None)
                 continue
             if origin:
-                raise TypeError(f'{cls}: Multiple origin types: {origin}, {base}')
+                raise TypeError(f"{cls}: Multiple origin types: {origin}, {base}")
             origin = base
 
         if origin:
@@ -927,28 +1009,42 @@ class Rule(metaclass=LogicalType):
             elif issubclass(origin, cls.__origin__):
                 cls.__origin__ = origin
             else:
-                raise TypeError(f'{cls}: Invalid origin: {origin} of sub type:'
-                                f' not subclass of base type: {cls.__origin__}')
+                raise TypeError(
+                    f"{cls}: Invalid origin: {origin} of sub type:"
+                    f" not subclass of base type: {cls.__origin__}"
+                )
 
         if cls.__origin__:
             if isinstance(cls.__origin__, ForwardRef):
                 if not cls.__origin__.__forward_evaluated__:
-                    raise TypeError(f'{cls}: cannot setup with unevaluated ForwardRef as origin')
+                    raise TypeError(
+                        f"{cls}: cannot setup with unevaluated ForwardRef as origin"
+                    )
                 cls.__origin__ = cls.__origin__.__forward_value__
 
             if not isinstance(cls.__origin__, type):
-                raise TypeError(f'Invalid origin: {cls.__origin__}, must be a class')
-            cls.__abstract__ = bool(getattr(cls.__origin__, '__abstractmethods__', None))
-            cls.__origin_transformer__ = cls.transformer_cls.resolver_transformer(cls.__origin__)
+                raise TypeError(f"Invalid origin: {cls.__origin__}, must be a class")
+            cls.__abstract__ = bool(
+                getattr(cls.__origin__, "__abstractmethods__", None)
+            )
+            cls.__origin_transformer__ = cls.transformer_cls.resolver_transformer(
+                cls.__origin__
+            )
             if not cls.__origin_transformer__:
-                warnings.warn(f'{cls}: origin type: {cls.__origin__} got no transformer resolved, '
-                              f'will just pass {cls.__origin__}(data) at runtime')
+                warnings.warn(
+                    f"{cls}: origin type: {cls.__origin__} got no transformer resolved, "
+                    f"will just pass {cls.__origin__}(data) at runtime"
+                )
 
         if cls.__args__:
-            if hasattr(cls, '__class_getitem__'):
+            if hasattr(cls, "__class_getitem__"):
+
                 def _cannot_getitem(*_args):
-                    raise TypeError(f'{cls.__name__}: argument is already set, '
-                                    f'cannot perform getitem ({_args})')
+                    raise TypeError(
+                        f"{cls.__name__}: argument is already set, "
+                        f"cannot perform getitem ({_args})"
+                    )
+
                 cls.__class_getitem__ = _cannot_getitem
 
             if not multi(cls.__args__):
@@ -964,27 +1060,35 @@ class Rule(metaclass=LogicalType):
                         continue
                 if arg is None:
                     arg_transformers.append(None)
-                    if cls.__origin__ and issubclass(cls.__origin__, NONE_ARG_ALLOWED_TYPES):
+                    if cls.__origin__ and issubclass(
+                        cls.__origin__, NONE_ARG_ALLOWED_TYPES
+                    ):
                         continue
-                    warnings.warn(f'None arg: {arg} detected where origin type: {cls.__origin__} is not in '
-                                  f'{NONE_ARG_ALLOWED_TYPES}')
+                    warnings.warn(
+                        f"None arg: {arg} detected where origin type: {cls.__origin__} is not in "
+                        f"{NONE_ARG_ALLOWED_TYPES}"
+                    )
                     continue
 
                 if not isinstance(arg, type):
-                    raise TypeError(f'Invalid arg: {arg}, must be a class')
+                    raise TypeError(f"Invalid arg: {arg}, must be a class")
                 transformer = cls.transformer_cls.resolver_transformer(arg)
                 if not transformer:
-                    warnings.warn(f'{cls}: arg type: {arg} got no transformer resolved, '
-                                  f'will just pass {arg}(data) at runtime')
+                    warnings.warn(
+                        f"{cls}: arg type: {arg} got no transformer resolved, "
+                        f"will just pass {arg}(data) at runtime"
+                    )
 
                 arg_transformers.append(transformer)
             cls.__arg_transformers__ = tuple(arg_transformers)
             cls.__args_parser__ = cls.resolve_args_parser()
             if not cls.__args_parser__:
-                warnings.warn(f'{cls}: type: {cls.__origin__} with __args__ cannot resolve an args parser, '
-                              f'you should inherit resolve_args_parser and specify yourself')
+                warnings.warn(
+                    f"{cls}: type: {cls.__origin__} with __args__ cannot resolve an args parser, "
+                    f"you should inherit resolve_args_parser and specify yourself"
+                )
         else:
-            if class_getitem and not hasattr(cls, '.__class_getitem__'):
+            if class_getitem and not hasattr(cls, ".__class_getitem__"):
                 # we should do a little hack here
                 # because according to MRO
                 # class UniqueTuple(tuple, Array):
@@ -998,35 +1102,38 @@ class Rule(metaclass=LogicalType):
         cls.__validators__ = cls.constraints_cls(cls).generate_validators()
 
     @classmethod
-    def annotate(cls, type_=None, *args_,
-                 constraints: Dict[str, Any] = None,
-                 global_vars: Dict[str, Any] = None,
-                 forward_refs=None
-                 ):
+    def annotate(
+        cls,
+        type_=None,
+        *args_,
+        constraints: Dict[str, Any] = None,
+        global_vars: Dict[str, Any] = None,
+        forward_refs=None,
+    ):
         args = []
         ellipsis_args = False
 
         if type_ == Any:
             if args_:
-                warnings.warn(f'Any type cannot specify args: {args_}')
+                warnings.warn(f"Any type cannot specify args: {args_}")
             if constraints:
-                warnings.warn(f'Any type cannot specify constraints: {constraints}')
+                warnings.warn(f"Any type cannot specify constraints: {constraints}")
             return Rule
 
         elif type_ == Literal:
             # special for literal type
             constraints = constraints or {}
             if len(args_) == 1:
-                constraints['const'] = args_[0]
+                constraints["const"] = args_[0]
             elif len(args_) > 1:
-                constraints['enum'] = args_
+                constraints["enum"] = args_
             else:
-                raise ValueError(f'empty literal')
+                raise ValueError(f"empty literal")
             type_ = cls.__origin__ or type(args_[0])
         else:
             for arg in args_:
                 if isinstance(arg, TypeVar):
-                    type_cons: tuple = getattr(arg, '__constraints__', None)
+                    type_cons: tuple = getattr(arg, "__constraints__", None)
                     if type_cons:
                         arg = LogicalType.any_of(*type_cons)
                     else:
@@ -1038,14 +1145,18 @@ class Rule(metaclass=LogicalType):
 
                 if arg is ...:
                     if not issubclass(type_, tuple):
-                        raise ValueError(f'{cls} args: {args_} with ... only apply to tuple, got {type_}')
+                        raise ValueError(
+                            f"{cls} args: {args_} with ... only apply to tuple, got {type_}"
+                        )
                     ellipsis_args = True
                     continue
                 if arg is None:
                     # some origin like Generator / AsyncGenerator / Union / Callable need None arg
                     args.append(arg)
                     continue
-                annotation = cls.parse_annotation(arg, global_vars=global_vars, forward_refs=forward_refs)
+                annotation = cls.parse_annotation(
+                    arg, global_vars=global_vars, forward_refs=forward_refs
+                )
                 # this annotation can be a ForwardRef
                 # not with constraints, cause that is applied to upper layer
                 if annotation is None:
@@ -1093,16 +1204,19 @@ class Rule(metaclass=LogicalType):
         return LogicalType(name, (cls,), attrs)
 
     @classmethod
-    def parse_annotation(cls,
-                         annotation,
-                         constraints=None,
-                         global_vars=None,
-                         forward_refs=None,
-                         forward_key=None,
-                         ):
+    def parse_annotation(
+        cls,
+        annotation,
+        constraints=None,
+        global_vars=None,
+        forward_refs=None,
+        forward_key=None,
+    ):
         if isinstance(annotation, str):
             if not annotation:
-                raise TypeError(f'{repr(forward_key)}: Empty forward ref string: {annotation}')
+                raise TypeError(
+                    f"{repr(forward_key)}: Empty forward ref string: {annotation}"
+                )
             # ForwardRef
             annotation = ForwardRef(annotation)
 
@@ -1112,7 +1226,7 @@ class Rule(metaclass=LogicalType):
                 constraints=constraints,
                 global_vars=global_vars,
                 forward_refs=forward_refs,
-                forward_key=forward_key
+                forward_key=forward_key,
             )
             if isinstance(annotation, ForwardRef):
                 # if annotation still cannot be resolved by global vars
@@ -1127,7 +1241,7 @@ class Rule(metaclass=LogicalType):
                     # as those will be combined in below logics
                     global_vars=global_vars,
                     forward_refs=forward_refs,
-                    forward_key=forward_key
+                    forward_key=forward_key,
                 )
 
             if constraints:
@@ -1135,31 +1249,34 @@ class Rule(metaclass=LogicalType):
                     annotation,
                     constraints=constraints,
                     forward_refs=forward_refs,
-                    global_vars=global_vars
+                    global_vars=global_vars,
                 )
             else:
                 # no constraints, we can directly use it
                 return annotation
         elif annotation:
             if annotation is Any:
-                return Rule     # use empty rule as any
+                return Rule  # use empty rule as any
             origin = get_origin(annotation)
             if origin:
                 args = get_args(annotation) or ()
                 constraints = constraints or {}
                 return cls.annotate(
-                    origin, *args,
+                    origin,
+                    *args,
                     constraints=constraints,
                     forward_refs=forward_refs,
-                    global_vars=global_vars
+                    global_vars=global_vars,
                 )
             else:
-                raise TypeError(f'{repr(forward_key)}: invalid annotation: {annotation}')
+                raise TypeError(
+                    f"{repr(forward_key)}: invalid annotation: {annotation}"
+                )
         elif constraints:
             return cls.annotate(
                 constraints=constraints,
                 forward_refs=forward_refs,
-                global_vars=global_vars
+                global_vars=global_vars,
             )
         return None
 
@@ -1179,7 +1296,9 @@ class Rule(metaclass=LogicalType):
         if cls.__origin__:
             # no matter cls.__transformer__ is None or not
             try:
-                value = trans.apply(value, cls.__origin__, func=cls.__origin_transformer__)
+                value = trans.apply(
+                    value, cls.__origin__, func=cls.__origin_transformer__
+                )
             except Exception as e:
                 error = exc.ParseError(origin_exc=e)
                 # if type cannot convert, the following args and constraints cannot validate
@@ -1208,10 +1327,12 @@ class Rule(metaclass=LogicalType):
                 try:
                     value = validator(constraints_inst, value, constraint)
                 except Exception as e:
-                    error = e if isinstance(e, exc.ConstraintError) else exc.ConstraintError(
-                        origin_exc=e,
-                        constraint=key,
-                        constraint_value=constraint
+                    error = (
+                        e
+                        if isinstance(e, exc.ConstraintError)
+                        else exc.ConstraintError(
+                            origin_exc=e, constraint=key, constraint_value=constraint
+                        )
                     )
                     # if validator already throw a constraint error
                     # may an inner constraint (like max_contains in contains) is violated
@@ -1226,10 +1347,10 @@ class Rule(metaclass=LogicalType):
         self._value = self.apply(value)
 
     def __repr__(self):
-        return f'{self.__class__.__name__}({repr(self._value)})'
+        return f"{self.__class__.__name__}({repr(self._value)})"
 
     def __str__(self):
-        return f'{self.__class__.__name__}({repr(self._value)})'
+        return f"{self.__class__.__name__}({repr(self._value)})"
 
     @classmethod
     def resolve_forward_refs(cls):
@@ -1250,8 +1371,10 @@ class Rule(metaclass=LogicalType):
                     resolved = True
                     transformer = cls.transformer_cls.resolver_transformer(arg)
                     if not transformer:
-                        warnings.warn(f'{cls}: arg type: {arg} got no transformer resolved, '
-                                      f'will just pass {arg}(data) at runtime')
+                        warnings.warn(
+                            f"{cls}: arg type: {arg} got no transformer resolved, "
+                            f"will just pass {arg}(data) at runtime"
+                        )
                     trans = transformer or trans
             args.append(arg)
             arg_transformers.append(trans)
@@ -1278,20 +1401,19 @@ class Rule(metaclass=LogicalType):
         options = trans.options
 
         if options.no_data_loss and len(value) > len(cls.__args__):
-            raise exc.ItemsExceedError(excess_items=list(range(len(cls.__args__), len(value))))
+            raise exc.ItemsExceedError(
+                excess_items=list(range(len(cls.__args__), len(value)))
+            )
 
         for i, (arg, func) in enumerate(zip(cls.__args__, cls.__arg_transformers__)):
             if i >= len(value):
-                raise exc.AbsenceError(f"prefixItems required prefix: [{i}] not provided", item=i)
+                raise exc.AbsenceError(
+                    f"prefixItems required prefix: [{i}] not provided", item=i
+                )
             try:
                 result.append(trans.apply(value[i], arg, func=func))
             except Exception as e:
-                error = exc.ParseError(
-                    item=i,
-                    value=value[i],
-                    type=arg,
-                    origin_exc=e
-                )
+                error = exc.ParseError(item=i, value=value[i], type=arg, origin_exc=e)
                 if options.invalid_items == options.PRESERVE:
                     options.collect_waring(error.formatted_message)
                     result.append(value[i])
@@ -1311,10 +1433,7 @@ class Rule(metaclass=LogicalType):
                 result.append(trans.apply(item, arg_type, func=arg_transformer))
             except Exception as e:
                 error = exc.ParseError(
-                    item=i,
-                    value=value[i],
-                    type=arg_type,
-                    origin_exc=e
+                    item=i, value=value[i], type=arg_type, origin_exc=e
                 )
                 if options.invalid_items == options.EXCLUDE:
                     options.collect_waring(error.formatted_message)
@@ -1337,10 +1456,7 @@ class Rule(metaclass=LogicalType):
                 key = trans.apply(_key, key_type, func=key_transformer)
             except Exception as e:
                 error = exc.ParseError(
-                    item=f'{_key}<key>',
-                    value=_key,
-                    type=key_type,
-                    origin_exc=e
+                    item=f"{_key}<key>", value=_key, type=key_type, origin_exc=e
                 )
 
                 if options.invalid_keys == options.EXCLUDE:
@@ -1357,10 +1473,7 @@ class Rule(metaclass=LogicalType):
                 value = trans.apply(_val, value_type, func=value_transformer)
             except Exception as e:
                 error = exc.ParseError(
-                    item=_key,
-                    value=_val,
-                    type=value_type,
-                    origin_exc=e
+                    item=_key, value=_val, type=value_type, origin_exc=e
                 )
                 if options.invalid_values == options.EXCLUDE:
                     options.collect_waring(error.formatted_message)

@@ -15,8 +15,8 @@ import pytest  # noqa
 # must be module-level, otherwise cannot resolve by globals
 class Self(Schema):
     name: str
-    to_self: 'Self' = Field(required=False)
-    self_lst: List['Self'] = Field(default_factory=list)
+    to_self: "Self" = Field(required=False)
+    self_lst: List["Self"] = Field(default_factory=list)
 
 
 class TestClass:
@@ -27,13 +27,18 @@ class TestClass:
         @register_transformer(Slug)
         def to_slug(transformer, value: str, t: Type[Slug]):
             str_value = transformer(value, str)
-            return t('-'.join([''.join(
-                filter(str.isalnum, v)) for v in str_value.split()]).lower())
+            return t(
+                "-".join(
+                    ["".join(filter(str.isalnum, v)) for v in str_value.split()]
+                ).lower()
+            )
 
         class ArticleSchema(Schema):
             slug: Slug
 
-        assert dict(ArticleSchema(slug=b'My Awesome Article!')) == {'slug': 'my-awesome-article'}
+        assert dict(ArticleSchema(slug=b"My Awesome Article!")) == {
+            "slug": "my-awesome-article"
+        }
 
     def test_apply(self):
         pass
@@ -62,8 +67,8 @@ class TestClass:
             name: str = Field(max_length=10)
             age: int
 
-        dt = DataClass(name=b'test', age='2')
-        assert dt.name == 'test'
+        dt = DataClass(name=b"test", age="2")
+        assert dt.name == "test"
         assert dt.age == 2
 
         @utype.dataclass(
@@ -92,7 +97,7 @@ class TestClass:
             custom_val: CustomType
 
             dt_val: datetime = Field(default_factory=datetime.now)
-            null_val: Optional[str] = Field(length=6, on_error='exclude')
+            null_val: Optional[str] = Field(length=6, on_error="exclude")
             d_val: date = Field(required=False)
             # test nest types
             list_val: List[str] = Field(default_factory=list)  # test callable default
@@ -134,7 +139,7 @@ class TestClass:
 
             @prop1.setter
             def prop1(self, val: str):
-                self.seg_key, self.multi_alias_key = val.split('/')
+                self.seg_key, self.multi_alias_key = val.split("/")
 
             def method1(self, val: str):
                 self.null_val = "123456"
@@ -152,26 +157,32 @@ class TestClass:
         class T(Schema):
             __options__ = Options(ignore_required=True)
 
-            forward_con: 'types.Second' = Field(ge=30)
+            forward_con: "types.Second" = Field(ge=30)
             with_con: types.Str | None = Field(max_length=5)
-            int_or_list: types.NegativeInt | 'List[types.PositiveInt]'
-            one_of_int_list: types.NegativeInt ^ List['types.PositiveInt']
-            forward_in_args: List['types.PositiveInt'] = Field(max_length=3)    # test forward ref
-            forward_in_dict: Dict[types.PositiveInt | 'types.EmailStr', List['types.PositiveInt']] = Field(length=1)
+            int_or_list: types.NegativeInt | "List[types.PositiveInt]"
+            one_of_int_list: types.NegativeInt ^ List["types.PositiveInt"]
+            forward_in_args: List["types.PositiveInt"] = Field(
+                max_length=3
+            )  # test forward ref
+            forward_in_dict: Dict[
+                types.PositiveInt | "types.EmailStr", List["types.PositiveInt"]
+            ] = Field(length=1)
             # union type with constraints
 
-        assert dict(T(
-            forward_con=31,
-            with_con=None,
-            int_or_list='2,3',
-            forward_in_args=['1', b'2.4'],
-            forward_in_dict=b'{"a@b23.com": [1, 2, "3"]}'
-        )) == dict(
+        assert dict(
+            T(
+                forward_con=31,
+                with_con=None,
+                int_or_list="2,3",
+                forward_in_args=["1", b"2.4"],
+                forward_in_dict=b'{"a@b23.com": [1, 2, "3"]}',
+            )
+        ) == dict(
             forward_con=31,
             with_con=None,
             int_or_list=[2, 3],
             forward_in_args=[1, 2],
-            forward_in_dict={"a@b23.com": [1, 2, 3]}
+            forward_in_dict={"a@b23.com": [1, 2, 3]},
         )
 
         with pytest.raises(exc.ParseError):
@@ -181,30 +192,26 @@ class TestClass:
 
         with pytest.raises(exc.ParseError):
             T(
-                with_con='*' * 10,
+                with_con="*" * 10,
             )
 
         with pytest.raises(exc.ParseError):
             T(
-                int_or_list='abc',
+                int_or_list="abc",
             )
 
         with pytest.raises(exc.ParseError):
-            T(
-                forward_in_args=[1, 2, 3, 4]
-            )
+            T(forward_in_args=[1, 2, 3, 4])
         with pytest.raises(exc.ParseError):
-            T(
-                forward_in_dict={1: [2], 2: [1]}
-            )
+            T(forward_in_dict={1: [2], 2: [1]})
 
         sf = Self(name=1, to_self=b'{"name":"test"}')
-        assert sf.to_self.name == 'test'
+        assert sf.to_self.name == "test"
         assert sf.self_lst == []
 
-        sf2 = Self(name='t2', self_lst=[dict(sf)])
-        assert sf2.self_lst[0].name == '1'
-        assert 'to_self' not in sf2
+        sf2 = Self(name="t2", self_lst=[dict(sf)])
+        assert sf2.self_lst[0].name == "1"
+        assert "to_self" not in sf2
 
         # class ForwardSchema(Schema):
         #     int1: 'types.PositiveInt' = Field(lt=10)
@@ -213,15 +220,14 @@ class TestClass:
         #     l_int_f: 'List[types.PositiveInt]' = Field(max_length=3)
 
     def test_class_vars(self):
-
         def outer(k):
             return k
 
         class TestSchema(Schema):
             r1: typing.Any
-            r2: 'str'
+            r2: "str"
             r3: None
-            r4 = ''
+            r4 = ""
 
             def r5(self):
                 pass
@@ -235,7 +241,7 @@ class TestClass:
                 pass
 
             r8 = outer
-            r9: type(None) = Field(alias_from=['_r9', 'r9_'])
+            r9: type(None) = Field(alias_from=["_r9", "r9_"])
 
             class r10:
                 pass
@@ -252,34 +258,37 @@ class TestClass:
                 return int(self._r13)
 
             @r13.setter
-            @Field(alias_from=['r13_alias'], default='1.5')
+            @Field(alias_from=["r13_alias"], default="1.5")
             def r13(self, value: str):
                 self._r13 = float(value)
 
         with pytest.raises(Exception):
+
             class s(Schema):
-                update: str = ''
+                update: str = ""
 
     def test_functional_initialize_and_aliases(self):
         # test omit init
         class OmitSchema(Schema):
             n0: int
             n1: int
-            n2: Any = Field(alias_from=['named_n2'])
+            n2: Any = Field(alias_from=["named_n2"])
 
             def __init__(
                 self,
                 alias_n0: int = 0,
                 /,
-                alias_n1: int = Field(alias_from=['n1', '_n1'], default_factory=lambda: 1),
+                alias_n1: int = Field(
+                    alias_from=["n1", "_n1"], default_factory=lambda: 1
+                ),
                 *,  # pos or kw
                 named_n2: int = Field(alias="@n2"),
             ):  # kw only
                 super().__init__(n0=alias_n0, n1=alias_n1, named_n2=named_n2)
 
         o0 = OmitSchema(named_n2=1)
-        o1 = OmitSchema(1, _n1='2', **{"@n2": 2.5})
-        o2 = OmitSchema(0, 3, **{"@n2": '2'})
+        o1 = OmitSchema(1, _n1="2", **{"@n2": 2.5})
+        o2 = OmitSchema(0, 3, **{"@n2": "2"})
 
         assert o0.n0 == 0
         assert o0.n1 == 1
@@ -289,7 +298,7 @@ class TestClass:
         assert o1.n2 == 2
         assert o2.n0 == 0
         assert o2.n1 == 3
-        assert o2.n2 == 2       # int does the type cast
+        assert o2.n2 == 2  # int does the type cast
 
     def test_schema_rule(self):
         # require / default / omit / null
@@ -344,11 +353,14 @@ class TestClass:
         class AliasTypeSchema(Schema):
             dict1: Dict[typing.AnyStr, typing.List]
             list2: Tuple[Dict, List, Set]
+
         # not encouraged but still support
-        assert dict(AliasTypeSchema(dict1={1: 3, 2: 4}, list2=['{"a": 1}', (), ()])) == dict(
+        assert dict(
+            AliasTypeSchema(dict1={1: 3, 2: 4}, list2=['{"a": 1}', (), ()])
+        ) == dict(
             # this behaviour might change in the future
-            dict1={b'1': [3], b'2': [4]},
-            list2=({"a": 1}, [], set())
+            dict1={b"1": [3], b"2": [4]},
+            list2=({"a": 1}, [], set()),
         )
 
     def test_dict_type(self):
@@ -356,7 +368,7 @@ class TestClass:
             length = 3
 
         class Const1(str, Rule):
-            const = '1'
+            const = "1"
 
         class DictSchema(Schema):
             dict1: Dict[Tuple[str, int], int]
@@ -376,7 +388,7 @@ class TestClass:
         assert da.dict1 == {("1", 1): 1, ("1", 2): 2}
         assert da.dict2 == {"qwe": 0, "abc": -10}
         assert da.dict_nested == {"1": {2: [1, 2], 3: [4]}, "2": {}}
-        assert da.rule_dict == {1: "1", 2: "1", 3: '1'}
+        assert da.rule_dict == {1: "1", 2: "1", 3: "1"}
 
         with pytest.raises(exc.ParseError):
             DictSchema(

@@ -1,4 +1,4 @@
-
+# 解析数据类
 ```python
 from utype import Schema, Rule, Field
 from datetime import datetime
