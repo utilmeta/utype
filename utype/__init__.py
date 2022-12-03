@@ -3,7 +3,7 @@ from .utils.encode import register_encoder
 from .parser.rule import Rule
 from .parser.field import Field
 from .parser.options import Options
-from .schema import Schema, DataClass
+from .schema import Schema, DataClass, LogicalMeta
 from .utils import exceptions as exc
 from .decorator import parse, handle, apply, dataclass
 

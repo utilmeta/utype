@@ -7,8 +7,7 @@ site_dir: build/zh
 theme:
   name: material
   language: zh
-  # logo: ../assets/logo.png
-  logo: utype-white.png
+  logo: https://utype.io/assets/utype-white.png
   palette:
   - media: '(prefers-color-scheme: light)'
     scheme: default
@@ -19,7 +18,6 @@ theme:
   - media: '(prefers-color-scheme: dark)'
     scheme: slate
     primary: indigo
-    logo: assets/utype-white.png
     toggle:
       icon: material/lightbulb-outline
       name: Switch to dark mode

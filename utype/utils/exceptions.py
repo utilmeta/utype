@@ -27,7 +27,10 @@ class ParseError(TypeError, ValueError):
 
     @property
     def formatted_message(self):
-        return self.msg
+        msg = self.msg
+        if self.item:
+            msg = f'parse item: [{repr(self.item)}] failed: {msg}'
+        return msg
 
 
 class TypeMismatchError(ParseError):

@@ -73,7 +73,7 @@ class Field:
         title: str = None,
         description: str = None,
         example=...,
-        message: str = None,  # report this message if error occur
+        # message: str = None,  # report this message if error occur
         # --- CONSTRAINTS ---
         strict: Optional[bool] = None,
         const: Any = ...,
@@ -169,7 +169,7 @@ class Field:
         self.title = title
         self.description = description
         self.example = example
-        self.message = message
+        # self.message = message
         self.secret = secret  # will display "******" instead of real value in repr
 
         constraints = {

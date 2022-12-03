@@ -1,6 +1,6 @@
 import utype
-from typing import AsyncGenerator
 import asyncio
+from typing import AsyncGenerator
 
 
 @utype.parse
@@ -11,12 +11,13 @@ async def waiter(rounds: int = utype.Field(gt=0)) -> AsyncGenerator[int, float]:
         wait = yield str(i)
         if wait:
             assert isinstance(wait, float)
+            print(f'sleep for: {wait} seconds')
             await asyncio.sleep(wait)
         i -= 1
 
 
-async def test():
-    wait_gen = waiter("-1")
+async def wait():
+    wait_gen = waiter("2")
     async for index in wait_gen:
         assert isinstance(index, int)
         try:
@@ -27,4 +28,4 @@ async def test():
 
 
 if __name__ == "__main__":
-    asyncio.run(test())
+    asyncio.run(wait())

@@ -8,19 +8,18 @@ site_dir: build/en
 theme:
   name: material
   language: en
-  # logo: ../assets/logo.png
+  logo: https://utype.io/assets/utype-white.png
   palette:
   - media: '(prefers-color-scheme: light)'
     scheme: default
     primary: white
-    logo: assets/utype-black.png
+
     toggle:
       icon: material/lightbulb
       name: Switch to light mode
   - media: '(prefers-color-scheme: dark)'
     scheme: slate
     primary: indigo
-    logo: assets/utype-white.png
     toggle:
       icon: material/lightbulb-outline
       name: Switch to dark mode
@@ -37,15 +36,19 @@ plugins:
 - search
 
 nav:
-  - index.md
-  - field.md
-  - rule.md
-  - schema.md
-  - options.md
-  - transform.md
-  - Languages:
-      - en: /
-      - zh: /zh/
+  - README.md
+  - Usage:
+      - guide/type.md
+      - guide/cls.md
+      - guide/func.md
+  - API References:
+      - references/rule.md
+      - references/field.md
+      - references/options.md
+      - references/json-schema.md
+  - Feature Extensions:
+      - extension/env.md
+      - extension/cmd.md
 
 extra:
   alternate:

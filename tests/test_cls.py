@@ -40,27 +40,6 @@ class TestClass:
             "slug": "my-awesome-article"
         }
 
-    def test_apply(self):
-        pass
-        # TODO
-        # @utype.apply(gt=0, le=12)
-        # class Month(int):
-        #     @utype.parse
-        #     def get_days(self, year: int = utype.Field(ge=2000, le=3000)) -> int:
-        #         from calendar import monthrange
-        #         return monthrange(year, self)[1]
-        #
-        # @utype.register_transformer(Month)
-        # def to_month(trans, data, t):
-        #     if isinstance(data, date):
-        #         return data.month
-        #     return trans(data, t)
-        #
-        # mon = Month(date(2022, 2, 2))
-        # assert int(mon) == 2
-        # mon = Month(b'3')
-        # assert mon.get_days(year=b'2000')
-
     def test_dataclass(self):
         @utype.dataclass
         class DataClass:
