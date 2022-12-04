@@ -32,8 +32,8 @@ class TestRule:
             types.NormalFloat("nan")
 
         int_or_dt = types.PositiveInt | date
-        assert int_or_dt(3) == 3
-        assert int_or_dt(date(2000, 1, 1)) == date(2000, 1, 1)
+        assert int_or_dt(b'3') == 3
+        assert int_or_dt('2000-1-1') == date(2000, 1, 1)
         with pytest.raises(exc.ParseError):
             int_or_dt("a")
 
@@ -61,6 +61,36 @@ class TestRule:
         assert int_or_list(-3) == -3
         assert int_or_list(["a"]) == ["a"]
         assert int_or_list([1]) == ["1"]
+
+        from utype import Rule
+        from typing import Literal
+
+        from utype import Rule, exc
+        from typing import Literal
+
+        class IntWeekDay(int, Rule):
+            gt = 0
+            le = 7
+
+        week_day = IntWeekDay ^ Literal['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+
+        assert week_day('6') == 6
+        assert week_day(b'tue') == 'tue'
+
+        try:
+            week_day('8') == 6
+        except exc.ParseError as e:
+            print(e)
+            """
+            CollectedParseError: Constraint: <le>: 7 violated;
+            Constraint: <enum>: ('mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun') violated
+            """
+
+        weekday_or_date = week_day ^ date
+
+        assert weekday_or_date(b'3') == 3
+        assert weekday_or_date('wed') == 'wed'
+        assert weekday_or_date('2000-1-1') == date(2000, 1, 1)
 
     def test_length(self):
         class Length3(Rule):
@@ -418,6 +448,16 @@ class TestRule:
             Reg("abc@123")
 
     def test_args(self):
+        import enum
+        from utype.types import Array
+
+        class EnumLevel(str, enum.Enum):
+            info = 'INFO'
+            warn = 'WARN'
+            error = 'ERROR'
+
+        level_array = Array[EnumLevel]
+
         class UniqueIntArray(list, types.Array):
             __args__ = int
 

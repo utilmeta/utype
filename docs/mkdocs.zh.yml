@@ -1,5 +1,5 @@
 site_name: uType
-site_description: Data type & schema declaration & parsing library based on Python type annotations, enforce type and constraints at runtime
+site_description: 基于 Python 类型注解的类型声明与解析库
 site_url: https://utype.io/zh
 docs_dir: zh
 site_dir: build/zh

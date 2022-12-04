@@ -19,15 +19,8 @@ class Number(Rule):
 
 
 class Array(Rule):
-    __origin__ = abc.Iterable
+    __origin__ = list       # use list instead of abc.Iterable
     primitive = "array"
-    contains: type
-    max_contains: int
-    min_contains: int
-    unique_items: bool
-
-    def __iter__(self):
-        raise NotImplementedError
 
     def __class_getitem__(cls, item) -> Type["Array"]:
         if not isinstance(item, tuple):
@@ -41,10 +34,8 @@ class Array(Rule):
 
 
 class Object(Rule):
+    __origin__ = dict
     primitive = "object"
-
-    def __iter__(self):
-        raise NotImplementedError
 
     def __class_getitem__(cls, params):
         if len(params) != 2:

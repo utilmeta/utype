@@ -1,8 +1,8 @@
 site_name: uType
-site_description: Data type & schema declaration & parsing library based on Python type annotations, enforce type and constraints at runtime
+site_description: Declare & parse your type based on python type annotation
 site_url: https://utype.io
 docs_dir: en
-site_dir: build/en
+site_dir: build
 # ref: https://github.com/squidfunk/mkdocs-material/discussions/2346
 
 theme:
@@ -12,8 +12,7 @@ theme:
   palette:
   - media: '(prefers-color-scheme: light)'
     scheme: default
-    primary: white
-
+    primary: indigo
     toggle:
       icon: material/lightbulb
       name: Switch to light mode

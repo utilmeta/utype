@@ -314,7 +314,7 @@ class TestType:
                 (b'{"a": 1}', {"a": 1}, False, True),
                 (
                     "k1=v1&k2=v2",
-                    {"k1": ["v1"], "k2": ["v2"]},
+                    {"k1": "v1", "k2": "v2"},
                     False,
                     True,
                 ),  # querystring syntax
@@ -354,7 +354,7 @@ class TestType:
                 ),
                 (
                     "k1=v1&k2=v2",
-                    MyMapping({"k1": ["v1"], "k2": ["v2"]}),
+                    MyMapping({"k1": "v1", "k2": "v2"}),
                     False,
                     True,
                 ),  # querystring syntax
@@ -495,13 +495,13 @@ class TestType:
                 from calendar import monthrange
                 return monthrange(year, self)[1]
 
-        @utype.register_transformer(Month)
-        def to_month(trans, data, t):
-            if isinstance(data, date):
-                return data.month
-            return trans(data, t)
+        # @utype.register_transformer(Month)
+        # def to_month(trans, data, t):
+        #     if isinstance(data, date):
+        #         return data.month
+        #     return trans(data, t)
 
-        mon = Month(date(2022, 2, 2))
+        mon = Month('2')
+        assert isinstance(mon, Month)       # use the __instancecheck__ of LogicalType
         assert int(mon) == 2
-        mon = Month(b'3')
-        assert mon.get_days(year=b'2000')
+        assert mon.get_days(year=b'2000') == 29

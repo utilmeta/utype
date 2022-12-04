@@ -4,6 +4,7 @@ from .parser.func import FunctionParser
 from .parser.cls import ClassParser
 from .parser.options import Options
 from .parser.rule import Rule
+from .utils.transform import register_transformer
 
 
 def parse(
@@ -75,6 +76,8 @@ def dataclass(
 def apply(
     rule_cls: Type[Rule] = Rule,
     *,
+    # init: bool = False,     # whether to override init
+    # -- constraints:
     strict: bool = True,
     const: Any = ...,
     enum: Iterable = None,
@@ -98,6 +101,52 @@ def apply(
 ):
     if rule_cls:
         pass
+
+    constraints = {
+        k: v
+        for k, v in dict(
+            strict=strict,
+            enum=enum,
+            gt=gt,
+            ge=ge,
+            lt=lt,
+            le=le,
+            min_length=min_length,
+            max_length=max_length,
+            length=length,
+            regex=regex,
+            max_digits=max_digits,
+            round=round,
+            multiple_of=multiple_of,
+            contains=contains,
+            max_contains=max_contains,
+            min_contains=min_contains,
+            unique_items=unique_items,
+        ).items()
+        if v is not None
+    }
+
+    if const is not ...:
+        constraints.update(const=const)
+
+    def decorator(_type):
+        cls = rule_cls.annotate(_type, constraints=constraints)
+        cls.__name__ = getattr(_type, '__name__', cls.__name__)
+        cls.__repr__ = getattr(_type, '__repr__', cls.__repr__)
+        cls.__str__ = getattr(_type, '__str__', cls.__str__)
+        return cls
+        #
+        # if init:
+        #     pass
+        # else:
+        #     @register_transformer(_type)
+        #     def _transform_type(trans, value, t):
+        #         return type_cls(value)
+        #
+        #     _transform_type.__name__ = f'_to_{getattr(_type, "__name__", str(_type))}'
+        # return _type
+
+    return decorator
 
 
 def handle(*func_and_errors):

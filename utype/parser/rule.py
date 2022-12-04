@@ -9,7 +9,6 @@ from typing import (
     Any,
     TypeVar,
     Tuple,
-    AnyStr,
 )
 import inspect
 from ..utils.compat import get_origin, get_args, ForwardRef, evaluate_forward_ref
@@ -91,6 +90,25 @@ def register_forward_ref(
 
 
 class LogicalType(type):  # noqa
+    def __instancecheck__(cls, obj):
+        if isinstance(obj, LogicalType):
+            return super().__instancecheck__(obj)
+        if cls.combinator:
+            for arg in cls.args:
+                if isinstance(arg, type) and isinstance(obj, arg):
+                    return True
+            return False
+        origin = getattr(cls, '__origin__', None)
+        if isinstance(origin, type):
+            if not isinstance(obj, origin):
+                return False
+            try:
+                cls(obj)
+                return True
+            except exc.ParseError:
+                return False
+        return False
+
     @property
     def args(cls):
         return cls.__dict__.get("__args__", [])
@@ -1292,6 +1310,7 @@ class Rule(metaclass=LogicalType):
         # we must do clone here (as the parser do make_runtime)
         # to prompt a new RuntimeOptions, to collect the error in this layer
         trans = cls.transformer_cls(options)
+        value = cls.pre_validate(value, options)
 
         if cls.__origin__:
             # no matter cls.__transformer__ is None or not
@@ -1341,6 +1360,16 @@ class Rule(metaclass=LogicalType):
         options.raise_error()
         # raise error if collected
         # and leave the error the upper layer to collect
+        return cls.post_validate(value, options)
+
+    @classmethod
+    def pre_validate(cls, value, options: RuntimeOptions = None):
+        # meant to be inherited to define user-specific logic before type transform
+        return value
+
+    @classmethod
+    def post_validate(cls, value, options: RuntimeOptions = None):
+        # meant to be inherited to define user-specific logic after the transform and constraints validation
         return value
 
     def __init__(self, value):

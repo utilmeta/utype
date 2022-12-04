@@ -6,7 +6,7 @@
 utype is a data type & schema declaration & parsing library based on Python type annotations, enforce type and constraints at runtime
 
 * Version: `0.2.0` [test]
-* Author: @voidZXL
+* Author: [@voidZXL](https://github.com/voidZXL)
 * License: Apache 2.0
 * Documentation: [https://utype.io](https://utype.io)
 * 中文文档: [https://utype.io/zh](https://utype.io/zh)

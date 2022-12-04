@@ -400,20 +400,20 @@ class TypeTransformer:
                     res = self._attempt_from(ast.literal_eval(data))
                     if isinstance(res, dict):
                         # maybe set
-                        return res
+                        return t(res)
                     raise TypeError
                 if "=" in data:
                     if "&" in data:
                         # a=b&c=d   querystring index
                         from urllib.parse import parse_qs
-
-                        return parse_qs(data)
+                        qs = parse_qs(data)
+                        return t({k: v[0] if len(v) == 1 else v for k, v in qs.items()})
                     spliter = ";" if ";" in data else ","
                     # cookie syntax or comma separate syntax
-                    return {
+                    return t({
                         value.split("=")[0].strip(): value.split("=")[1].strip()
                         for value in data.split(spliter)
-                    }
+                    })
                 raise TypeError
 
         from xml.etree.ElementTree import Element
@@ -684,5 +684,8 @@ class TypeTransformer:
 
 
 def type_transform(data, type, options=None):
-    cls = options.transformer_cls if options else TypeTransformer
+    if not options:
+        from ..parser.options import Options
+        options = Options().make_runtime()
+    cls = options.transformer_cls
     return cls(options)(data, type)

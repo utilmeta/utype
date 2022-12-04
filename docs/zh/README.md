@@ -13,11 +13,10 @@ utype 是一个基于 Python 类型注解的数据类型声明与解析库，能
 * 作者：周煦林（<a href="https://github.com/voidZXL" target="_blank">https://github.com/voidZXL</a>）
 * 协议：Apache 2.0
 * 开源仓库：<a href="https://github.com/utilmeta/utype" target="_blank">https://github.com/utilmeta/utype</a>
-* 中文文档：<a href="https://utype.io/zh" target="_blank">https://utype.io/zh</a>
 
 ## 需求动机
 
-目前 Python 的类型注解体系仅起到了提示作用，没有在运行时解析类型与校验约束的机制，所以当我们编写一个函数时，往往需要先对参数进行类型断言，约束校验等操作，然后才能开始编写真正的逻辑，否则很可能会在运行时发生异常错误，如
+目前 Python 没有在运行时解析类型与校验约束的机制，所以当我们编写一个函数时，往往需要先对参数进行类型断言，约束校验等操作，然后才能开始编写真正的逻辑，否则很可能会在运行时发生异常错误，如
 ```python
 def login(username, password):  
     import re  
@@ -222,13 +221,13 @@ class PositiveInt(int, Rule):
 class Month(PositiveInt):  
     le = 12
 
-month_optional = Month | None
-print(month_optional('11.1'))
+month_or_none = Month | None
+print(month_or_none('11.1'))
 # > 11
-assert month_optional(None) is None
+assert month_or_none(None) is None
 
 try:
-	month_optional('abc')
+	month_or_none('abc')
 except exc.ParseError as e:
 	print(e)
 	"""
@@ -264,6 +263,9 @@ print(dict(ArticleSchema(slug=b'My Awesome Article!')))
 	注册转换器并没有影响类的 `__init__` 方法的行为，所以直接调用 `Slug(value)` 并不会生效
 
 你不仅可以为自定义类型注册转化器，还可以为基本类型（如 str, int, bool 等）或标准库中的类型（如 datetime, Enum 等）注册转化器函数，来自定义其中的转化行为
+
+!!! note
+	`utype` 提供的是 **运行时** 提供的类型解析能力，也就是说它不能（也没有必要）让 Python 像静态语言一样在程序启动时就能够分析所有的类型与调用是否正确
 
 
 ## RoadMap 与贡献

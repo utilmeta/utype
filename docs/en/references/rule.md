@@ -1,4 +1,4 @@
-# Rule 类型约束
+# Rule - constraint type
 
 在 utype 中，Rule 组件的作用是为类型施加约束，我们通过继承 `utype.Rule` 来使用它
 
