@@ -6,6 +6,7 @@ site_dir: build/zh
 
 theme:
   name: material
+  favicon: https://utype.io/favicon.ico
   language: zh
   logo: https://utype.io/assets/utype-white.png
   palette:
