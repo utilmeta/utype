@@ -61,10 +61,14 @@ def dataclass(
         )
         if repr:
             parser.make_repr()
+
         if set_properties:
             parser.assign_properties(
                 post_setattr=post_setattr, post_delattr=post_delattr
             )
+        elif post_setattr or post_delattr:
+            warnings.warn(f'@utype.dataclass received post_delattr / post_setattr '
+                          f'without "set_properties=True", these params won\'t take effect')
 
         return parser.obj
 

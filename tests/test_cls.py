@@ -41,6 +41,9 @@ class TestClass:
         }
 
     def test_dataclass(self):
+        class data(utype.DataClass):
+            pass
+
         @utype.dataclass
         class DataClass:
             name: str = Field(max_length=10)
@@ -441,6 +444,36 @@ class TestClass:
                 return f"{self.name}<{self.level}>"
 
         assert UserSchema(name="Bob", level=3).label == "Bob<3>"
+
+    def test_schema_dict(self):
+        class T(Schema):
+            a: str = Field(max_length=10)
+            b: int = 0
+            c: int = Field(ge=10, required=False)
+
+        t1 = T(a='123')
+        t1.update({
+            'b': '123',
+            'c': b'123'
+        })
+        assert t1.c == t1.b == 123
+
+    def test_logical(self):
+        @utype.dataclass
+        class LogicalDataClass(metaclass=utype.LogicalMeta):
+            name: str = Field(max_length=10)
+            age: int
+
+        one_of_type = LogicalDataClass ^ Tuple[str, int]
+
+        assert one_of_type({'name': 'test', 'age': '1'}) == LogicalDataClass(name='test', age=1)
+        assert one_of_type([b'test', '1']) == ('test', 1)
+
+    def test_invalids(self):
+        with pytest.raises(Exception):
+            class DataSchema(utype.Schema):
+                items: list = Field(max_length=10)  # wrong
+
 
     # def test_nested_schema(self):
     #     class UserSchema(Schema):

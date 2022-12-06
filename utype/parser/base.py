@@ -225,9 +225,7 @@ class BaseParser:
 
     @classmethod
     def validate_field_name(cls, name: str):
-        if name.startswith("_"):
-            return False
-        return True
+        return not name.startswith("_")
 
     def generate_fields(self):
         raise NotImplementedError

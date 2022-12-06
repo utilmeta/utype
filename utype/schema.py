@@ -59,7 +59,6 @@ class DataClass(metaclass=LogicalMeta):
     __parser_cls__ = ClassParser
     __parser__: ClassParser
     __options__: Options
-    # __mode__: str = None
 
     def __init_subclass__(cls, **kwargs):
         options = getattr(cls, "__options__", None)
@@ -74,7 +73,10 @@ class DataClass(metaclass=LogicalMeta):
             post_init=cls.__post_init__,
         )
         parser.make_repr()
-        parser.assign_properties()
+        parser.assign_properties(
+            post_setattr=cls.__post_setattr__,
+            post_delattr=cls.__post_delattr__
+        )
 
     def __class_getitem__(cls, item):
         pass
@@ -85,6 +87,12 @@ class DataClass(metaclass=LogicalMeta):
     def __post_init__(self, options: RuntimeOptions):
         self.__runtime_options__ = options
         self.__validate__(options)
+
+    def __post_setattr__(self, field: SchemaField, value, options: RuntimeOptions):
+        pass
+
+    def __post_delattr__(self, field: SchemaField, options: RuntimeOptions):
+        pass
 
 
 class Schema(dict, metaclass=LogicalMeta):
@@ -106,7 +114,8 @@ class Schema(dict, metaclass=LogicalMeta):
             post_init=cls.__post_init__,
         )
         parser.assign_properties(
-            post_setattr=cls.__post_setattr__, post_delattr=cls.__post_delattr__
+            post_setattr=cls.__post_setattr__,
+            post_delattr=cls.__post_delattr__
         )
 
     def __class_getitem__(cls, item):
@@ -233,7 +242,7 @@ class Schema(dict, metaclass=LogicalMeta):
     def update(self, __m=None, **kwargs):
         if self.__options__.immutable:
             raise AttributeError(
-                f"{self.__name__}: Attempt to update in Options(immutable=True) schema"
+                f"{self.__name__}: Attempt to update in immutable schema"
             )
         return super().update(
             self.__parser__(
@@ -246,6 +255,11 @@ class Schema(dict, metaclass=LogicalMeta):
             raise TypeError(
                 f"{self.__name__}: Attempt to clear in Options(immutable=True) schema"
             )
+        for key, field in self.__parser__.fields.items():
+            if field.immutable:
+                raise TypeError(
+                    f"{self.__name__}: Attempt to clear schema with immutable field: {repr(field.name)}"
+                )
         return super().clear()
 
 
