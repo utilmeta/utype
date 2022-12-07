@@ -49,7 +49,7 @@ class RuntimeOptionsMixin:
     # 'init':   use t(data) to init unresolved type, and throw the error if raised
     # 'throw':  throw the error if data is not as type
 
-    ignore_error_property: bool = False
+    # ignore_error_property: bool = False
     ignore_no_input: bool = False
     ignore_no_output: bool = False
     # alter type transform
@@ -63,9 +63,11 @@ class RuntimeOptionsMixin:
 
     force_required: bool = False
     ignore_required: bool = False
+
     force_default: Any = ...
     # force a default value for Field(required=False) with no default
     no_default: bool = False
+    defer_default: bool = False
     # do not take default value (leave it unprovided)
     data_first_search: Optional[bool] = False
     mode: str = None
@@ -172,7 +174,7 @@ class Options(RuntimeOptionsMixin):
     case_insensitive: bool = None
     alias_from_generator: Union[Callable, List[Callable]] = None
     alias_generator: Callable = None
-    unprovided_attribute: Any = ...
+    # unprovided_attribute: Any = ...
     immutable: bool = False
     override: bool = False
     allowed_runtime_options: Union[str, None, List[str]] = "*"
@@ -200,6 +202,7 @@ class Options(RuntimeOptionsMixin):
         ignore_error_property: bool = False,
         force_default: Any = ...,
         no_default: bool = False,
+        defer_default: bool = False,
         ignore_required: bool = False,
         force_required: bool = False,
         ignore_no_input: bool = False,
@@ -211,7 +214,6 @@ class Options(RuntimeOptionsMixin):
         allowed_runtime_options: Union[str, None, List[str]] = "*",
         case_insensitive: bool = None,
         max_depth: int = None,
-        unprovided_attribute: Any = ...,
         data_first_search: Optional[bool] = False
         # if this value is a subclass of Exception, then raise that error if attr is unprovided
         # if this value is another callable (like dict, list), return value()
@@ -314,6 +316,15 @@ class Options(RuntimeOptionsMixin):
     def clone(self):
         # give the same interface
         return self.make_runtime()
+
+    def patch(self, ignored_options: List[str] = None, **options) -> 'Options':
+        opts = dict(self._options)
+        if ignored_options:
+            for opt in ignored_options:
+                if opt in opts:
+                    opts.pop(opt)
+        opts.update(options)
+        return self.__class__(**opts)
 
     @classmethod
     def generate_from(cls, *options) -> "Options":

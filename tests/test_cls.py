@@ -416,10 +416,6 @@ class TestClass:
             opt: Optional[int] = Field(gt=3)
             union: Union[Dict[str, int], int]
 
-        class UnionSchema2(Schema):
-            opt: Optional[int]
-            union: Union[Dict[str, int], int]
-
         u1 = UnionSchema(opt=None, union=3)
         assert u1.opt is None
         assert u1.union == 3
@@ -434,29 +430,135 @@ class TestClass:
         with pytest.raises(exc.ParseError):
             UnionSchema(opt=5, union={"a": "b"})  # cannot convert to Dict[str, int]
 
-    def test_property(self):
+    @pytest.mark.parametrize(argnames=['no_output', 'immutable', 'no_input'],
+                             argvalues=[
+                                # (False, False, False),
+                                # (True, False, False),
+                                (True, True, False),
+                                (False, False, True)
+                             ])
+    def test_property(self, no_output: bool, immutable: bool, no_input: bool):
         class UserSchema(Schema):
             name: str
             level: int = 0
 
             @property
-            def label(self):
+            @Field(alias='@label', no_output=no_output)
+            def label(self) -> bytes:       # test conversion
                 return f"{self.name}<{self.level}>"
 
-        assert UserSchema(name="Bob", level=3).label == "Bob<3>"
+        user = UserSchema(name="Bob", level=3)
+
+        assert user.label == b"Bob<3>"
+
+        if not no_output:
+            assert user['@label'] == b"Bob<3>"
+        else:
+            assert '@label' not in user
+            assert 'label' not in user
+
+        # test relate update
+        user.level += 1
+        assert user.label == b"Bob<4>"
+
+        if not no_output:
+            assert user['@label'] == b"Bob<4>"
+
+        # test dependencies
+
+        class ArticleSchema(Schema):
+            _slug: str
+            _title: str
+
+            @property
+            @Field(description='article title')
+            def title(self) -> str:
+                return self._title
+
+            @title.setter
+            def title(self, val: str = Field(max_length=50, no_input=no_input, immutable=immutable)):
+                self._title = val
+                self._slug = '-'.join([''.join(filter(str.isalnum, v))
+                                       for v in val.split()]).lower()
+
+            @title.deleter
+            def title(self):
+                del self._title
+                del self._slug
+
+            @property
+            @Field(dependencies=title)
+            def slug(self) -> str:
+                return self._slug
+
+        article = ArticleSchema(title=b'My Awesome article!')
+
+        if not no_input:
+            assert article.slug == 'my-awesome-article'
+        else:
+            assert 'title' not in article
+            assert 'slug' not in article
+
+            with pytest.raises(AttributeError):
+                _ = article.slug
+
+        with pytest.raises(AttributeError):
+            article.slug = 'other value'
+
+        if immutable:
+            with pytest.raises(exc.UpdateError):
+                article.title = b'Our Awesome article!'
+        else:
+            article.title = b'Our Awesome article!'
+            assert dict(article) == {'slug': 'our-awesome-article', 'title': 'Our Awesome article!'}
+
+            with pytest.raises(exc.ParseError):
+                article.title = '*' * 100
+
+            # test deleter
+            del article.title
+            assert 'title' not in article
+
+            # slug is not affected
+            assert 'slug' in article
+
+            with pytest.raises(AttributeError):
+                _ = article.title
 
     def test_schema_dict(self):
         class T(Schema):
-            a: str = Field(max_length=10)
+            a: str = Field(max_length=10, default='default')
             b: int = 0
-            c: int = Field(ge=10, required=False)
+            c: int = Field(ge=10, required=False, alias_from=['c$', 'c#'])
+            im: str = Field(required=False, default=None, defer_default=True, immutable=True)
+            req: int
 
-        t1 = T(a='123')
+        t1 = T(a='123', req=True)
         t1.update({
             'b': '123',
-            'c': b'123'
+            'c$': b'123',
+            # test ignore required
         })
-        assert t1.c == t1.b == 123
+        assert t1.c == t1.b == 123      # test attribute update
+        assert t1.a == '123'        # no default for update
+        t1['c#'] = b'456'
+        assert t1.c == 456
+        assert 'im' not in t1
+
+        with pytest.raises(AttributeError):
+            t1.im = 3
+
+        with pytest.raises(AttributeError):
+            t1['im'] = 3
+
+        with pytest.raises(AttributeError):
+            del t1.im
+
+        with pytest.raises(AttributeError):
+            del t1.req
+
+        with pytest.raises(TypeError):
+            del t1.im
 
     def test_logical(self):
         @utype.dataclass
@@ -473,268 +575,3 @@ class TestClass:
         with pytest.raises(Exception):
             class DataSchema(utype.Schema):
                 items: list = Field(max_length=10)  # wrong
-
-
-    # def test_nested_schema(self):
-    #     class UserSchema(Schema):
-    #         name: str
-    #         level: int = 0
-    #
-    #         class key_info(Schema):
-    #             access_key: str
-    #             last_activity: datetime = Field(default_factory=datetime.now)
-    #
-    #     assert (
-    #         UserSchema(
-    #             {"name": "Joe", "key_info": {"access_key": "KEY"}}
-    #         ).key_info.access_key
-    #         == "KEY"
-    #     )
-    #
-    #     class UserSchema2(Schema):
-    #         name: str
-    #         level: int = 0
-    #
-    #         class KeyInfo(Schema):
-    #             access_key: str
-    #             last_activity: datetime = Field(default_factory=datetime.now)
-    #
-    #         access_keys: List[KeyInfo]
-    #
-    #     assert "KeyInfo" not in UserSchema2.__template__  # isolate
-    #     assert (
-    #         UserSchema2(**{"name": "Joe", "access_keys": {"access_key": "KEY"}})
-    #         .access_keys[0]
-    #         .access_key
-    #         == "KEY"
-    #     )
-
-    # def test_invalid_schema(self):
-    #     with pytest.raises(AttributeError):
-    #         class InvalidSchema(Schema):  # noqa
-    #             items: int
-    #
-    # def test_schema_options(self):
-    #     class UserSchemaDisallow(Schema):
-    #         __options__ = Schema.Options(allow_excess=False)
-    #         name: str
-    #         level: int = 0
-    #
-    #     assert dict(UserSchemaDisallow(name="Test")) == {"name": "Test", "level": 0}
-    #
-    #     with pytest.raises(exc.ExcessError):
-    #         UserSchemaDisallow(name="Test", code="XYZ")
-    #
-    #     class UserSchemaPreserve(Schema):
-    #         __options__ = Schema.Options(excess_preserve=True)
-    #         name: str
-    #         level: int = 0
-    #
-    #     assert dict(UserSchemaPreserve(name="Test", code="XYZ")) == {
-    #         "name": "Test",
-    #         "code": "XYZ",
-    #         "level": 0,
-    #     }
-    #
-    #     class UserSchemaIgnore(Schema):
-    #         __options__ = Schema.Options(ignore_required=True)
-    #         name: str
-    #         level: int = 0
-    #
-    #     user = UserSchemaIgnore()
-    #     assert dict(user) == {"level": 0}
-    #     with pytest.raises(AttributeError):
-    #         user.name  # noqa
-    #
-    #     class UserSchemaDisallowType(Schema):
-    #         __options__ = Schema.Options(allow_type_transform=False)
-    #         name: str
-    #         level: int = 0
-    #
-    #     with pytest.raises(exc.ParseError):
-    #         UserSchemaDisallowType(name=107, level="3")
-    #
-    #     class IndexSchema(Schema):
-    #         indexes: List[int]
-    #
-    #     class IndexSchemaExclude(Schema):
-    #         __options__ = Schema.Options(list_exclude_against=True)
-    #         indexes: List[int]
-    #
-    #     with pytest.raises(exc.ParseError):
-    #         IndexSchema(indexes=[1, 2, "ab"])
-    #
-    #     assert dict(IndexSchemaExclude(indexes=[1, 2, "ab"])) == {"indexes": [1, 2]}
-    #
-    #     class IndexSchemaPreserve(Schema):
-    #         __options__ = Schema.Options(list_preserve_against=True)
-    #         indexes: List[int]
-    #
-    #     assert dict(IndexSchemaPreserve(indexes=[1, 2, "ab"])) == {
-    #         "indexes": [1, 2, "ab"]
-    #     }
-    #
-    #     class NoDefaultSchema(Schema):
-    #         __options__ = Schema.Options(no_default=True)
-    #         default: str = "0"
-    #
-    #     with pytest.raises(AttributeError):
-    #         _ = NoDefaultSchema().default
-    #         # no default
-    #         # 1. when parsing, default value will never be used to fill unprovided key
-    #         # 2. when accessing missing attributes, it will throw AttributeError instead of give a default
-    #
-    #     class SubclassSchema(Schema):
-    #         dt: date
-    #
-    #     class AllowSubclassSchema(Schema):
-    #         __options__ = Schema.Options(allow_type_subclasses=True)
-    #         dt: date
-    #
-    #     assert SubclassSchema(dt=datetime(2022, 1, 1, 12, 12, 12)).dt == date(2022, 1, 1)
-    #     assert AllowSubclassSchema(dt=datetime(2022, 1, 1, 12, 12, 12)).dt == datetime(2022, 1, 1, 12, 12, 12)
-    #
-    #     class TypeOnlySchema(Schema):
-    #         __options__ = Schema.Options(type_only=True)
-    #         attr: str = Field(value='xxxx')
-    #         lst: List[int] = Field(length=3)
-    #
-    #     assert dict(TypeOnlySchema(attr=3, lst='1,2,3,4')) == {'attr': '3', 'lst': [1, 2, 3, 4]}   # ignore other rules
-    #
-    #     # case styles
-    #     class AllowCaseSchema(Schema):
-    #         __options__ = Schema.Options(
-    #             alias_from_generator=[
-    #                 Schema.Options.CAMEL_CASE_GENERATOR,
-    #                 Schema.Options.KEBAB_CASE_GENERATOR,
-    #                 lambda x: "@" + x
-    #             ],
-    #             alias_for_generator=Schema.Options.CAP_KEBAB_CASE_GENERATOR,
-    #         )
-    #         attr_name: str
-    #         CAP_ATTR_NAME: str
-    #         fixed_name: str = Field(alias_from=['fix1', 'fix2'], alias='@fix')
-    #
-    #     attr_name_vars = ['attr_name', '@attr_name', 'attr-name', 'attrName', 'ATTR-NAME']
-    #     cap_attr_name_vars = ['CAP_ATTR_NAME', '@CAP_ATTR_NAME', 'cap-attr-name', 'capAttrName', 'CAP-ATTR-NAME']
-    #     fix_name_vars = ['fix1', 'fix2']    # override the Options config
-    #
-    #     for a1 in attr_name_vars:
-    #         for a2 in cap_attr_name_vars:
-    #             for f3 in fix_name_vars:
-    #                 assert dict(AllowCaseSchema({a1: 'a1', a2: 'a2', f3: 'a3'})) \
-    #                        == {'ATTR-NAME': 'a1', 'CAP-ATTR-NAME': 'a2', '@fix': 'a3'}
-    #
-    #     class ImmutableSchema(Schema):
-    #         __options__ = Schema.Options(immutable=True)
-    #         attr: str = ''
-    #
-    #     sc = ImmutableSchema(attr='x')
-    #     with pytest.raises(AttributeError):
-    #         sc.attr = 'y'
-    #     with pytest.raises(AttributeError):
-    #         del sc.attr
-    #     with pytest.raises(AttributeError):
-    #         sc['attr'] = 'y'
-    #     with pytest.raises(AttributeError):
-    #         sc.update(attr='y')
-    #     with pytest.raises(AttributeError):
-    #         sc.pop('attr')
-    #     with pytest.raises(TypeError):
-    #         sc.popitem()
-    #     with pytest.raises(TypeError):
-    #         sc.clear()
-    #
-    #     class InsensitiveSchema(Schema):
-    #         __options__ = Schema.Options(case_insensitive=True)
-    #         VALUE: int = 0
-    #         attr: str
-    #         other_name: bool = False
-    #
-    #     assert dict(InsensitiveSchema(value='3', Attr='x', OTHER_NAME=True)) == \
-    #            {'VALUE': 3, 'attr': 'x', 'other_name': True}
-    #     # attr ane key access of case_insensitive schema will also support case_insensitive access
-    #
-    #     with pytest.raises(AttributeError):
-    #         class InsensitiveSchemaInvalid1(Schema):
-    #             __options__ = Schema.Options(case_insensitive=True)
-    #             VALUE: int = 0
-    #             value: int
-    #             # name is same
-    #
-    #     with pytest.raises(AttributeError):
-    #         class InsensitiveSchemaInvalid2(Schema):
-    #             __options__ = Schema.Options(case_insensitive=True)
-    #             val1: int = Field(alias_from=['VALUE'])
-    #             value: str
-    #             # name is same
-    #
-    #     # class CommonSchema(Schema):
-    #     #     __options__ = Schema.Options(exact_attribute_access=False)
-    #     #     attr: str = Field(alias='attr_for', alias_from=['attr_from'])
-    #     #
-    #     # class ExactSchema(Schema):
-    #     #     __options__ = Schema.Options(exact_attribute_access=True)
-    #     #     attr: str = Field(alias='attr_for', alias_from=['attr_from'])
-    #     #
-    #     # assert CommonSchema(attr_from='x').attr_for == 'x'
-    #     # assert CommonSchema(attr_from='x').attr == 'x'
-    #     # assert CommonSchema(attr_from='x').attr_from == 'x'
-    #     # assert ExactSchema(attr_from='x').attr == 'x'
-    #
-    #     # with pytest.raises(AttributeError):
-    #     #     assert ExactSchema(attr_for='x').attr_for
-    #     # with pytest.raises(AttributeError):
-    #     #     assert ExactSchema(attr_from='x').attr_from
-    #
-    #     class IgnoreDiscardSchema(Schema):
-    #         __options__ = Schema.Options(ignore_discard=["v1"])
-    #         v1: str = Field(discard=True)
-    #         v2: str = Field(discard=True)
-    #         v3: str = "x"
-    #
-    #     assert dict(IgnoreDiscardSchema(v1='x', v2='y', v3='z')) == {'v1': 'x', 'v3': 'z'}
-    #
-    #     class BestEffortSchema(Schema):
-    #         __options__ = Schema.Options(best_effort_transform=True)
-    #         attr: int = Field(value=10)
-    #         tp: int
-    #
-    #     assert dict(BestEffortSchema(attr=3, tp='xx')) == {'attr': 3, 'tp': 'xx'}
-    #     assert dict(BestEffortSchema(attr=3, tp='33')) == {'attr': 3, 'tp': 33}
-    #
-    #     # test options in data
-    #     class v(Schema):
-    #         value: int
-    #
-    #     data = {"__options__": Schema.Options(case_insensitive=True), "VALUE": '1'}
-    #     assert v(**data).value == 1
-    #
-    #     data = {"__options__": Schema.Options(ignore_discard=True), "v1": 1, 'v2': 2}
-    #     assert dict(IgnoreDiscardSchema(**data)) == {'v1': '1', 'v2': '2', 'v3': 'x'}
-    #
-    #     class UnprovidedSchema1(Schema):
-    #         __options__ = Schema.Options(unprovided_attribute=KeyError)
-    #         attr: str = Field(required=False)
-    #
-    #     with pytest.raises(KeyError):
-    #         _ = UnprovidedSchema1().attr
-    #
-    #     class UnprovidedSchema2(Schema):
-    #         __options__ = Schema.Options(unprovided_attribute=list)
-    #         attr: str = Field(required=False)
-    #
-    #     assert UnprovidedSchema2().attr == []
-    #
-    #     class UnprovidedSchema2(Schema):
-    #         __options__ = Schema.Options(unprovided_attribute=None)
-    #         attr: str = Field(required=False)
-    #
-    #     assert UnprovidedSchema2().attr is None
-    #
-    #
-    #     class ClassOptionsSchema(Schema):
-    #         class __options__(Schema.Options):
-    #             unprovided_attribute = None
-    #             ignore_conflict = True
-    #             ignore_required = True

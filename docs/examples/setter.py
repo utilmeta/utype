@@ -1,4 +1,4 @@
-from utype import Schema, Field
+from utype import Schema, Field, exc
 
 
 class ArticleSchema(Schema):
@@ -32,3 +32,8 @@ except AttributeError:
 article.title = b'Our Awesome article!'
 print(dict(article))
 # > {'slug': 'our-awesome-article', 'title': 'Our Awesome article!'}
+
+try:
+    article.title = '*' * 100
+except exc.ParseError as e:
+    print(e)

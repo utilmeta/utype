@@ -48,6 +48,7 @@ class Field:
         # use null in type like Optional[int] / int | None
         default=...,
         default_factory: Callable = None,
+        defer_default: bool = False,
         deprecated: Union[bool, str] = False,
         discriminator=None,  # discriminate the schema union by it's field
         no_input: Union[bool, str, Callable] = False,
@@ -56,10 +57,10 @@ class Field:
         # like no_output=lambda v: v is None  will ignore all None value when output
         no_output: Union[bool, str, Callable] = False,
         on_error: Literal["exclude", "preserve", "throw"] = None,  # follow the options
-        unprovided: Any = ...,
+        # unprovided: Any = ...,
         immutable: bool = False,
         secret: bool = False,
-        dependencies: Union[list, type] = None,
+        dependencies: Union[list, str, property] = None,
         # (backup: internal, disallow, unacceptable)
         # unacceptable: we do not accept this field as an input,
         # but this field will be in the result if present (like default, or attribute set)
@@ -129,6 +130,10 @@ class Field:
                     f"Field: default_factory: {repr(default_factory)} must be a callable"
                 )
 
+        if defer_default:
+            if default is ... and not default_factory:
+                raise ValueError(F'Field: specify defer_default=True without any default')
+
         if required is None:
             required = self.DEFAULT_REQUIRED
 
@@ -158,10 +163,26 @@ class Field:
         self.no_output = no_output
         self.immutable = immutable
         self.required = required
+
         self.default = default
         self.default_factory = default_factory
-        self.unprovided = unprovided
-        self.dependencies = dependencies
+        self.defer_default = defer_default
+
+        # self.unprovided = unprovided
+
+        deps = []
+        if dependencies:
+            if not multi(dependencies):
+                dependencies = [dependencies]
+
+            for dep in dependencies:
+                if isinstance(dep, property):
+                    dep = dep.fget.__name__
+                if not isinstance(dep, str):
+                    raise ValueError(f'Invalid dependency: {repr(dep)}, must be str or property')
+                deps.append(dep)
+
+        self.dependencies = deps
         self.discriminator = discriminator
         self.on_error = on_error
         self.mode = mode
@@ -248,7 +269,7 @@ class Field:
         return fn_or_cls
 
 
-class SchemaField:
+class ParserField:
     TYPE_PRIMITIVE = {
         str: "string",
         int: "number",
@@ -302,6 +323,8 @@ class SchemaField:
         aliases: Set[str] = None,
         field_property: property = None,
         output_type: type = None,
+        output_field: Field = None,
+        dependencies: Set[str] = None,
         final: bool = False,
     ):
 
@@ -309,6 +332,8 @@ class SchemaField:
         self.type = input_type
         self.output_type = output_type
         self.field = field
+        self.output_field = output_field
+
         self.property = field_property
         self.final = final
 
@@ -322,8 +347,10 @@ class SchemaField:
         self.all_aliases = self.aliases.union({self.name})
 
         # self.input_transformer = self.transformer_cls.resolver_transformer(input_type)
-        self.dependencies = set()
+        self.dependencies = dependencies
         self.attr_dependencies = set()
+        self.dependants = set()
+
         self.deprecated_to = None
         self.discriminator_map = {}
         self.validate_annotation()
@@ -362,7 +389,7 @@ class SchemaField:
                         )
 
                     field = cls_parser.get_field(self.field.discriminator)
-                    if not isinstance(field, SchemaField):
+                    if not isinstance(field, ParserField):
                         raise ValueError(
                             f"Field: {repr(self.attname)} specify a discriminator: "
                             f"{repr(self.field.discriminator)}, but is was not find in type: "
@@ -397,12 +424,17 @@ class SchemaField:
                     f'only "^"(OneOf) or "|"(AnyOf) support'
                 )
 
+    def add_dependant(self, name: str):
+        if name in self.dependants:
+            return
+        self.dependants.add(name)
+
     def apply_fields(
         self,
-        fields: Dict[str, "SchemaField"],
+        fields: Dict[str, "ParserField"],
         excluded_vars: Set[str],
         alias_map: dict,
-        attr_alias_map: dict,
+        # attr_alias_map: dict,
     ):
         """
         take the field
@@ -413,10 +445,12 @@ class SchemaField:
                 raise ValueError(
                     f"Field(name={repr(self.name)}) aliases: {inter} conflict with fields"
                 )
-        if self.field.dependencies:
+
+        if self.dependencies:
+
             dependencies = []
             attr_dependencies = []
-            for dep in self.field.dependencies:
+            for dep in self.dependencies:
                 if dep in alias_map:
                     dep = alias_map[dep]
                 if dep not in fields:
@@ -425,13 +459,18 @@ class SchemaField:
                     raise ValueError(
                         f"Field(name={repr(self.name)}) dependency: {repr(dep)} not exists"
                     )
+                field = fields[dep]
+                if self.property:
+                    # if no getter function
+                    # dependant will not affect
+                    field.add_dependant(self.name)
                 if dep not in dependencies:
                     dependencies.append(dep)
-                attr = attr_alias_map.get(dep, dep)
-                if attr not in attr_dependencies:
-                    attr_dependencies.append(attr)
+                if field.attname not in attr_dependencies:
+                    attr_dependencies.append(field.attname)
             self.dependencies = set(dependencies)
             self.attr_dependencies = set(attr_dependencies)
+
         if self.field.deprecated_to:
             to = self.field.deprecated_to
             if to in alias_map:
@@ -444,8 +483,10 @@ class SchemaField:
             self.deprecated_to = to
 
     def resolve_forward_refs(self):
-        self.type, r = resolve_forward_type(self.type)
-        self.output_type, r = resolve_forward_type(self.output_type)
+        if self.type:
+            self.type, r = resolve_forward_type(self.type)
+        if self.output_type:
+            self.output_type, r = resolve_forward_type(self.output_type)
 
     @property
     def always_provided(self):
@@ -462,22 +503,30 @@ class SchemaField:
             return bool(self.field.case_insensitive)
         return bool(options.case_insensitive)
 
-    def get_unprovided(self, options: Options):
-        # options = options or self.options
-        if options and options.unprovided_attribute is not ...:
-            value = options.unprovided_attribute
-        elif self.field.unprovided is not ...:
-            value = self.field.unprovided
-        else:
-            return ...
-        if callable(value):
-            return value()
-        return copy_value(value)
+    # def get_unprovided(self, options: Options):
+    #     # options = options or self.options
+    #     if options and options.unprovided_attribute is not ...:
+    #         value = options.unprovided_attribute
+    #     elif self.field.unprovided is not ...:
+    #         value = self.field.unprovided
+    #     else:
+    #         return ...
+    #     if callable(value):
+    #         return value()
+    #     return copy_value(value)
 
-    def get_default(self, options: RuntimeOptions):
+    def get_default(self, options: RuntimeOptions, defer: bool = False):
         # options = options or self.options
         if options.no_default:
             return ...
+
+        if not defer:
+            if self.field.defer_default or options.defer_default:
+                return ...
+        else:
+            if not self.field.defer_default and not options.defer_default:
+                return ...
+
         if options.force_default is not ...:
             default = options.force_default
         elif self.field.default is not ...:
@@ -505,13 +554,15 @@ class SchemaField:
             return self.field.example
 
     def is_required(self, options: RuntimeOptions):
-        if options.ignore_required:
+        if options.ignore_required or not self.field.required:
             return False
-        if isinstance(self.field.required, bool):
-            return self.field.required
+        if self.always_no_input(options):
+            return False
+        if options.force_required or self.field.required is True:
+            return True
         if not options.mode:
             return False
-        return self.field.required in options.mode
+        return options.mode in self.field.required
 
     def no_input(self, value, options: RuntimeOptions):
         no_input = (
@@ -532,11 +583,39 @@ class SchemaField:
 
         return bool(no_input)
 
+    def always_no_input(self, options: RuntimeOptions):
+        # calculate before get the value
+        field = self.field
+        if field.no_input is True:
+            return True
+        if callable(field.no_input):
+            return False
+        if isinstance(field.no_input, (str, list, set, tuple)):
+            return options.mode in field.no_input
+        if field.mode:
+            return options.mode not in field.mode
+        return False
+
+    def always_no_output(self, options: RuntimeOptions):
+        # calculate before get the value
+        field = self.output_field or self.field
+        if field.no_output is True:
+            return True
+        if callable(field.no_output):
+            return False
+        if isinstance(field.no_output, (str, list, set, tuple)):
+            return options.mode in field.no_output
+        if field.mode:
+            return options.mode not in field.mode
+        return False
+
     def no_output(self, value, options: RuntimeOptions):
+        field = self.output_field or self.field
+        # prefer the config in output field rather than input field
         no_output = (
-            self.field.no_output(value)
+            field.no_output(value)
             if callable(self.field.no_output)
-            else self.field.no_output
+            else field.no_output
         )
 
         if not options.mode:
@@ -546,12 +625,13 @@ class SchemaField:
         if isinstance(no_output, (str, list, set, tuple)):
             return options.mode in no_output
 
-        if self.field.mode:
-            return options.mode not in self.field.mode
+        if field.mode:
+            return options.mode not in field.mode
 
         return bool(no_output)
 
     def check_function(self):
+        # TODO
         if not self.field.required and self.field.no_default:
             pass
         if self.field.no_output:
@@ -559,6 +639,28 @@ class SchemaField:
                 f"Field.no_output has no meanings in function params, please consider move it"
             )
             pass
+
+    def parse_output_value(self, value, options: RuntimeOptions):
+        type = self.output_type
+        if not type:
+            return value
+        trans = options.transformer
+        try:
+            return trans(value, type)
+        except Exception as e:
+            error = exc.ParseError(
+                item=self.name, type=self.output_type, value=value, field=self, origin_exc=e
+            )
+            # todo: apply and distinct input field / output field
+            error_option = (self.output_field.on_error if self.output_field else None) or options.invalid_values
+            if error_option == options.EXCLUDE:
+                options.collect_waring(error.formatted_message)
+            elif error_option == options.PRESERVE:
+                options.collect_waring(error.formatted_message)
+                return value
+            else:
+                options.handle_error(error)
+            return ...
 
     def parse_value(self, value, options: RuntimeOptions):
         if self.field.deprecated:
@@ -614,65 +716,99 @@ class SchemaField:
         output_type = None
         no_input = False
         no_output = False
+        required = True
         dependencies = None
         field = default
+        output_field = None
 
         if isinstance(default, property):
             prop = default
-            default = None
+            default = ...
             if prop.fset:
                 _, (k, param) = inspect.signature(prop.fset).parameters.items()
                 param: inspect.Parameter
                 if param.annotation != param.empty:
                     annotation = param.annotation
                 if param.default != param.empty:
+                    # @property
+                    # @Field(...)
+                    # def prop(self):
+                    #     pass
+                    #
                     # @prop.setter
                     # def prop(self, value: str = Field(...)):
                     #     pass
-                    # we will forbid such behaviour
-                    # as it could involve no-consistent behaviour between setter and getter
-                    # the only proper usage of Field over property is
-                    # @Field(...)
-                    # @property
-                    # def prop(self):
-                    #     pass
 
-                    default = param.default
-                    if isinstance(default, Field):
-                        raise ValueError(
-                            f"property: {repr(attname)} defines Field i"
-                            f"n setter param default value, which is not appropriate, "
-                            f"you should use @{default} over the @property"
-                        )
+                    # default = param.default
+                    if isinstance(param.default, Field):
+                        field = param.default
 
-                dependencies = inspect.getclosurevars(prop.fget).unbound
-                # use the unbound properties as default dependencies of property
-                # you can use @Field(dependencies=[...]) to specify yourself
+                        # some invalid configures
+                        if field.alias:
+                            raise ValueError
+                        if field.no_output:
+                            raise ValueError
+                        if field.dependencies:
+                            raise ValueError
+
+                    else:
+                        default = param.default
+                        # raise ValueError(
+                        #     f"property: {repr(attname)} defines Field i"
+                        #     f"n setter param default value, which is not appropriate, "
+                        #     f"you should use @{default} over the @property"
+                        # )
             else:
                 no_input = True
+                required = False
 
             if prop.fget:
                 return_annotation = getattr(prop.fget, "__annotations__", {}).get(
                     "return"
                 )
+
+                dependencies = inspect.getclosurevars(prop.fget).unbound
+                # use the unbound properties as default dependencies of property
+                # you can use @Field(dependencies=[...]) to specify yourself
+
+                output_field = getattr(prop.fget, "__field__", None)
+                if isinstance(output_field, Field):
+
+                    if output_field.dependencies:
+                        dependencies = output_field.dependencies
+
+                    # some invalid configures
+                    if output_field.no_input:
+                        raise ValueError
+                    if output_field.alias_from:
+                        raise ValueError
+                    if not output_field.no_default:
+                        raise ValueError
+
+                else:
+                    output_field = None
+
                 output_type = cls.rule_cls.parse_annotation(
                     annotation=return_annotation,
                     global_vars=global_vars,
                     forward_refs=forward_refs,
                     forward_key=attname,
+                    constraints=output_field.constraints if output_field else None
                 )
+
             else:
                 no_output = True
-
-            field = getattr(prop, "__field__", None)
 
         if not isinstance(field, Field):
             field = cls.field_cls(
                 default=default,
                 no_input=no_input,
                 no_output=no_output,
-                dependencies=dependencies,
+                required=required,
             )
+
+        if not dependencies and field.dependencies:
+            dependencies = field.dependencies
 
         final = False
         _origin = get_origin(annotation)
@@ -694,16 +830,18 @@ class SchemaField:
         )
         return cls(
             attname=attname,
-            name=field.get_alias(
+            name=(output_field or field).get_alias(
                 attname, generator=options.alias_generator if options else None
             ),
             aliases=field.get_alias_from(
                 attname, generator=options.alias_from_generator if options else None
             ),
             input_type=input_type,
-            output_type=output_type or input_type,
+            output_type=output_type,
             field=field,
+            output_field=output_field,
             field_property=prop,
+            dependencies=dependencies,
             # options=options,
             final=final,
         )

@@ -22,7 +22,7 @@ print(User())
 
 * `default_factory`：给出一个制造默认值的工厂函数，会在解析时调用它得到默认值
 ```python
-class Schema(Schema):
+class InfoSchema(Schema):
 	info: dict = Field(default_factory=dict)
 	current_time: datetime = Field(default_factory=datetime.now)
 ```
@@ -31,12 +31,34 @@ class Schema(Schema):
 * 你的默认值（dict, list, tuple, set 等）
 * 你需要在解析时动态得出默认值，如当前的时间
 
+* `defer_default`：如果开启，这时 `default`（或 `default_factory`） 将不会在数据没有输入时填充，作为数据的一部分，而只会在访问属性且没有属性值时被计算
 
-### 缺省字段
-如果你的字段是可选的（ `required=False`）且没有声明默认值，那么它就是一个缺省字段，它有着如下的特点
-* 如果你指定了字段配置中 `unprovided` 参数的值，那么你访问缺省字段会得到该值
-* 否则在数据类实例中访问缺省字段的属性会抛出 `AttributeError`
-* 无法在函数参数中使用，因为那样会使得参数的值出现歧义
+```python
+class InfoSchema(Schema):
+	info: dict = Field(default_factory=dict, defer_default=True)
+	current_time: datetime = Field(default_factory=datetime.now, defer_default=True)
+
+info = InfoSchema()   # no fields provided
+info.info.update(key='value')
+print(info.info)   # just generated a new one because there is no "info" in the inst
+# {}
+
+info.info = {'version': 3}   # set a value, so no default will be used
+info.info.update(key='value')
+print(info.info)
+# {'version': 3, 'key': 'value'}
+```
+
+这时如果 current_time 没有被提供或赋值，每次访问 current_time 属性时都会按照 `default_factory` 进行计算，并得到当前的时间
+
+这样带来的特性是没有传入或赋值的数据可以通过属性访问到值，但不会进行输出
+
+!!! warning
+	如果你的字段是可选的 `required=False`，并且没有指定默认值，当该字段没有传入时，如果你访问该字段的属性将会抛出 `AttributeError`，使用键访问相应的 key 会抛出 `KeyError`
+
+!!! note
+	`defer_default` 仅对数据类有效，对函数无效，因为函数参数一定需要传入一个有意义的值，所以会直接计算 default 进行传入
+
 
 ## 说明与标记
 

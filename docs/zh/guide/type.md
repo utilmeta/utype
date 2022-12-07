@@ -605,3 +605,13 @@ print(type_transform('{"value": true}', dict))
 * `'ignore'`：忽略，不再转化，而是直接使用输入值作为结果
 * `'init'`：尝试使用 `t(data)` 对未知类型进行初始化
 * `'throw'`：直接抛出错误，不再转化，这个选项是默认值
+
+### 兼容其他类库
+
+#### 兼容 `pydantic`
+
+
+#### 兼容 `attrs`
+
+
+#### 兼容 `dataclass` 标准库

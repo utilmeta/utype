@@ -2,6 +2,27 @@
 from typing import Union, Any, List, Set
 
 
+class FieldError(AttributeError, KeyError):
+    def __init__(
+        self,
+        msg: str = None,
+        *,
+        field=None,
+        origin_exc: Exception = None,
+    ):
+        self.msg = msg
+        self.field = field
+        self.origin = origin_exc
+
+
+class UpdateError(FieldError):
+    pass
+
+
+class DeleteError(FieldError):
+    pass
+
+
 class ParseError(TypeError, ValueError):
     def __init__(
         self,

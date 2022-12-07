@@ -1,8 +1,12 @@
+import warnings
+
 from .parser.rule import LogicalType
 from .parser.options import Options, RuntimeOptions
 from .parser.cls import ClassParser
-from .parser.field import SchemaField
-from typing import Union
+from .parser.field import ParserField
+from .utils import exceptions as exc
+from typing import Union, Callable
+from functools import partial
 
 
 class LogicalMeta(type):
@@ -66,17 +70,22 @@ class DataClass(metaclass=LogicalMeta):
         cls.__options__ = cls.__parser__.options
 
         parser.make_init(
-            init_super=False,
-            allow_runtime=True,
-            set_attributes=True,
-            coerce_property=True,
+            # init_super=False,
+            # allow_runtime=True,
+            # set_attributes=True,
+            # coerce_property=False,
             post_init=cls.__post_init__,
         )
-        parser.make_repr()
+        parser.make_repr(ignore_str=False)
+        parser.make_contains(output_only=True)
         parser.assign_properties(
             post_setattr=cls.__post_setattr__,
             post_delattr=cls.__post_delattr__
         )
+
+    @property
+    def __name__(self):
+        return self.__parser__.name
 
     def __class_getitem__(cls, item):
         pass
@@ -88,10 +97,13 @@ class DataClass(metaclass=LogicalMeta):
         self.__runtime_options__ = options
         self.__validate__(options)
 
-    def __post_setattr__(self, field: SchemaField, value, options: RuntimeOptions):
+    def __post_setattr__(self, field: ParserField, value, options: RuntimeOptions):
         pass
 
-    def __post_delattr__(self, field: SchemaField, options: RuntimeOptions):
+    def __post_delattr__(self, field: ParserField, options: RuntimeOptions):
+        pass
+
+    def __export__(self):
         pass
 
 
@@ -107,19 +119,33 @@ class Schema(dict, metaclass=LogicalMeta):
         cls.__options__ = cls.__parser__.options
 
         parser.make_init(
-            init_super=True,
-            allow_runtime=True,
-            set_attributes=True,
-            coerce_property=True,
+            # init_super=True,
+            # allow_runtime=True,
+            # set_attributes=False,   # n
+            # coerce_property=True,
             post_init=cls.__post_init__,
         )
         parser.assign_properties(
-            post_setattr=cls.__post_setattr__,
-            post_delattr=cls.__post_delattr__
+            getter=cls.__field_getter__,
+            setter=cls.__field_setter__,
+            deleter=cls.__field_deleter__
         )
 
+        for key, field in parser.property_fields.items():
+            # if field.property.fset:
+            #   if field.always_no_output(cls.__options__.make_runtime(cls)) and not field.dependants:
+            #       continue
+            hooked_property = property(
+                fget=partial(cls.__field_getter__, field=field, getter=field.property.fget),
+                fset=partial(cls.__field_setter__, field=field, setter=field.property.fset)
+                if field.property.fset else None,
+                fdel=partial(cls.__field_deleter__, field=field, deleter=field.property.fdel)
+                if field.property.fdel else None,
+            )
+            setattr(cls, field.attname, hooked_property)
+
     def __class_getitem__(cls, item):
-        pass
+        raise NotImplemented
 
     def __validate__(self, options=None):
         pass
@@ -140,88 +166,193 @@ class Schema(dict, metaclass=LogicalMeta):
     def __repr__(self):
         return self.__str__()
 
+    # coerce_properties need to separate from set_attributes and execute by order
+    # because the dependencies that the property need may not be set during one-time loop
+    # (which is guarantee by the field orders, and consider not reliable)
+    def __coerce_property__(self, field: ParserField, options: RuntimeOptions):
+        if field.always_no_output(options):
+            return
+
+        if not field.dependencies.issubset(self):
+            return
+
+        try:
+            attr = field.property.fget(self)    # get from the original getter
+        except Exception as e:
+            error_option = field.output_field.on_error if field.output_field else None
+            msg = f"@property: {repr(field.attname)} calculate failed with error: {e}"
+            if error_option == options.THROW:
+                raise e.__class__(msg) from e
+            else:
+                warnings.warn(msg)
+            return
+
+        value = field.parse_output_value(       # parse @property result also
+            attr, options=options
+        )
+
+        if value is ...:
+            return
+
+        if not field.no_output(value, options=options):
+            super().__setitem__(field.name, value)
+            # values[key] = value
+            # do not apply cache here
+            # when updating it will get nasty
+            # _obj_self.__dict__[field.attname] = value
+        else:
+            if field.name in self:
+                super().__delitem__(field.name)
+            if field.attname in self.__dict__:
+                self.__dict__.pop(field.attname)
+
+        return value
+
     def __post_init__(self, values, options: RuntimeOptions):
+        super().__init__(values)
         self.__runtime_options__ = options
+        for key, field in self.__parser__.property_fields.items():
+            self.__coerce_property__(field, options=options)
         self.__validate__(options)
+        options.raise_error()   # raise error if there is any
+
+    def __contains__(self, item: str):
+        field = self.__parser__.get_field(item)
+        if not field:
+            return False
+        return super().__contains__(field.name)
+
+    def __field_getter__(self, field: ParserField, getter: Callable = None):
+        if field.name in self:
+            # include output properties which is contained in the data
+            return self[field.name]
+        if field.attname in self.__dict__:
+            # maybe a no_output field
+            return self.__dict__[field.attname]
+        options = self.__options__.make_runtime(__class__, force_error=True)
+        if callable(getter):
+            value = field.parse_output_value(getter(self), options=options)
+            if value is ...:
+                raise AttributeError(
+                    f"{self.__name__}: @property: {repr(field.attname)} failed to calculate"
+                )
+            return value
+
+        deferred_default = field.get_default(options=options, defer=True)    # get deferred default
+        if deferred_default is not ...:
+            return deferred_default
+        raise AttributeError(
+            f"{self.__name__}: {repr(field.attname)} not provided in schema instance"
+        )
+
+    def __getitem__(self, item):
+        # stay the same behaviour as the __contains__
+        field = self.__parser__.get_field(item)
+        if not field:
+            raise KeyError(f"{self.__name__}: {repr(field.name)} not provided in schema instance")
+        return super().__getitem__(item)
+
+    def __field_setter__(self, value, field: ParserField, setter: Callable = None):
+        if self.__options__.immutable or field.immutable:
+            raise exc.UpdateError(
+                f"{self.__name__}: "
+                f"Attempt to set immutable attribute: [{repr(field.attname)}]"
+            )
+
+        options = self.__options__.make_runtime(__class__, force_error=True)
+        value = field.parse_value(value, options=options)
+
+        if field.property:
+            if callable(setter):
+                # @property.fset
+                setter(self, value)
+
+            # force calculate property
+            self.__coerce_property__(field, options=options)
+        else:
+            if field.no_output(value, options=options):
+                self.__dict__[field.attname] = value
+                # no output
+                if field.name in self:
+                    super().__delitem__(field.name)
+            else:
+                super().__setitem__(field.name, value)
+
+        if field.dependants:
+            # need to update the dependant properties
+            for dep in field.dependants:
+                dep_field = self.__parser__.get_field(dep)
+                if dep_field and dep_field.property:
+                    self.__coerce_property__(dep_field, options=options)
 
     def __setitem__(self, alias: str, value):
         if self.__options__.immutable:
-            raise AttributeError(
+            raise exc.UpdateError(
                 f"{self.__class__}: "
                 f"Attempt to set item: [{repr(alias)}] in immutable schema"
             )
 
         field = self.__parser__.get_field(alias)
-        options = self.__options__.make_runtime(__class__, force_error=True)
         if not field:
             if alias in self.__parser__.exclude_vars:
-                raise AttributeError(
+                raise exc.UpdateError(
                     f"{self.__class__}: Attempt to set excluded attribute: {repr(alias)}"
                 )
+            options = self.__options__.make_runtime(__class__, force_error=True)
             addition = self.__parser__.parse_addition(alias, value, options=options)
             if addition is ...:
                 # ignore addition
                 return
             return super().__setitem__(alias, value)
 
-        if field.immutable:
-            raise AttributeError(
-                f"{self.__class__}: " f"Attempt to set immutable item: [{repr(alias)}]"
+        return self.__field_setter__(value, field=field)
+
+    def __field_deleter__(self, field: ParserField, deleter: Callable = None):
+        if self.__options__.immutable or field.immutable:
+            raise exc.DeleteError(
+                f"{self.__name__}: "
+                f"Attempt to set immutable attribute: [{repr(field.attname)}]"
             )
-        value = field.parse_value(
-            value, options=self.__options__.make_runtime(__class__)
-        )
-        self.__dict__[field.attname] = value
 
-        if not field.no_output(value, options=options):
-            super().__setitem__(field.name, value)
+        if callable(deleter):
+            deleter(self)
 
-    def __post_setattr__(self, field: SchemaField, value, options: RuntimeOptions):
-        if not field.no_output(value, options=options):
-            if field.property:
-                value = getattr(self, field.attname)
-                # self.__dict__[field.attname] = value
-            super().__setitem__(field.name, value)
-        else:
-            # no output
             if field.name in self:
                 super().__delitem__(field.name)
-
-    def __post_delattr__(self, field: SchemaField, options: RuntimeOptions):
-        if field.name in self:
+        else:
+            options = self.__options__.make_runtime(__class__, force_error=True)
+            if field.is_required(options):
+                raise exc.DeleteError(
+                    f"{self.__name__}: Attempt to delete required schema key: {repr(field.attname)}"
+                )
+            if field.name not in self:
+                raise exc.DeleteError(
+                    f"{self.__name__}: Attempt to delete nonexistent attribute: {repr(field.attname)}"
+                )
             super().__delitem__(field.name)
-        super().__delattr__(field.attname)
+
+        if field.name in self.__dict__:
+            self.__dict__.pop(field.attname)
 
     def __delitem__(self, key: str):
         if self.__options__.immutable:
-            raise AttributeError(
+            raise exc.DeleteError(
                 f"{self.__class__}: "
                 f"Attempt to delete item: [{repr(key)}] in immutable schema"
             )
         field = self.__parser__.get_field(key)
         if not field:
             return super().__delitem__(key)
-        if field.immutable:
-            raise AttributeError(
-                f"{self.__name__}: " f"Attempt to delete immutable item: [{repr(key)}]"
-            )
-        options = self.__options__.make_runtime(__class__, force_error=True)
-        if field.is_required(options):
-            raise AttributeError(
-                f"{self.__name__}: Attempt to delete required schema key: {key}"
-            )
-        super().__delitem__(field.name)
-        if hasattr(self, field.attname):
-            super().__delattr__(field.attname)
+        return self.__field_deleter__(field)
 
     def popitem(self):
         if self.__options__.immutable:
-            raise TypeError(f"{self.__name__}: Attempt to popitem in immutable schema")
+            raise exc.DeleteError(f"{self.__name__}: Attempt to popitem in immutable schema")
         return super().popitem()
 
     def pop(self, key: str):
         if self.__options__.immutable:
-            raise AttributeError(
+            raise exc.DeleteError(
                 f"{self.__class__}: "
                 f"Attempt to pop item: [{repr(key)}] in immutable schema"
             )
@@ -229,12 +360,12 @@ class Schema(dict, metaclass=LogicalMeta):
         if not field:
             return super().pop(field.name)
         if field.immutable:
-            raise AttributeError(
-                f"{self.__name__}: " f"Attempt to pop immutable item: [{repr(key)}]"
+            raise exc.DeleteError(
+                f"{self.__name__}: Attempt to pop immutable item: [{repr(key)}]"
             )
         options = self.__options__.make_runtime(__class__, force_error=True)
         if field.is_required(options):
-            raise TypeError(
+            raise exc.DeleteError(
                 f"{self.__name__}: Attempt to delete required schema key: {repr(key)}"
             )
         return super().pop(field.name)
@@ -244,21 +375,41 @@ class Schema(dict, metaclass=LogicalMeta):
             raise AttributeError(
                 f"{self.__name__}: Attempt to update in immutable schema"
             )
-        return super().update(
-            self.__parser__(
-                __m or kwargs, options=Options(ignore_required=True).make_runtime()
-            )
-        )
+        data = dict(__m) if __m else kwargs
+        for key, val in data.items():
+            self.__setitem__(key, val)
+        # TODO: reduce the dependant property calculation times if there are duplicate dependants
+
+        # options = self.__options__.patch(
+        #     ignored_options=['min_properties'],
+        #     ignore_required=True,
+        #     no_default=True,
+        # ).make_runtime()
+        #
+        # values = self.__parser__(
+        #     # keep the original options settings including the addition
+        #     dict(__m) if __m else kwargs, options=options
+        # )
+        #
+        # self.__parser__.set_attributes(values, self, options=options)
+        # self.__parser__.coerce_properties(values, self, options=options)
+        #
+        # return super().update(values)
 
     def clear(self):
         if self.__options__.immutable:
-            raise TypeError(
+            raise exc.DeleteError(
                 f"{self.__name__}: Attempt to clear in Options(immutable=True) schema"
             )
+        options = self.__options__.make_runtime(__class__, force_error=True)
         for key, field in self.__parser__.fields.items():
             if field.immutable:
-                raise TypeError(
+                raise exc.DeleteError(
                     f"{self.__name__}: Attempt to clear schema with immutable field: {repr(field.name)}"
+                )
+            if field.is_required(options=options):  # unless options is ignore_required
+                raise exc.DeleteError(
+                    f"{self.__name__}: Attempt to delete required schema key: {repr(key)}"
                 )
         return super().clear()
 

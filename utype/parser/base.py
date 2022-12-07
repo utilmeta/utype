@@ -1,5 +1,5 @@
 from typing import Optional, Callable, Type, Dict, Set, List, Union, Tuple
-from .field import SchemaField
+from .field import ParserField
 
 from .options import Options, RuntimeOptions
 from ..utils.compat import *
@@ -14,7 +14,7 @@ __parsers__ = {}
 
 class BaseParser:
     options_cls = Options
-    schema_field_cls = SchemaField
+    schema_field_cls = ParserField
 
     DEFAULT_EXCLUDE_VARS = {"__options__", "__class__"}
 
@@ -53,7 +53,7 @@ class BaseParser:
         self.forward_refs: Dict[
             str, Tuple[ForwardRef, dict]
         ] = {}  # store unresolved ref
-        self.fields: Dict[str, SchemaField] = {}
+        self.fields: Dict[str, ParserField] = {}
         self.exclude_vars: Set[str] = set(self.DEFAULT_EXCLUDE_VARS)
         # these data structures are designed to speed up the parsing
         self.case_insensitive_names: Set[str] = set()
@@ -102,7 +102,7 @@ class BaseParser:
                     f' with field {self.fields["__options__"]}'
                 )
 
-    def _get_field_from(self, fields: dict, key: str) -> Optional[SchemaField]:
+    def _get_field_from(self, fields: dict, key: str) -> Optional[ParserField]:
         if key in fields:
             return fields[key]
         if key in self.field_alias_map:
@@ -115,7 +115,7 @@ class BaseParser:
     # def get_input_field(self, key: str) -> Optional[SchemaField]:
     #     return self._get_field_from(self.input_fields, key)
 
-    def get_field(self, key: str) -> Optional[SchemaField]:
+    def get_field(self, key: str) -> Optional[ParserField]:
         return self._get_field_from(self.fields, key)
 
     def get_attrs(self, data: Union[list, tuple, set, dict, str]):
@@ -281,7 +281,6 @@ class BaseParser:
                 self.fields,
                 excluded_vars=self.exclude_vars,
                 alias_map=alias_map,
-                attr_alias_map=attr_alias_map,
             )
 
     @property

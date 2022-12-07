@@ -3,7 +3,7 @@ from .options import Options, RuntimeOptions
 from ..utils.functional import pop
 from ..utils import exceptions as exc
 from .rule import resolve_forward_type, Rule
-from .field import SchemaField
+from .field import ParserField
 import inspect
 from .base import BaseParser
 from functools import wraps, cached_property
@@ -229,7 +229,7 @@ class FunctionParser(BaseParser):
         return fields
 
     @cached_property
-    def positional_only_fields(self) -> List[Tuple[int, SchemaField]]:
+    def positional_only_fields(self) -> List[Tuple[int, ParserField]]:
         fields = []
         for i, key in enumerate(self.pos_only_keys):
             field = self.get_field(key)

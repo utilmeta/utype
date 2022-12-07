@@ -106,8 +106,8 @@ Field 可以为字段配置更多丰富的行为，只需要将 Field 类的实�
 * **约束配置**：包括 [Rule 约束](/zh/references/rule) 中的所有约束参数，如 `gt`, `le`, `max_length`, `regex` 等等，用于给字段以参数的方式指定约束
 * **别名配置**：`alias`，`alias_from`，`case_insensitive` 等，用于为字段指定属性名外的名称，以及大小写是否敏感等，可以用于定义属性声明不支持的字段名称
 * **模式配置**：`readonly`，`writeonly`，`mode` 等，用于配置数据类或函数在不同的解析模式下的行为
-* **输入与输出配置**：`no_input`，`no_output`
-* **属性行为配置**：`immutable`，`unprovided`
+* **输入与输出配置**：`no_input`，`no_output`，用于控制字段的输入和输出行为
+* **属性行为配置**：`immutable`，`unprovided`，用于控制字段对应属性的可变更性
 
 更完整的 Field 配置参数及用法，可以参考 [Field 字段配置的 API 参考](/zh/references/field)
 
@@ -137,29 +137,23 @@ class ArticleSchema(Schema):
         unprovided=None  
     )  
     tags: List[str] = Field(default_factory=list, no_output=lambda v: not v)
+
+
+article = ArticleSchema(  
+    slug=b'test-article',  
+    body='article body',  
+    tags=[]
+)
+
+print(article)  
+# > ArticleSchema(slug='test-article', content='article body', views=0)  
 ```
 
 我们逐个看一下例子中声明的字段
 
 * `slug`：文章的 URL 路径字段，使用 `regex` 为字段指定了正则约束，并且设置了 `immutable=True`，意味着字段不可被修改，还指定了示例值 `example` 和描述 `description` 用于更好的说明字段的用途
-* `content`：文章的内容字段，其中使用 `alias_from` 参数指定了一些可以从中转化的别名，这个特性对于字段的更名和版本兼容非常有用，比如上个版本的内容字段名称是 `'body'`，在当前版本中被废弃并使用了 `'content'` 作为内容字段的名称
-* `views`：文章的访问量字段，指定了 `ge` 最小值约束和默认值
-* `created_at`：文章的创建时间字段，使用 `alias` 指定了字段在输出时的别名为 `'createdAt'`，使用 `required=False` 标记这是一个可选字段，由于没有提供默认值，它使用了 `unprovided=None` 指定了当没有提供值时，访问属性会得到 None（如果没有指定 `unprovided`，则当该字段没有提供值时，访问属性会抛出 `AttributeError`）
-
-* `tags`：文章的标签字段，指定了默认值的工厂函数为 list，也就是说如果这个字段没有提供，将会制造一个空列表（`list()`） 作为默认值，另外指定了 `no_output` 函数，表示当值为空时不进行输出
-
-下面来看一下我们声明出来的 `ArticleSchema` 的具体行为
 
 ```python
-article = ArticleSchema(  
-    slug=b'test-article',  
-    body='article body',  
-    tags=[]
-)  
-
-print(article)  
-# > ArticleSchema(slug='test-article', content='article body', views=0)  
-
 try:  
     article.slug = 'other-slug'  
 except AttributeError as e:  
@@ -167,8 +161,16 @@ except AttributeError as e:
     """  
     AttributeError: ArticleSchema: Attempt to set immutable attribute: ['slug']    
     """  
+```
 
+* `content`：文章的内容字段，其中使用 `alias_from` 参数指定了一些可以从中转化的别名，这个特性对于字段的更名和版本兼容非常有用，比如上个版本的内容字段名称是 `'body'`，在当前版本中被废弃并使用了 `'content'` 作为内容字段的名称
+
+* `views`：文章的访问量字段，指定了 `ge` 最小值约束和默认值 0，所以当没有输入时会自动填入默认值 0，当输入的值或赋值的值违背约束时会抛出错误
+
+```python
 from utype import exc  
+
+assert article.views == 0
 try:  
     article.views = -3  
 except exc.ParseError as e:  
@@ -176,7 +178,11 @@ except exc.ParseError as e:
     """  
     ParseError: parse item: ['views'] failed: Constraint: <ge>: 0 violated    
     """
+```
 
+* `created_at`：文章的创建时间字段，使用 `alias` 指定了字段在输出时的别名为 `'createdAt'`，使用 `required=False` 标记这是一个可选字段，由于没有提供默认值，它使用了 `unprovided=None` 指定了当没有提供值时，访问属性会得到 None（如果没有指定 `unprovided`，则当该字段没有提供值时，访问属性会抛出 `AttributeError`）
+
+```python
 assert 'createdAt' not in article   # True
 assert article.created_at is None   # True
 article.created_at = '2022-02-02 10:11:12'  
@@ -189,14 +195,10 @@ print(dict(article))
 # }
 ```
 
-我们可以发现
-* slug 字段指定了 `immutable=True`，所以尝试赋值会抛出 `AttributeError`
-* 虽然我们输入的数据中使用 `'body'` 传递文章的内容，但它位于 `content` 字段声明的 `alias_from` 中，所以会被转化为 `content` 字段
-* 为 views 字段的赋值违背了它所声明的约束，所以抛出了 `exc.ParseError` 错误
-* 虽然我们没有输入 views 字段，但由于它指定了默认值为 0，所以在输出结果中 views 对应的值就是 0
-* created_at 字段声明了 `required=False` 且没有声明默认值，所以当输入数据没有提供时，它并不在实例的数据当中，但由于它指定了 `unprovided=None`，所以当你访问这个属性时，会得到 None 值
-* 在为 created_at 赋值后，它被转化为了字段的类型 datetime，并且在输出数据（转化为字典的数据）中，created_at 字段的名称变成了它指定的 `alias` 参数的值 `'createdAt'`
-* `tags` 字段虽然输入了一个空列表，但是由于它指定的 `no_output` 函数判断当值为空时不进行输出，所以输出的结果中不包含 `'tags'` 字段
+在为 created_at 赋值后，它被转化为了字段的类型 datetime，并且在输出数据（转化为字典的数据）中，created_at 字段的名称变成了它指定的 `alias` 参数的值 `'createdAt'`
+
+* `tags`：文章的标签字段，指定了默认值的工厂函数为 list，也就是说如果这个字段没有提供，将会制造一个空列表（`list()`） 作为默认值，另外指定了 `no_output` 函数，表示当值为空时不进行输出
+
 
 !!! warning
 	数据类对属性赋值的解析转化只能作用于直接赋值的情况，如果在这个例子中你使用了 `article.tags.append(obj)` 操作 `tags` 字段中的数据的话，就不会获得 utype 提供的解析功能了
@@ -272,7 +274,45 @@ print(dict(article))
 !!! note
 	这其实也是一般博客网站的做法，直接使用文章标题来生成 URL 路径字符串
 
+**no_input setter**
+一些情况下，你可能不希望 `@property` 的 setter 能够输入
+```python
+from utype import Schema, Field  
+  
+  
+class ArticleSchema(Schema):  
+    _title: str  
+    
+    @property  
+    def title(self) -> str:  
+        return self._title  
+  
+    @title.setter  
+    def title(self, val: str = Field(max_length=50, no_input=True)):  
+        self._title = val    
+```
 
+这时即使你的输入数据中包含 `'title'` 字段，也不会进行输入（对 `'title'` 进行属性赋值）
+
+#### 指定 deleter
+
+
+#### 为属性配置 Field
+属性字段也支持使用 Field 配置一些属性，但是有着一定的限制
+
+* getter：通过使用 `@Field(...)` 装饰器装饰 getter，不能配置输入（no_input）行为，不能配置 alias_from
+* setter：通过在 setter 的输入字段的默认值中指定 Field，不能配置输出（no_output）行为，不能配置 alias
+
+理论上你可以给 getter， setter 使用 Field 指定不一样的 title / description / example，用于输入/输出的模板
+
+在 setter 中
+* no_input=True：表示不接受在初始化时输入，只能使用属性赋值调控
+* immutable=True：表示不接受属性赋值，只能在初始化时输入
+
+同时指定这两项没有意义，会导致 setter 变得无效
+
+另外有些选项对于属性字段无意义
+* `defer_default`：你已经可以通过 getter 控制属性访问了，所以 defer 没有意义
 
 ### 字段准入规则
 
@@ -455,7 +495,7 @@ class User:
 * `init_attributes`：是否在初始化时赋值对应的属性，默认为 True
 * `init_properties`：是否在初始化时直接计算数据类中定义的 `@property` 的值并将其作为数据的一部分
 * `post_init`：传入一个函数，在 `__init__` 函数完成后调用，可以用于编写自定义的校验逻辑
-* `set_properties`：是否对字段对应的类属性重新赋值为一个 `property`，这样能够在运行时的属性赋值与删除时获得字段配置的解析能力和保护，默认为 False
+* `set_class_properties`：是否对字段对应的类属性重新赋值为一个 `property`，这样能够在运行时的属性赋值与删除时获得字段配置的解析能力和保护，默认为 False
 
 我们可以直观比较一下它们的区别
 ```python
@@ -488,15 +528,15 @@ print(UserB.age)
 # > <property object>
 ```
 
-默认情况下，`set_properties=False` 类的属性不会被影响，访问它会得到对应的属性值，如果属性值没有被定义，则会直接抛出一个 AttributeError，与普通的类的行为一致
+默认情况下，`set_class_properties=False` 类的属性不会被影响，访问它会得到对应的属性值，如果属性值没有被定义，则会直接抛出一个 AttributeError，与普通的类的行为一致
 
-而在开启了 `set_properties=True` 后，所有的字段对应的类属性都会被重新赋值为一个 `property` 实例，使得实例中的字段属性的更新与删除变得可控
+而在开启了 `set_class_properties=True` 后，所有的字段对应的类属性都会被重新赋值为一个 `property` 实例，使得实例中的字段属性的更新与删除变得可控
 
 * `post_setattr`：在实例的字段属性发生赋值（`setattr`）操作后调用这个函数，可以进行一些自定义的处理行为
 * `post_delattr`：在实例的字段属性发生删除（`delattr`）操作后调用这个函数，可以进行一些自定义的处理行为
 
 !!! note
-	只有在开启 `set_properties=True` 时，传入 `post_setattr` 和 `post_delattr` 才有意义
+	只有在开启 `set_class_properties=True` 时，传入 `post_setattr` 和 `post_delattr` 才有意义
 
 * `repr`：是否对类的 `__repr__` 与 `__str__` 方法进行改造，使得当你使用 `print(inst)` 或 `str(inst)`, `repr(inst)` 时，能够得到一个高可读性的输出，将数据类实例中的字段和对应值展示出来，默认为 True
 
@@ -560,6 +600,27 @@ print(data.items)
 !!! note
 	Schema 类和 DataClass 类都是 utype 预先定义好的数据类，其中有着一定的行为偏好，如果你属性它们的特征和用法可以直接继承使用，如果你需要更多的定制行为，可以通过 `@utype.dataclass` 声明数据类
 
+
+**深入：Schema 实例中的数据存储**
+
+由于 Schema 继承自字典类，在 Schema 的实例中，所有的字段数据都是保存在自身的字典结构中的，当我们访问 Schema 实例的属性时，其实是访问了对应的键值
+
+* no_output：被设置或检测到 no_output 的字段，它们会直接设置 `__dict__` 属性值，而不会赋值到内部字典数据中，这样你可以通过属性访问到这个值，但是使用 `key in obj` 将会得到 False，使用 `dict(obj)` 也不会看到该字段的输出
+* property：如果一个属性字段的依赖都被提供时，它就会直接在初始化时进行计算，并将结果保存在自身的数据中（除非指定了 no_output）
+
+property 的关联更新：
+property  的 getter 中会存在一些依赖字段（或者显式声明 `dependencies`），当这些依赖字段发生变化时，property  也会发生变化
+* 初始化时 coerce getter 并赋值到数据中（除非指定了 no_output）
+* 如果 property 有 setter， setter 调用时更新 getter
+* 如果  property 有 dependencies，那么当 dependencies 中有字段发生更新时调用 getter
+
+!!! warning
+	property 无法捕捉到 excluded vars 的更新（比如以下划线开头的非字段属性），所以如果你有这些依赖，需要自行管理，或者让它们只在该 property 的 setter 中更新
+
+对于 delete attr 或者 delete item，即使 default 不是 deferred，此时也不会再赋值，那个键值/属性会被直接删除，并且不会出现在输出结果中，只不过如果 default 是 deferred 的话，那么在删除后访问属性仍然能够得到值而已
+
+对于 Schema，`__dict__` 更像是一个 fallback，属性值和输出值都不从这取
+
 ### DataClass 类
 DataClass 类没有任何基类，所以在这个类中声明字段没有名称上的限制，实现更加简洁，但同时无法像 Schema 一样支持字典相关的方法
 
@@ -569,8 +630,19 @@ DataClass 类没有任何基类，所以在这个类中声明字段没有名称�
 DataClass 类对应的偏好配置是
 * `init_attributes=True`
 * `init_properties=True`
-* `set_properties=True`
+* `set_class_properties=True`
 * `repr=True`
+* `contains=True`
+
+**深入：DataClass 实例中的数据存储**
+与 Schema 类不同，DataClass 实例中的字段数据都是存储在属性 `__dict__` 中的，
+
+* no_output：在实例的属性中并不区分是否 output，DataClass 声明了一个 `__export__` 方法，用于导出数据
+* unprovided/defered default：如果输入数据没有提供，且 default 是 defer 的，那么对应的属性就不会赋值给 `__dict__`，只会在访问到对应数据时才会计算 default，而且每次访问都会计算
+* property：property 并不迫使计算，只有在访问时或输出时（没有 no_output）进行计算，所以也无需调控关联更新
+
+contains 行为：与 Schema 一样仅包含可输出的字段
+
 
 ### 通过 ClassParser 制造
 
@@ -616,6 +688,25 @@ DataClass 类对应的偏好配置是
 * `__validate__`
 * `__post_init__`
 
+
+## 生成数据模板
+
+### JSON Schema
+
+
+### 输入-输出
+
+
+### 选择模式
+
+以上还可以组合，比如
+* 读（`'r'`）模式下，使用输出模板给到用户，作为 API 的响应/结果文档
+* 写（`'w'`）模式下，使用输入模板给到用户，作为 API 的请求/参数文档
+
+!!! note
+	如果你是一个面向数据库的后端应用，读模式的输入和写模式的输出对应的都是数据库（读 SQL执行的结果与写 SQL 的输入参数）
+
+对于函数而言，参数中的所有模板都是输入模板，返回值类型中的模板都是输出模板
 
 ## 序列化编码
 当我们需要将一个数据类中的数据通过网络进行传输时，就往往需要使用 JSON，XML 等格式对数据进行序列化编码

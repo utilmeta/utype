@@ -2,16 +2,22 @@ from .base import BaseParser
 from .func import FunctionParser
 from ..utils.compat import is_classvar, is_final
 from ..utils.functional import pop
-from .field import SchemaField
+from .field import ParserField
 from typing import Callable, Dict
 import inspect
 from ..utils.transform import register_transformer, TypeTransformer
 from collections.abc import Mapping
+from .options import RuntimeOptions
+from functools import partial
+import warnings
+
+
+__all__ = ['ClassParser']
 
 
 class ClassParser(BaseParser):
     function_parser_cls = FunctionParser
-    fields: Dict[str, SchemaField]
+    fields: Dict[str, ParserField]
 
     def __init__(self, obj, *args, **kwargs):
         if not inspect.isclass(obj):
@@ -160,7 +166,7 @@ class ClassParser(BaseParser):
         self.attr_alias_map = attr_alias_map
         self.case_insensitive_names = case_insensitive_names
 
-    def make_setter(self, field: SchemaField, post_setattr=None):
+    def make_setter(self, field: ParserField, post_setattr=None):
         def setter(_obj_self: object, value):
             if self.options.immutable or field.immutable:
                 raise AttributeError(
@@ -176,7 +182,7 @@ class ClassParser(BaseParser):
 
         return setter
 
-    def make_deleter(self, field: SchemaField, post_delattr=None):
+    def make_deleter(self, field: ParserField, post_delattr=None):
         def setter(_obj_self: object):
             if self.options.immutable or field.immutable:
                 raise AttributeError(
@@ -202,7 +208,7 @@ class ClassParser(BaseParser):
 
         return setter
 
-    def make_getter(self, field: SchemaField):
+    def make_getter(self, field: ParserField):
         def getter(_obj_self: object):
             if field.attname not in _obj_self.__dict__:
                 raise AttributeError(
@@ -212,23 +218,50 @@ class ClassParser(BaseParser):
 
         return getter
 
-    def assign_properties(self, post_setattr=None, post_delattr=None):
+    def assign_properties(self,
+                          getter: Callable = None,
+                          setter: Callable = None,
+                          deleter: Callable = None,
+                          post_setattr: Callable = None,
+                          post_delattr: Callable = None):
+
         for key, field in self.fields.items():
             if field.property:
                 continue
 
             prop = property(
-                self.make_getter(field),
-                self.make_setter(field, post_setattr=post_setattr),
-                self.make_deleter(field, post_delattr=post_delattr),
+                partial(getter, field=field) if getter else self.make_getter(field),
+                partial(setter, field=field) if setter else self.make_setter(field, post_setattr=post_setattr),
+                partial(deleter, field=field) if deleter else self.make_deleter(field, post_delattr=post_delattr),
             )
-            # prop.__field__ = field
+            # prop.__field__ = field        # cannot set attribute to @property
             setattr(self.obj, field.attname, prop)
 
     def get_parser(self, obj_self: object):
         if self.obj == obj_self.__class__:
             return self
         return self.resolve_parser(obj_self.__class__)
+
+    def make_contains(self, output_only: bool = False):
+        contains_func = self.obj.__dict__.get("__contains__")
+        if contains_func:
+            return
+
+        def __contains__(_obj_self, item: str):
+            parser = self.get_parser(_obj_self)
+            field = parser.get_field(item)
+            if not field:
+                return False
+            if field.attname not in _obj_self.__dict__:
+                return False
+            if not output_only:
+                return True
+            if field.no_output(_obj_self.__dict__[field.attname], options=parser.options):
+                return False
+            return True
+
+        setattr(self.obj, "__contains__", __contains__)
+        return __contains__
 
     def make_repr(self, ignore_str: bool = False):
         repr_func = self.obj.__dict__.get("__repr__")
@@ -256,12 +289,54 @@ class ClassParser(BaseParser):
 
         return __repr__
 
+    def set_attributes(self,
+                       values,
+                       instance: object,
+                       options: RuntimeOptions,
+                       ):
+        parser = self
+        for key, field in parser.fields.items():
+            if key not in values:
+                continue
+                # value = field.get_default(parser.options, defer=False)
+                # if value is ...:
+                #     if field.attname in _obj_self.__dict__:
+                #         # delete attr for that unprovided value
+                #         # any access to this attribute will raise AttributeError
+                #         _obj_self.__dict__.pop(field.attname)
+                #     continue
+            elif field.no_output(values[key], options=options):
+                value = values.pop(key)
+                # for schema
+                # _obj_self.__dict__[field.attname] = value
+            else:
+                value = values[key]
+
+            if field.property:
+                try:
+                    field.property.fset(instance, values[key])      # call the original setter
+                    # setattr(instance, field.attname, values[key])
+                except Exception as e:
+                    error_option = field.get_on_error(options)
+                    msg = f"@property: {repr(field.attname)} assign failed with error: {e}"
+                    if error_option == options.THROW:
+                        raise e.__class__(msg) from e
+                    else:
+                        warnings.warn(msg)
+                    continue
+                # raise the error directly if setattr failed
+            else:
+                # TODO: it seems redundant for Schema, so we just use it as a fallback for now
+                # and work on it later if something went wrong
+                instance.__dict__[field.attname] = value
+
     def make_init(
         self,
-        init_super: bool = False,
-        allow_runtime: bool = False,
-        set_attributes: bool = True,
-        coerce_property: bool = False,
+        # init_super: bool = False,
+        # allow_runtime: bool = False,
+        # set_attributes: bool = True,
+        # coerce_property: bool = False,
+        no_parse: bool = False,
         post_init: Callable = None,
     ):
 
@@ -282,44 +357,15 @@ class ClassParser(BaseParser):
                 parser = self.get_parser(_obj_self)
                 options = parser.options.make_runtime(
                     parser.obj,
-                    options=pop(kwargs, "__options__") if allow_runtime else None,
+                    options=pop(kwargs, "__options__")  # if allow_runtime else None,
                 )
 
-                values = parser(kwargs, options=options)
+                if no_parse:
+                    values = kwargs
+                else:
+                    values = parser(kwargs, options=options)
 
-                if set_attributes:
-                    for key, field in parser.fields.items():
-                        if key not in values:
-                            value = field.get_unprovided(parser.options)
-                            if value is ...:
-                                if field.attname in _obj_self.__dict__:
-                                    # delete attr for that unprovided value
-                                    # any access to this attribute will raise AttributeError
-                                    _obj_self.__dict__.pop(field.attname)
-                                continue
-                        elif field.no_output(values[key], options=options):
-                            value = values.pop(key)
-                        else:
-                            value = values[key]
-                        _obj_self.__dict__[field.attname] = value
-
-                if coerce_property:
-                    for key, field in parser.property_fields.items():
-                        if key in values:
-                            if not field.no_input(values[key], options=options):
-                                setattr(_obj_self, field.attname, values[key])
-
-                        if field.dependencies.issubset(values):
-                            value = getattr(_obj_self, field.attname)
-
-                            if not field.no_output(value, options=options):
-                                values[key] = value
-                                # do not apply cache here
-                                # when updating it will get nasty
-                                # _obj_self.__dict__[field.attname] = value
-
-                if init_super:
-                    super(self.obj, _obj_self).__init__(**values)
+                parser.set_attributes(values, _obj_self, options=options)
 
                 if post_init:
                     post_init(_obj_self, values, options)
