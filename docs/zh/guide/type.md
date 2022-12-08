@@ -438,11 +438,11 @@ assert weekday('6') == 6
 assert weekday(b'tue') == 'tue'
 
 try:
-	weekday('8') == 6
+	weekday('8')
 except exc.ParseError as e:
 	print(e)
 	"""
-	CollectedParseError: Constraint: <le>: 7 violated;
+	Constraint: <le>: 7 violated;
 	Constraint: <enum>: ('mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun') violated
 	"""
 
@@ -450,8 +450,8 @@ from datetime import date
 
 weekday_or_date = weekday | date
 
-assert weekday_or_date(b'3') == 3
-assert weekday_or_date('wed') == 'wed'
+assert weekday_or_date(b'5') == 5
+assert weekday_or_date('fri') == 'fri'
 assert weekday_or_date('2000-1-1') == date(2000, 1, 1)
 ```
 
@@ -462,10 +462,51 @@ assert weekday_or_date('2000-1-1') == date(2000, 1, 1)
 - 非（`~`）：数据必须不匹配对应的类型
 - 和（`&`）：数据必须同时匹配所有的类型
 
-utype 可以支持任意层数的逻辑嵌套，比如在例子中我们还将异或逻辑类型 `weekday` 与 `date` 类型再次使用或算符组合成 `weekday_or_date`，而且可以看到逻辑类型也支持实例化调用，输入值会被按照类型中的逻辑关系和条件进行转化
-
 !!! note
-	虽然理论上你可以使用这种语法声明任意复杂的类型逻辑条件，但在实践中并不建议使用过于复杂的类型，那样会使得开发和调试都变得困难
+	utype 可以支持任意层数的逻辑嵌套，所以理论上你可以使用这种语法声明任意复杂的类型逻辑条件，但在实践中并不建议使用过于复杂的类型，那样会使得开发和调试都变得困难
+
+**常用场景：反选排除**
+一种逻辑组合的常见的场景是需要使用某个类型，但排除一些值，比如作为被除数就需要排除 0，此时我们就可以先把需要排除的值用约束声明出来，再取反后与源类型结合，就能够得到我们需要的排除类型了
+
+```python
+from utype import Rule, exc
+	
+class Zero(Rule):
+	const = 0
+
+Divisor = float & ~Zero
+
+try:
+	Divisor('0')
+except exc.ParseError as e:
+	print(e)
+	"""
+	 Negate condition: Zero(const=0) is violated
+	"""
+```
+
+使用和（`&`）逻辑会依序对条件进行转化，在例子中我们声明了一个被除数类型 Divisor，是 float 类型排除了 0，在解析时，首先会将输入数据转化为 float，然后再判断能否完成对 Zero 的匹配，如果匹配，则解析失败（因为对应的条件为非），否则解析成功
+
+除了可以使用 `const` 约束排除一个值，还可以使用 `enum` 约束指定排除的枚举值，如
+
+```python
+from utype import Rule, exc
+
+class Infinity(Rule):  
+    enum = [float("inf"), float("-inf")]  
+  
+FiniteFloat = float & ~Infinity
+
+assert FiniteFloat(b'3.3') == 3.3
+
+try:
+	FiniteFloat('inf')
+except exc.ParseError as e:
+	print(e)
+	"""
+	Negate condition: Infinity(enum=[inf, -inf]) is violated
+	"""
+```
 
 ### 限制与版本兼容
 
@@ -614,4 +655,4 @@ print(type_transform('{"value": true}', dict))
 #### 兼容 `attrs`
 
 
-#### 兼容 `dataclass` 标准库
+#### 兼容 `dataclasses` 标准库

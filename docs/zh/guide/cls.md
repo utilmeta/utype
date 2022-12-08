@@ -63,14 +63,16 @@ except exc.ParseError as e:
 	Constraint: <regex>: '[a-z0-9]+(?:-[a-z0-9]+)*' violated
 	"""
 
+article.views = '3.0'   # will be convert to int
+
 print(dict(article))
-# > {'slug': 'my-article', 'content': 'my article body', 'views': 0}
+# > {'slug': 'my-article', 'content': 'my article body', 'views': 3}
 ```
 你可以直接获得
 
 * 无需声明 `__init__` 便能够接收对应的参数，并且完成类型转化和约束校验
 * 提供清晰可读的 `__repr__` 与 `__str__` 函数使得在输出和调试时方便直接获得内部的数据值
-* 在属性赋值或删除时根据字段的类型与配置进行保护，避免出现脏数据
+* 在属性赋值或删除时根据字段的类型与配置进行解析与保护，避免出现脏数据
 * 能够直接作为字典数据进行传参或序列化
 
 所以本篇文档我们来详细介绍数据类的声明和用法
@@ -98,21 +100,6 @@ class UserSchema(Schema):
 
 ### Field 字段配置
 Field 可以为字段配置更多丰富的行为，只需要将 Field 类的实例作为该字段的属性值/默认值，就可以获得其参数中声明的字段配置
-
-常用的配置项有
-
-* **可选性与默认值**：`required`，`default`，`default_factory`，用于指示一个字段是否是必传的，以及它的默认值或制造默认值的工厂函数
-* **说明与标记**：`title`，`description`，`example`，`deprecated` 等，用于给字段编写文档说明，示例，或者指示是否弃用
-* **约束配置**：包括 [Rule 约束](/zh/references/rule) 中的所有约束参数，如 `gt`, `le`, `max_length`, `regex` 等等，用于给字段以参数的方式指定约束
-* **别名配置**：`alias`，`alias_from`，`case_insensitive` 等，用于为字段指定属性名外的名称，以及大小写是否敏感等，可以用于定义属性声明不支持的字段名称
-* **模式配置**：`readonly`，`writeonly`，`mode` 等，用于配置数据类或函数在不同的解析模式下的行为
-* **输入与输出配置**：`no_input`，`no_output`，用于控制字段的输入和输出行为
-* **属性行为配置**：`immutable`，`unprovided`，用于控制字段对应属性的可变更性
-
-更完整的 Field 配置参数及用法，可以参考 [Field 字段配置的 API 参考](/zh/references/field)
-
-!!! note
-	Field 字段配置只在数据类或函数中声明有效，如果你单独用于声明一个变量，则不会起作用
 
 下面示例一些常用的 Field 配置的用法，我们还是使用文章的数据结构来示例
 ```python
@@ -203,9 +190,30 @@ print(dict(article))
 !!! warning
 	数据类对属性赋值的解析转化只能作用于直接赋值的情况，如果在这个例子中你使用了 `article.tags.append(obj)` 操作 `tags` 字段中的数据的话，就不会获得 utype 提供的解析功能了
 
+
+我们可以从例子中看到，Field 类能提供了很多字段常用的配置项，包括
+
+* **可选性与默认值**：`required`，`default`，`default_factory`，用于指示一个字段是否是必传的，以及它的默认值或制造默认值的工厂函数
+* **说明与标记**：`title`，`description`，`example`，`deprecated` 等，用于给字段编写文档说明，示例，或者指示是否弃用
+* **约束配置**：包括 [Rule 约束](/zh/references/rule) 中的所有约束参数，如 `gt`, `le`, `max_length`, `regex` 等等，用于给字段以参数的方式指定约束
+* **别名配置**：`alias`，`alias_from`，`case_insensitive` 等，用于为字段指定属性名外的名称，以及大小写是否敏感等，可以用于定义属性声明不支持的字段名称
+* **模式配置**：`readonly`，`writeonly`，`mode` 等，用于配置数据类或函数在不同的解析模式下的行为
+* **输入与输出配置**：`no_input`，`no_output`，用于控制字段的输入和输出行为
+* **属性行为配置**：`immutable`，`unprovided`，用于控制字段对应属性的可变更性
+
+更完整的 Field 配置参数及用法，可以参考 [Field 字段配置的 API 参考](/zh/references/field)
+
+!!! note
+	Field 字段配置只在数据类或函数中声明有效，如果你单独用于声明一个变量，则不会起作用
+
 ### `@property` 属性
 
+我们知道在 Python 的类中，可以使用 `@property` 装饰器声明属性，从而使属性的访问，赋值和删除都可以被函数控制，用途很多
+
+utype 也支持使用  `@property` 声明属性字段，从而更深入地控制属性行为，先看一个简单的例子
+
 ```python
+from utype import Schema
 from datetime import datetime
 
 class UserSchema(Schema):
@@ -214,21 +222,20 @@ class UserSchema(Schema):
 	
 	@property  
 	def signup_days(self) -> int:  
-	    return int((datetime.now() - self.signup_time).total_seconds() / (3600 * 24))
+	    return (datetime.now() - self.signup_time).total_seconds() / (3600 * 24)
+
+user = UserSchema(username='test', signup_time='2021-10-11 11:22:33')
+
+assert isinstance(user.signup_days, int)
 ```
 
-
-可以看到，property 属性可以方便地基于数据类字段执行额外的聚合或函数操作，
-
-如果 property 属性没有声明 setter，则它就是不可被赋值的，这样声明不可变更的字段是更加原生的做法
+属性 `signup_days` 通过字段 `signup_time` 来计算注册的天数，声明了 `int` 作为属性类型，这样在获取该属性值时 utype 会将它转化为 `int` 输出
 
 #### 指定 setter 
-
-使用 `@property` 属性，你还可以通过指定 `setter` 来使得属性字段是可输入和赋值的，这也是一种常见的方式来进行关联更新，或者隐藏某些私有字段不暴露
+使用 `@property` 属性，你还可以通过指定 `setter` 来赋予属性字段输入和赋值的能力，这也是一种常见的方式来进行关联更新，或者隐藏某些私有字段不暴露，比如
 ```python
 from utype import Schema, Field  
-  
-  
+
 class ArticleSchema(Schema):  
     _slug: str  
     _title: str  
@@ -242,20 +249,66 @@ class ArticleSchema(Schema):
         return self._title  
   
     @title.setter  
-    def title(self, val: str = Field(max_length=50)):  
+    def title(self, val: str):  
         self._title = val  
         self._slug = '-'.join([''.join(filter(str.isalnum, v))  
                                for v in val.split()]).lower()  
   
 ```
 
-在例子中的数据类，我们使用 `title.setter` 将完成对 `slug` 字段的关联更新，这样对于这个，用户无需直接操作 `slug`，而是通过赋值 `title` 来影响 slug
+在例子中的数据类 ArticleSchema 中，我们使用 `title` 属性的 setter 完成对 `slug` 字段的关联更新，也就是说类的使用者无需直接操作 `slug`，而是通过赋值 `title` 来影响 `slug` 字段
+
+如果 property 属性没有声明 setter，则它就是不可被赋值的，这样声明不可变更的字段是更加原生的做法
 
 !!! note
 	在 Schema 数据类中，如果你为属性声明了 setter 并且在初始化时提供了该属性的值，就会与其他的属性一样直接被赋值，从而会执行 setter 中的逻辑
 
 
+#### 为属性配置 Field
 
+属性字段依然支持配置 Field，比如
+```python
+from utype import Schema, Field  
+
+class ArticleSchema(Schema):  
+    _slug: str  
+    _title: str  
+  
+    @property  
+    def title(self) -> str:  
+        return self._title  
+  
+    @title.setter  
+    def title(self, val: str = Field(max_length=50)):  
+        self._title = val  
+        self._slug = '-'.join([''.join(filter(str.isalnum, v))  
+                               for v in val.split()]).lower()  
+	  
+    @property  
+    @Field(dependencies=title, description='the url route of article')
+    def slug(self) -> str:  
+        return self._slug  
+```
+
+Field 实例可以配置到属性的 getter 和 setter 上，它们各自的用法是
+
+**getter**：通过将 Field 实例作为装饰器装饰 `@property` 下的函数，常用的配置有
+* `no_output=True`：不将计算结果输出
+* `dependencies`：指定属性计算的依赖字段，只有当属性字段的依赖全部提供时，才会进行计算
+* `alias`：指定输出的字段别名
+
+!!! note
+	在 Schema 实例中，如果属性没有指定 `no_output=True`，那么它就会在初始化时直接进行计算，并将结果保存在自身字典数据中，当 `dependencies` 中的字段发生更新时，会再次计算并赋值，这是因为 Schema 是使用字典存储数据，而不是使用属性存储，所以需要输出的数据都会被强制计算
+
+**setter**：通过在 setter 函数的输入字段的默认值中指定 Field 实例，常用的配置有
+* `no_input=True`：表示不接受在初始化时输入，只能使用属性赋值调控
+* `immutable=True`：表示不接受属性赋值，只能在初始化时输入
+* `alias_from`：指定输入来源的字段别名列表
+
+!!! warning
+	同时指定 `no_input` 和 `immutable` 会导致 setter 变得无效
+
+下面来看一下这些属性的行为
 ```python
 article = ArticleSchema(title=b'My Awesome article!')
 print(article.slug)
@@ -267,78 +320,105 @@ except AttributeError:
 	pass
 
 article.title = b'Our Awesome article!'
+print(article['slug'])
+# > 'our-awesome-article'
 print(dict(article))
 # > {'slug': 'our-awesome-article', 'title': 'Our Awesome article!'}
+
+from utype import exc
+try:
+	article.title = '*' * 100
+except exc.ParseError as e:
+	print(e)
+	"""
+	parse item: ['title'] failed: Constraint: <max_length>: 50 violated
+	"""
 ```
 
-!!! note
-	这其实也是一般博客网站的做法，直接使用文章标题来生成 URL 路径字符串
+可以看到，在为 `slug` 指定 `dependencies=title` 后，当 `title` 发生赋值更新后，`slug` 字段也会同步更新
 
-**no_input setter**
-一些情况下，你可能不希望 `@property` 的 setter 能够输入
-```python
-from utype import Schema, Field  
-  
-  
-class ArticleSchema(Schema):  
-    _title: str  
-    
-    @property  
-    def title(self) -> str:  
-        return self._title  
-  
-    @title.setter  
-    def title(self, val: str = Field(max_length=50, no_input=True)):  
-        self._title = val    
-```
-
-这时即使你的输入数据中包含 `'title'` 字段，也不会进行输入（对 `'title'` 进行属性赋值）
-
-#### 指定 deleter
-
-
-#### 为属性配置 Field
-属性字段也支持使用 Field 配置一些属性，但是有着一定的限制
-
-* getter：通过使用 `@Field(...)` 装饰器装饰 getter，不能配置输入（no_input）行为，不能配置 alias_from
-* setter：通过在 setter 的输入字段的默认值中指定 Field，不能配置输出（no_output）行为，不能配置 alias
-
-理论上你可以给 getter， setter 使用 Field 指定不一样的 title / description / example，用于输入/输出的模板
-
-在 setter 中
-* no_input=True：表示不接受在初始化时输入，只能使用属性赋值调控
-* immutable=True：表示不接受属性赋值，只能在初始化时输入
-
-同时指定这两项没有意义，会导致 setter 变得无效
-
-另外有些选项对于属性字段无意义
-* `defer_default`：你已经可以通过 getter 控制属性访问了，所以 defer 没有意义
+!!! note "行业实践"
+	例子中的行为其实也是一般博客网站的做法，直接使用文章标题来生成 URL 路径字符串
 
 ### 字段准入规则
 
-* 不以下划线开头，以下划线开头的属性往往作为类的保留属性，utype 不会将其作为字段处理
-* 如果一个属性名称在基类中对应着一个方法或者类函数，那么你不能在子类中将其声明为一个数据字段
+并不是所有在 Schema 上声明的属性都会被转化为可以解析校验的字段，utype 的数据类字段有着一定的准入规则
 
-以上的命名限制都可以通过指定字段别名来解决
-
-* 如果你使用了 ClassVar 作为属性的类型提示，那么表示这个属性是一个类变量，而不是实例变量，所以有这样声明的属性也不会被 utype 作为字段处理
-
-**自定义准入规则**
+* 以下划线（`'_'`）开头的属性不会作为字段，以下划线开头的属性往往作为类的保留属性，utype 不会将其作为字段处理
+* 所有的 `@classmethod`，`@staticmethod` 和类中声明的方法都不会作为字段
+* 如果你使用了 `ClassVar` 作为属性的类型提示，那么表示这个属性是一个类变量，而不是实例变量，所以有这样声明的属性也不会被 utype 作为字段处理
 
 ```python
-class BaseParser:
-	@classmethod  
-	def validate_field_name(cls, name: str):  
-	    return not name.startswith("_")
+from utype import Schema
+from typing import ClassVar, Final
+
+class Static(Schema):
+	_private: int = 0
+
+	@classmethod
+	def generate(cls): pass
+	
+	VERSION: ClassVar[tuple] = (0, 2, 1)
+
+static = Static()
+print(static.VERSIOn)
+# > (0, 2, 1)
+
+print(dict(static))
+# > {}
 ```
 
-你可以通过覆盖这个方法来定义你自己的字段准入规则
+在例子中 Static 数据类中的几个属性都不具备成为字段的条件，所以无论输入数据如何都不会影响这些属性在实例中的值，并且非字段的属性也不会进行输出
 
+#### 命名和声明限制
+当字段名称和声明符合准入规则后，还需要注意一些声明限制
 
-### 属性访问行为
-* 读取
-* 更新
-* 删除
+* 如果一个属性名称在基类中对应着一个方法或者类函数，那么你不能在子类中将其声明为一个数据字段
+```python
+from utype import Schema, Field
+
+try:
+	class InvalidSchema(Schema):
+		items: list = Field(default_factory=list)
+except TypeError as e:
+	print(e)
+	"""
+	TypeError: field: 'items' was declared in <class 'utype.schema.Schema'>, 
+	so <class '__main__.InvalidSchema'> cannot annotate it as a field
+	"""
+```
+
+比如由于 Schema 继承自 dict 字典类，所以字典中的方法名称不可以被声明为一个字段名称，如果需要声明一样的属性名称，可以使用属性别名，如
+
+```python
+from utype import Schema, Field
+
+class ItemsSchema(Schema):
+	items_list: list = Field(alias='items', default_factory=list)
+```
+
+* 如果一个字段在父类中使用 `Final` 声明，表示它是不可被再次覆盖或赋值的，所以子类也无法声明同样名称的字段
+
+```python
+from utype import Schema
+from typing import Final
+
+class Base(Schema):
+	base_name: Final[str] = 'base'
+
+try:
+	class Child(Base):
+		base_name = 'child'
+except TypeError as e:
+	print(e)
+	"""
+	field: 'base_name' was declared as Final in <class '__main__.Base'>, 
+	so <class '__main__.Child'> cannot annotate it again
+	"""
+```
+
+!!! note
+	使用 Final 作为类型的字段也会直接被标记为一个不可变更（`immutable=True`）的字段，如果指定了属性值，则还是不可输入（`no_input=True`）的，即无法通过初始化数据影响它的值
 
 
 ## 数据类的用法
@@ -506,7 +586,7 @@ class UserA:
     name: str = Field(max_length=10)  
     age: int
 
-@utype.dataclass(set_properties=True)
+@utype.dataclass(set_class_properties=True)
 class UserB:  
     name: str = Field(max_length=10)  
     age: int
@@ -644,9 +724,13 @@ DataClass 类对应的偏好配置是
 contains 行为：与 Schema 一样仅包含可输出的字段
 
 
+**总结与比较**
+* Schema：继承自 dict，拥有字典的全部方法与特性，适合作为 “数据模型”，同时支持键值操作与属性操作，输出的 `@property` 会被立即计算，后续的访问会直接得到计算缓存结果
+* DataClass：没有任何基类，适合需要对类的行为有更多定制的场景，只支持属性操作，所有  `@property` 都只在调用时计算
+
 ### 通过 ClassParser 制造
 
-这是最接近底层的一种制造方式，一般不建议使用，
+这是最接近底层的一种制造方式，所有的数据类都是通过 ClassParser 制造的，只不过 utype 通过预定义类和装饰器抽象掉了背后的具体工作，如果你希望对于数据类的制造有着更多的掌控，可以直接通过 ClassParser 来制造
 
 事实上，为数据类提供声明分析和运行时数据解析功能的是来自 `utype.parser.ClassParser` 的类解析器
 

@@ -5,7 +5,7 @@ from .parser.options import Options, RuntimeOptions
 from .parser.cls import ClassParser
 from .parser.field import ParserField
 from .utils import exceptions as exc
-from typing import Union, Callable
+from typing import Union, Callable, List
 from functools import partial
 
 
@@ -103,7 +103,19 @@ class DataClass(metaclass=LogicalMeta):
     def __post_delattr__(self, field: ParserField, options: RuntimeOptions):
         pass
 
-    def __export__(self):
+    # def __copy__(self):
+    #     obj = self.__class__.__new__(self.__class__)
+    #     obj.__dict__ = self.__dict__
+    #     obj.__runtime_options__ = self.__runtime_options__
+    #     return obj
+
+    def __export__(self,
+                   includes: Union[str, List[str]] = None,
+                   excludes: Union[str, List[str]] = None,
+                   as_attname: bool = False,
+                   no_output: Callable = None,      # control by value
+                   mode: str = None,
+                   ) -> dict:
         pass
 
 
@@ -395,6 +407,18 @@ class Schema(dict, metaclass=LogicalMeta):
         # self.__parser__.coerce_properties(values, self, options=options)
         #
         # return super().update(values)
+
+    # def __copy__(self):
+    #     return self.copy()
+
+    def copy(self):
+        obj = self.__class__.__new__(self.__class__)
+        dict.update(obj, self)
+        # since self.<data> is validated
+        # we directly call dict.update to avoid calling the parsing methods again
+        obj.__dict__ = self.__dict__
+        obj.__runtime_options__ = self.__runtime_options__
+        return obj
 
     def clear(self):
         if self.__options__.immutable:

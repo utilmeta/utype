@@ -29,6 +29,9 @@ T = typing.TypeVar("T")
 NUM_TYPES = (int, float, Decimal)
 SEQ_TYPES = (list, tuple, set, frozenset, deque)
 MAP_TYPES = (dict, Mapping)
+TYPE_EXACT_TOLERANCE = (
+    {int, float},
+)
 OPERATOR_NAMES = {
     "&": "AllOf",
     "|": "AnyOf",
@@ -295,10 +298,10 @@ class LogicalType(type):  # noqa
     def __str__(cls):
         return repr(cls)
 
-    def apply(cls, *args, **kwargs):
+    def parse(cls, *args, **kwargs):
         pass
 
-    def apply_logic(cls, value, __options__: RuntimeOptions = None, **kwargs):
+    def logical_parse(cls, value, __options__: RuntimeOptions = None, **kwargs):
         options = __options__.clone() if __options__ else RuntimeOptions()
         # IMPORTANT:
         # we must do clone here (as the parser do make_runtime)
@@ -374,38 +377,54 @@ class LogicalType(type):  # noqa
 
     def __call__(cls, *args, **kwargs):
         if cls.combinator:
-            return cls.apply_logic(*args, **kwargs)
-        return cls.apply(*args, **kwargs)
+            return cls.logical_parse(*args, **kwargs)
+        return cls.parse(*args, **kwargs)
+
+
+class ConstraintMode:
+    mode = None
+    support_constraints = None
+
+    def __init__(self, value):
+        self.value = value
+
+    def __eq__(self, other):
+        if isinstance(other, self.__class__):
+            return self.value == other.value
+        return False
+
+
+class Lax(ConstraintMode):
+    mode = 'lax'
 
 
 class Constraints:
     TYPE_SPEC_CONSTRAINTS = {
         "max_digits": NUM_TYPES,
-        "round": NUM_TYPES,
+        "decimal_places": (float, Decimal),
         "multiple_of": NUM_TYPES,
         "unique_items": SEQ_TYPES,
-        "contains": SEQ_TYPES,
-        "max_contains": SEQ_TYPES,
-        "min_contains": SEQ_TYPES,
-        "dependencies": MAP_TYPES,
+        # "contains": SEQ_TYPES,
+        # "max_contains": SEQ_TYPES,
+        # "min_contains": SEQ_TYPES,
+        # "dependencies": MAP_TYPES,
     }
     CONSTRAINT_TYPES = {
         "length": (int,),
         "max_length": (int,),
         "min_length": (int,),
-        "contains": (type,),
-        "min_contains": (int,),
-        "max_contains": (int,),
-        "round": (int,),
+        # "contains": (type,),
+        # "min_contains": (int,),
+        # "max_contains": (int,),
+        "decimal_places": (int,),
         "max_digits": (int,),
         "multiple_of": (int, float),
         "unique_items": (bool,),
     }
     # default type is resolved to "string"
 
-    def __init__(self, rule_cls: Type["Rule"], options: RuntimeOptions = None):
+    def __init__(self, rule_cls: Type["Rule"]):
         self.rule_cls = rule_cls
-        self.options = options
 
     @property
     def origin_type(self):
@@ -552,7 +571,7 @@ class Constraints:
                 ):
                     resolved = False
                     for arg in self.origin_type.__args__:
-                        if {arg, _t} == {int, float}:
+                        if {arg, _t} in TYPE_EXACT_TOLERANCE:
                             resolved = True
                             break
                         if issubclass(arg, _t):
@@ -565,7 +584,7 @@ class Constraints:
 
                 else:
                     if not issubclass(self.origin_type, _t):
-                        if {self.origin_type, _t} == {int, float}:
+                        if {self.origin_type, _t} in TYPE_EXACT_TOLERANCE:
                             pass
                         else:
                             raise TypeError(
@@ -632,9 +651,12 @@ class Constraints:
                         f"Rule const: {repr(const)} cannot apply to LogicalType"
                     )
                 if not isinstance(const, self.origin_type):
-                    raise TypeError(
-                        f"Rule const: {repr(const)} not instance of type: {self.origin_type}"
-                    )
+                    if {type(const), self.origin_type} in TYPE_EXACT_TOLERANCE:
+                        pass
+                    else:
+                        raise TypeError(
+                            f"Rule const: {repr(const)} not instance of type: {self.origin_type}"
+                        )
             # else:
             #     # transform type before check const
             #     self.origin_type = type(const)
@@ -666,27 +688,17 @@ class Constraints:
 
         constraints = {k: v for k, v in constraints.items() if v is not None}
 
-        if "max_contains" in constraints or "min_contains" in constraints:
-            max_contains = constraints.get("max_contains")
-            min_contains = constraints.get("min_contains")
-
-            if max_contains is not None and min_contains is not None:
-                if max_contains < min_contains:
-                    raise ValueError(
-                        f"Rule with max_contains: {max_contains} is little than min_contains"
-                    )
-
-            if "contains" not in constraints:
-                raise ValueError(
-                    f"Rule with max_contains/min_contains must set <contains> constraint"
-                )
-
-            pop(constraints, "max_contains")
-            pop(constraints, "min_contains")
-
         if "unique_items" in constraints and not constraints["unique_items"]:
             # only True is valid
             pop(constraints, "unique_items")
+
+        if 'decimal_places' in constraints:
+            decimals = constraints['decimal_places']
+            digits = constraints.get('max_digits')
+            if decimals and digits:
+                # 0.123
+                if digits < decimals:
+                    raise ValueError(f'Rule: constraint max_digits: {digits} must >= {decimals}')
 
         # other constraints other that const is considered not-null
         self.valid_types(constraints)
@@ -706,6 +718,7 @@ class Constraints:
         """
 
     def generate_validators(self) -> List[Tuple[str, Any, Callable]]:
+        constraint_mode = {}
         constraints = OrderedDict()
         for key in self.rule_cls.__constraints__:
             if hasattr(self.rule_cls, key) and hasattr(self.__class__, key):
@@ -714,6 +727,9 @@ class Constraints:
                     # this is a sign that the subclass cancel a constraint from the base class
                     # and to differ with None (for const constraint, None is still consider a valid param)
                     continue
+                if isinstance(value, ConstraintMode):
+                    constraint_mode[key] = value.mode
+                    value = value.value
                 constraints[key] = value
 
         if not constraints:
@@ -722,71 +738,114 @@ class Constraints:
         constraints = self.validate_constraints(constraints)
         validators = []
         for key, val in constraints.items():
+            mode = constraint_mode.get(key)
+            if mode:
+                name = f'{mode}_{key}'
+            else:
+                name = key
+            func = getattr(self.__class__, name, None)
+            if not func:
+                raise ValueError(f'{self.__class__}: constraint {repr(name)} not discovered,'
+                                 f' you can override this class and custom it')
             validators.append(
-                (key, getattr(self.rule_cls, key), getattr(self.__class__, key))
+                (key, val, func)
             )
         return validators
 
-    @property
-    def strict(self):
-        """
-        strict means we check the constraints AS-IS, without making any change to the original value
-        but if strict=False, means we can "tweak" the value to satisfy the constraints
-        (which is not recommend approach to validate request input data)
-        """
-        return self.rule_cls.strict
+    @classmethod
+    def decimal_places(cls, value, d):
+        digits, decimals = cls._parse_decimal(value)
 
-    def round(self, value, r):
-        if not isinstance(value, float):
-            if not self.strict:
-                value = float(value)
+        if decimals > d:
+            raise ValueError
+
+        if isinstance(value, Decimal):
+            # if current decimal is Decimal('1.3') and decimal places is 2
+            # we will make it Decimal('1.30') by using round
+            return round(value, d)
+        return value
+
+    @classmethod
+    def lax_decimal_places(cls, value, r):
         return round(value, r)
 
-    def multiple_of(self, value, of: int):
+    @classmethod
+    def multiple_of(cls, value, of: int):
         mod = value % of
         if mod:
-            if self.strict:
-                raise ValueError
-            # convert to the closest number
+            raise ValueError
+        return value
+
+    @classmethod
+    def lax_multiple_of(cls, value, of: int):
+        mod = value % of
+        if mod:
             return (value // of) * of
         return value
 
-    def max_digits(self, value, max_digits: int):
-        digits = abs(round(value))  # use abs to ignore the "-" operator
-        if len(str(digits)) > max_digits:
-            if self.strict:
-                raise ValueError
-            # convert to the closest number
-            sign = 1 if value > 0 else -1
-            return (int(str(digits)[-max_digits:]) + (value - digits)) * sign
+    @classmethod
+    def _parse_decimal(cls, value):
+        if not isinstance(value, Decimal):
+            value = Decimal(str(value))
+
+        digit_tuple, exponent = value.as_tuple()[1:]
+        if exponent in {'F', 'n', 'N'}:
+            raise ValueError
+
+        if exponent >= 0:
+            digits = len(digit_tuple) + exponent
+            decimals = 0
+        else:
+            if abs(exponent) > len(digit_tuple):
+                digits = abs(exponent)
+            else:
+                digits = len(digit_tuple)
+            decimals = abs(exponent)
+        return digits, decimals
+
+    @classmethod
+    def max_digits(cls, value, max_digits: int):
+        digits, decimals = cls._parse_decimal(value)
+        if digits > max_digits:
+            raise ValueError
         return value
 
-    def const(self, value, v):
-        if callable(value):
-            value = value()
+    @classmethod
+    def lax_max_digits(cls, value, max_digits: int):
+        digits, decimals = cls._parse_decimal(value)
+        if digits <= max_digits:
+            return value
+
+        delta = digits - max_digits
+
+        # 123.456
+        # decimals: 3
+        # max_digits: 4
+        # delta: 3
+
+        if decimals >= delta:
+            return round(value, decimals - delta)
+        raise ValueError
+
+    @classmethod
+    def const(cls, value, v):
         if value != v:
             raise ValueError
-        if self.strict:
-            # 0 False
-            # 1 True
-            if type(value) != type(v):
+        # 0 False
+        # 1 True
+        if type(value) != type(v):
+            if {type(value), type(v)} in TYPE_EXACT_TOLERANCE:
+                pass
+            else:
                 raise ValueError
         return v
 
-    def excludes(self, value, lst):
-        if multi(value):
-            ex = set(value).intersection(lst)
-            if ex:
-                if self.strict:
-                    raise ValueError
-                else:
-                    value = _type(value)([v for v in value if v not in ex])  # noqa
-        else:
-            if value in lst:
-                raise ValueError
-        return value
+    @classmethod
+    def lax_const(cls, value, v):
+        return v
 
-    def enum(self, value, lst):
+    @classmethod
+    def enum(cls, value, lst):
         if isinstance(lst, EnumMeta):
             # return the value instead of the enum type
             return lst(value).value
@@ -795,73 +854,110 @@ class Constraints:
             value = value.value
 
         if value not in lst:
-            if self.strict:
-                raise ValueError
-            return lst[0]
+            raise ValueError
         return value
 
-    def regex(self, value, r):
+    @classmethod
+    def lax_enum(cls, value, lst):
+        if isinstance(lst, EnumMeta):
+            # return the value instead of the enum type
+            return lst(value).value
+
+        if isinstance(value, Enum):
+            value = value.value
+
+        if value not in lst:
+            return list(lst)[0]
+        return value
+
+    @classmethod
+    def regex(cls, value, r):
         if not re.fullmatch(r, str(value)):
             raise ValueError
         return value
 
-    def gt(self, value, gt):
-        if callable(gt):
-            gt = gt()
+    @classmethod
+    def gt(cls, value, gt):
         if value <= gt:
             raise ValueError
         return value
 
-    def ge(self, value, ge):
-        if callable(ge):
-            ge = ge()
+    @classmethod
+    def ge(cls, value, ge):
         if value < ge:
-            if self.strict:
-                raise ValueError
+            raise ValueError
+        return value
+
+    @classmethod
+    def lax_ge(cls, value, ge):
+        if value < ge:
             return ge
         return value
 
-    def lt(self, value, lt):
-        if callable(lt):
-            lt = lt()
+    @classmethod
+    def lt(cls, value, lt):
         if value >= lt:
             raise ValueError
         return value
 
-    def le(self, value, le):
-        if callable(le):
-            le = le()
+    @classmethod
+    def le(cls, value, le):
         if value > le:
-            if self.strict:
-                raise ValueError
+            raise ValueError
+        return value
+
+    @classmethod
+    def lax_le(cls, value, le):
+        if value > le:
             return le
         return value
 
-    def length(self, value, lg):
+    @classmethod
+    def length(cls, value, lg):
+        v = value
+        if not hasattr(value, "__len__"):
+            v = str(value)
+        if len(v) != lg:
+            raise ValueError
+        return value
+
+    @classmethod
+    def lax_length(cls, value, lg):
         v = value
         converted = False
         if not hasattr(value, "__len__"):
             converted = True
             v = str(value)
         if len(v) != lg:
-            if self.strict or converted or len(v) < lg:
+            if converted or len(v) < lg:
                 raise ValueError
             return value[:lg]
         return value
 
-    def max_length(self, value, m):
+    @classmethod
+    def max_length(cls, value, m):
+        v = value
+        if not hasattr(value, "__len__"):
+            v = str(value)
+        if len(v) > m:
+            raise ValueError
+        return value
+
+    @classmethod
+    def lax_max_length(cls, value, m):
         v = value
         converted = False
         if not hasattr(value, "__len__"):
             converted = True
             v = str(value)
         if len(v) > m:
-            if self.strict or converted:
+            if converted:
                 raise ValueError
             return value[:m]
         return value
 
-    def min_length(self, value, m):
+    @classmethod
+    def min_length(cls, value, m):
         v = value
         if not hasattr(value, "__len__"):
             v = str(value)
@@ -869,61 +965,28 @@ class Constraints:
             raise ValueError
         return value
 
-    def contains(self, value, t):
-        # validate max_contains and min_contains as well
-        contains = 0
-        options = self.options or RuntimeOptions()
-
-        transformer = options.transformer
-        for item in value:
-            try:
-                transformer(item, t)
-            except (TypeError, ValueError):
-                pass
-            else:
-                contains += 1
-        if not contains:
-            raise ValueError(f"{t} not contained in value")
-        if self.rule_min_contains and contains < self.rule_min_contains:
-            raise exc.ConstraintError(
-                f"value contains {contains} of {t}, which is lower than min_contains",
-                constraint="min_contains",
-                constraint_value=self.rule_min_contains,
-            )
-        if self.rule_max_contains and contains > self.rule_max_contains:
-            raise exc.ConstraintError(
-                f"value contains {contains} of {t}, which is bigger than max_contains",
-                constraint="max_contains",
-                constraint_value=self.rule_max_contains,
-            )
-        return value
-
-    def unique_items(self, value: list, u):
+    @classmethod
+    def unique_items(cls, value: list, u):
         if not u:
             return value
         lst = []
         for val in value:
             if val in lst:
-                if self.strict:
-                    raise ValueError(f"value is not unique")
-                continue
+                raise ValueError(f"value is not unique")
             lst.append(val)
-        if not self.strict:
-            # if not strict, just return a unique version of the input
-            return type(value)(lst)  # noqa
         return value
 
-    # mark as hasattr
-    max_contains = None
-    min_contains = None
-
-    @property
-    def rule_max_contains(self):
-        return getattr(self.rule_cls, "max_contains", 0)
-
-    @property
-    def rule_min_contains(self):
-        return getattr(self.rule_cls, "min_contains", 0)
+    @classmethod
+    def lax_unique_items(cls, value: list, u):
+        if not u:
+            return value
+        lst = []
+        for val in value:
+            if val in lst:
+                continue
+            lst.append(val)
+        # if not strict, just return a unique version of the input
+        return type(value)(lst)  # noqa
 
 
 class Rule(metaclass=LogicalType):
@@ -949,15 +1012,15 @@ class Rule(metaclass=LogicalType):
         "const",
         "enum",
         "regex",
+        "decimal_places",
+        "multiple_of",
+        "max_digits",
         "length",
         "max_length",
         "min_length",
-        "round",
-        "multiple_of",
-        "max_digits",
-        "contains",
-        "max_contains",
-        "min_contains",
+        # "contains",
+        # "max_contains",
+        # "min_contains",
         "unique_items",
     ]
     __transformer__: Callable
@@ -982,31 +1045,28 @@ class Rule(metaclass=LogicalType):
     min_length: int
 
     # number constraints
-    round: int
+    decimal_places: int
     multiple_of: int
     max_digits: int
 
     # array constraints
-    contains: type
-    max_contains: int
-    min_contains: int
     unique_items: bool
+    # rule-validate constraints
+    contains: type = None
+    max_contains: int = None
+    min_contains: int = None
 
     # dependencies: Dict[str, Union[List[str], Dict[str, List[str]]]]     # for dict type only
     # this property can be defined in schema.__options__
     # https://json-schema.org/understanding-json-schema/reference/object.html
     # https://json-schema.org/understanding-json-schema/reference/array.html
 
-    # allow_excess: bool = False -> "additionalProperties": false
-    # excess_preserve: bool = True -> "additionalProperties": {}
     # **kwargs: str -> "additionalProperties": {"type": "string"}
 
     # json dict can only support str key, we can only extend it to finite primitive types
     # Dict[str, int] patternProperties: {".*": {"type": integer}}
     # Dict[int, int] patternProperties: {"[0-9]": {"type": integer}}, propertyNames: {"type": "integer"}
     # Dict[bool, int] patternProperties: {"true|false": {"type": integer}}, propertyNames: {"type": "boolean"}
-
-    strict: bool = True
 
     def __init_subclass__(cls, **kwargs):
         # if not cls.__origin__:
@@ -1118,6 +1178,7 @@ class Rule(metaclass=LogicalType):
                 # if __args__ is present, we do not set class getitem then
 
         cls.__validators__ = cls.constraints_cls(cls).generate_validators()
+        cls._validate_contains()
 
     @classmethod
     def annotate(
@@ -1303,7 +1364,7 @@ class Rule(metaclass=LogicalType):
         return True
 
     @classmethod
-    def apply(cls, value, __options__: RuntimeOptions = None):
+    def parse(cls, value, __options__: RuntimeOptions = None):
         # use __options__ instead of options is to identify much clearer with other subclass init kwargs
         options = __options__.clone() if __options__ else cls.options_cls()
         # IMPORTANT:
@@ -1340,11 +1401,11 @@ class Rule(metaclass=LogicalType):
 
         if not options.ignore_constraints:
             # if options ignore constraints, we will just do type transform
-            constraints_inst = cls.constraints_cls(cls, options=options)
+            # constraints_inst = cls.constraints_cls(cls, options=options)
             for key, constraint, validator in cls.__validators__:
                 # constraint = getattr(cls, key)
                 try:
-                    value = validator(constraints_inst, value, constraint)
+                    value = validator(value, constraint)
                 except Exception as e:
                     error = (
                         e
@@ -1356,6 +1417,9 @@ class Rule(metaclass=LogicalType):
                     # if validator already throw a constraint error
                     # may an inner constraint (like max_contains in contains) is violated
                     options.handle_error(error)
+
+            if cls.contains:
+                value = cls._parse_contains(value, options)
 
         options.raise_error()
         # raise error if collected
@@ -1373,13 +1437,73 @@ class Rule(metaclass=LogicalType):
         return value
 
     def __init__(self, value):
-        self._value = self.apply(value)
+        self._value = self.parse(value)
 
     def __repr__(self):
         return f"{self.__class__.__name__}({repr(self._value)})"
 
     def __str__(self):
         return f"{self.__class__.__name__}({repr(self._value)})"
+
+    @classmethod
+    def _validate_contains(cls):
+        # validate max_contains and min_contains as well
+        contains = cls.contains
+        min_contains = cls.min_contains
+        max_contains = cls.max_contains
+
+        if max_contains or min_contains:
+            if not contains:
+                raise ValueError(
+                    f"Rule with max_contains/min_contains must set <contains> constraint"
+                )
+
+            if max_contains is not None and min_contains is not None:
+                if max_contains < min_contains:
+                    raise ValueError(
+                        f"Rule with max_contains: {max_contains} is little than min_contains"
+                    )
+
+        elif not contains:
+            return
+
+        if not cls.__origin__ or isinstance(cls.__origin__, SEQ_TYPES):
+            raise ValueError(f'Rule: constraint: contains is only for {SEQ_TYPES}, got {cls.__origin__}')
+
+    @classmethod
+    def _parse_contains(cls, value, options):
+        # validate max_contains and min_contains as well
+        if not cls.contains:
+            return value
+
+        contains = 0
+        transformer = options.transformer
+        for item in value:
+            try:
+                transformer(item, cls.contains)
+            except (TypeError, ValueError):
+                pass
+            else:
+                contains += 1
+        if not contains:
+            raise exc.ConstraintError(
+                f"{cls.contains} not contained in value",
+                constraint='contains',
+                constraint_value=cls.contains
+            )
+        if cls.min_contains and contains < cls.min_contains:
+            raise exc.ConstraintError(
+                f"value contains {contains} of {cls.contains}, which is lower than min_contains",
+                constraint="min_contains",
+                constraint_value=cls.min_contains,
+            )
+        if cls.max_contains and contains > cls.max_contains:
+            raise exc.ConstraintError(
+                f"value contains {contains} of {cls.contains}, which is bigger than max_contains",
+                constraint="max_contains",
+                constraint_value=cls.max_contains,
+            )
+        return value
 
     @classmethod
     def resolve_forward_refs(cls):
@@ -1417,15 +1541,15 @@ class Rule(metaclass=LogicalType):
         if not cls.__origin__ or not cls.__args__:
             return None
         if issubclass(cls.__origin__, MAP_TYPES):
-            return cls._apply_map_args
+            return cls._parse_map_args
         elif issubclass(cls.__origin__, SEQ_TYPES):
             if issubclass(cls.__origin__, tuple) and not cls.__ellipsis_args__:
-                return cls._apply_tuple_args
-            return cls._apply_seq_args
+                return cls._parse_tuple_args
+            return cls._parse_seq_args
         return None
 
     @classmethod
-    def _apply_tuple_args(cls, value: tuple, trans: TypeTransformer):
+    def _parse_tuple_args(cls, value: tuple, trans: TypeTransformer):
         result = []
         options = trans.options
 
@@ -1451,7 +1575,7 @@ class Rule(metaclass=LogicalType):
         return cls.__origin__(result)
 
     @classmethod
-    def _apply_seq_args(cls, value: Union[list, set], trans: TypeTransformer):
+    def _parse_seq_args(cls, value: Union[list, set], trans: TypeTransformer):
         result = []
         arg_type = cls.__args__[0]
         arg_transformer = cls.__arg_transformers__[0]
@@ -1475,7 +1599,7 @@ class Rule(metaclass=LogicalType):
         return result
 
     @classmethod
-    def _apply_map_args(cls, value: dict, trans: TypeTransformer):
+    def _parse_map_args(cls, value: dict, trans: TypeTransformer):
         result = {}
         key_type, value_type = cls.__args__
         key_transformer, value_transformer = cls.__arg_transformers__

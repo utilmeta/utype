@@ -17,6 +17,8 @@ class RuntimeOptionsMixin:
     EXCLUDE = "exclude"
     PRESERVE = "preserve"
     THROW = "throw"
+    IGNORE = 'ignore'
+    INIT = 'init'
 
     transformer_cls = TypeTransformer  # support custom with scope
     collect_errors: bool = False

@@ -1,5 +1,4 @@
-from .parser.rule import Rule
-from collections import abc
+from .parser.rule import Rule, Lax
 from .utils import exceptions as exc
 from decimal import Decimal
 from typing import Union, Type
@@ -90,10 +89,8 @@ class NegativeFloat(Float):
 
 class NanFloat(Float):
     @classmethod
-    def apply(cls, value, __options__=None):
-        value = super().apply(value, __options__)
+    def post_validate(cls,  value, options=None):
         import math
-
         if not math.isnan(value):
             # do not use const = float('nan')
             # cause NaN can not use equal operator
@@ -110,6 +107,13 @@ AbnormalFloat = NanFloat ^ InfinityFloat
 NormalFloat = Float & ~AbnormalFloat
 
 
+class Zero(Rule):
+    const = 0
+
+
+Divisor = Float & ~Zero
+
+
 class NegativeInt(Int):
     lt = 0
 
@@ -123,14 +127,22 @@ class Timestamp(Float):
     format = "timestamp"
 
     @classmethod
-    def apply(cls, value, __options__=None):
+    def pre_validate(cls, value, options=None):
         import datetime
-
         if isinstance(value, datetime.datetime):
             value = value.timestamp()
         elif isinstance(value, datetime.timedelta):
             value = value.total_seconds()
-        super().apply(value, __options__)
+        return value
+
+
+def round_number(
+    precision: int = 0,
+    num_type: type = float
+):
+    class RoundNumber(num_type, Rule):
+        decimal_places = Lax(precision)
+    return RoundNumber
 
 
 def enum_array(
@@ -138,7 +150,6 @@ def enum_array(
     item_type=None,
     array_type=list,
     unique: bool = False,
-    array_strict: bool = True,
 ) -> Type[Array]:
     """
     Make an array type, which item is one of the enum value
@@ -146,16 +157,15 @@ def enum_array(
     if isinstance(item_enum, Enum):
         EnumItem = item_enum
     else:
-
         class EnumItem(Rule):
             __origin__ = item_type
             enum = item_enum
 
-    class EnumArray(array_type, Array):
+    class EnumArray(Array):
+        __origin__ = array_type
         __args__ = (EnumItem,)
         __ellipsis_args__ = issubclass(array_type, tuple)
         unique_items = unique
-        strict = array_strict
 
     return EnumArray
 

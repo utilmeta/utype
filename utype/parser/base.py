@@ -381,10 +381,15 @@ class BaseParser:
                     addition[key] = add_value
                 continue
 
-            if field.no_input(value, options=options):
-                continue
-
             name = field.attname if as_attname else field.name
+
+            if field.no_input(value, options=options):
+                # no input field does not take input from __init__
+                # but can still apply default
+                default = field.get_default(options, defer=False)
+                if default is not ...:
+                    result[name] = default
+                continue
 
             if (name in result) or (excluded_keys and name in excluded_keys):
                 if options.ignore_alias_conflicts:
@@ -414,7 +419,7 @@ class BaseParser:
                 if field.is_required(options=options):
                     options.handle_error(exc.AbsenceError(item=name))
                     continue
-                default = field.get_default(options)
+                default = field.get_default(options, defer=False)
                 if default is not ...:
                     result[name] = default
 
@@ -482,7 +487,7 @@ class BaseParser:
                 if field.is_required(options=options):
                     options.handle_error(exc.AbsenceError(item=name))
                     continue
-                default = field.get_default(options)
+                default = field.get_default(options, defer=False)
                 # we don't catch this error for now
                 # because default function is "server" function
                 # if the default goes wrong, it should directly raise to the user
@@ -493,7 +498,13 @@ class BaseParser:
             used_alias.update(field.all_aliases)
             # even if field is no-input, it can still set default (by developer, no by input)
             if field.no_input(value, options=options):
+                # no input field does not take input from __init__
+                # but can still apply default
+                default = field.get_default(options, defer=False)
+                if default is not ...:
+                    result[name] = default
                 continue
+
             parsed = field.parse_value(value, options=options)
             if parsed is ...:
                 continue

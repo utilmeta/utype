@@ -75,6 +75,13 @@ class TestFunc:
         #     ):
         #         pass
 
+    def test_generator(self):
+        pass
+
+    @pytest.mark.asyncio
+    async def test_async(self):
+        pass
+
     @pytest.mark.asyncio
     async def test_async_generator(self):
         import utype

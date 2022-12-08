@@ -7,17 +7,15 @@ from typing import (
     Literal,
     Union,
     List,
-    Optional,
     Any,
     Callable,
-    Final,
     Iterable,
     Set,
     Dict,
 )
-from .rule import Rule, LogicalType, resolve_forward_type
+from .rule import Rule, Lax, LogicalType, resolve_forward_type
 from .options import Options, RuntimeOptions
-from ..utils.compat import get_origin, get_args
+from ..utils.compat import get_args, is_final
 from ..utils import exceptions as exc
 from collections.abc import Mapping
 from ..utils.functional import multi, copy_value
@@ -76,7 +74,6 @@ class Field:
         example=...,
         # message: str = None,  # report this message if error occur
         # --- CONSTRAINTS ---
-        strict: Optional[bool] = None,
         const: Any = ...,
         enum: Iterable = None,
         gt=None,
@@ -84,22 +81,20 @@ class Field:
         lt=None,
         le=None,
         regex: str = None,
-        length: int = None,
-        max_length: int = None,
+        length: Union[int, Lax] = None,
+        max_length: Union[int, Lax] = None,
         min_length: int = None,
         # number
-        max_digits: int = None,
+        max_digits: Union[int, Lax] = None,
+        decimal_places: Union[int, Lax] = None,
         round: int = None,
-        multiple_of: int = None,
+        multiple_of: Union[int, Lax] = None,
         # array
         contains: type = None,
         max_contains: int = None,
         min_contains: int = None,
-        unique_items: bool = None,
-        # custom validator
-        # validator: Union[Callable, List[Callable]] = None
+        unique_items: Union[bool, Lax] = None,
     ):
-
         if mode:
             if readonly or writeonly:
                 raise ValueError(
@@ -151,6 +146,13 @@ class Field:
                         f"Field no_output: {repr(no_output)} is not in mode: {repr(mode)}"
                     )
 
+        if round:
+            if decimal_places and decimal_places not in (round, Lax(round)):
+                raise ValueError(f'Field round: {round} is a shortcut for decimal_places=Lax({round}), '
+                                 f'but you specified a different decimal_places: {repr(decimal_places)}')
+
+            decimal_places = Lax(round)
+
         self.alias = alias if isinstance(alias, str) else None
         self.alias_generator = alias if callable(alias) else None
         self.alias_from = alias_from
@@ -196,7 +198,6 @@ class Field:
         constraints = {
             k: v
             for k, v in dict(
-                strict=strict,
                 enum=enum,
                 gt=gt,
                 ge=ge,
@@ -207,7 +208,7 @@ class Field:
                 length=length,
                 regex=regex,
                 max_digits=max_digits,
-                round=round,
+                decimal_places=decimal_places,
                 multiple_of=multiple_of,
                 contains=contains,
                 max_contains=max_contains,
@@ -219,9 +220,7 @@ class Field:
         if const is not ...:
             constraints.update(const=const)
 
-        self.strict = strict
         self.constraints = constraints
-        # self.validator = validator
 
     @property
     def no_default(self):
@@ -351,16 +350,39 @@ class ParserField:
         self.attr_dependencies = set()
         self.dependants = set()
 
+        self.input_transformer = None
+        self.output_transformer = None
         self.deprecated_to = None
+        self.const = ...
         self.discriminator_map = {}
-        self.validate_annotation()
 
-    def _get_const(self):
-        if inspect.isclass(self.type) and issubclass(self.type, Rule):
-            return getattr(self.type, "const", ...)
-        return ...
+    def validate_annotation(self, options: Options):
+        if isinstance(self.type, type):
+            if issubclass(self.type, Rule):
+                self.const = getattr(self.type, "const", ...)
+            else:
+                trans = Rule.transformer_cls.resolver_transformer(self.type)
+                if not trans:
+                    if options.unresolved_types == options.THROW:
+                        warnings.warn(f'Field(name={repr(self.name)}) got unresolved type: {self.type}, '
+                                      f'and Options.unresolved_types == "throw", which will raise error'
+                                      f' in the runtime if the input value type does not match')
+                else:
+                    self.input_transformer = trans
 
-    def validate_annotation(self):
+        if isinstance(self.output_type, type):
+            if issubclass(self.output_type, Rule):
+                pass
+            else:
+                trans = Rule.transformer_cls.resolver_transformer(self.output_type)
+                if not trans:
+                    if options.unresolved_types == options.THROW:
+                        warnings.warn(f'Field(name={repr(self.name)}) got unresolved output type: {self.output_type}, '
+                                      f'and Options.unresolved_types == "throw", which will raise error'
+                                      f' in the runtime if the input value type does not match')
+                else:
+                    self.output_transformer = trans
+
         if self.field.discriminator:
             discriminator_map = {}
             comb = None
@@ -397,7 +419,7 @@ class ParserField:
                             f'Literal["some-value"] in that schema'
                         )
 
-                    const = field._get_const()
+                    const = field.const
                     if not isinstance(const, (int, str, bool)):
                         raise ValueError(
                             f"Field: {repr(self.attname)} specify a discriminator: "
@@ -454,11 +476,14 @@ class ParserField:
                 if dep in alias_map:
                     dep = alias_map[dep]
                 if dep not in fields:
-                    if dep in excluded_vars:
-                        continue
-                    raise ValueError(
-                        f"Field(name={repr(self.name)}) dependency: {repr(dep)} not exists"
-                    )
+                    # continue
+                    # if dependencies is generated from unbound, it is considered inaccurate
+                    if not self.property:
+                        raise ValueError(
+                            f"Field(name={repr(self.name)}) dependency: {repr(dep)} not exists"
+                        )
+                    continue
+
                 field = fields[dep]
                 if self.property:
                     # if no getter function
@@ -565,6 +590,10 @@ class ParserField:
         return options.mode in self.field.required
 
     def no_input(self, value, options: RuntimeOptions):
+        if self.final:
+            if not self.field.no_default:
+                return True
+
         no_input = (
             self.field.no_input(value)
             if callable(self.field.no_input)
@@ -585,6 +614,9 @@ class ParserField:
 
     def always_no_input(self, options: RuntimeOptions):
         # calculate before get the value
+        if self.final:
+            if not self.field.no_default:
+                return True
         field = self.field
         if field.no_input is True:
             return True
@@ -706,11 +738,11 @@ class ParserField:
     def generate(
         cls,
         attname: str,
-        annotation: Any = None,
-        default=...,
+        annotation: Any,
+        default: Any,
+        options: Options,
         global_vars=None,
         forward_refs=None,
-        options: Options = None,
     ):
         prop = None
         output_type = None
@@ -729,6 +761,9 @@ class ParserField:
                 param: inspect.Parameter
                 if param.annotation != param.empty:
                     annotation = param.annotation
+
+                field = getattr(prop.fset, "__field__", None)
+
                 if param.default != param.empty:
                     # @property
                     # @Field(...)
@@ -799,27 +834,31 @@ class ParserField:
             else:
                 no_output = True
 
+        final = is_final(annotation)
+        if final:
+            # turn to Any by default, not bare Final, which will not be recognized as a valid annotation
+            # _origin = get_origin(annotation)
+            # if _origin == Final:
+            # this type should take care in this level
+            # because it does not affect validation / transformation
+            # and rather a field behaviour
+            args = get_args(annotation)
+            if args:
+                annotation = args[0]
+            else:
+                annotation = Any
+
         if not isinstance(field, Field):
             field = cls.field_cls(
                 default=default,
                 no_input=no_input,
                 no_output=no_output,
                 required=required,
+                immutable=final
             )
 
         if not dependencies and field.dependencies:
             dependencies = field.dependencies
-
-        final = False
-        _origin = get_origin(annotation)
-        if _origin == Final:
-            # this type should take care in this level
-            # because it does not affect validation / transformation
-            # and rather a field behaviour
-            final = True
-            args = get_args(annotation)
-            if args:
-                annotation = args[0]
 
         input_type = cls.rule_cls.parse_annotation(
             annotation=annotation,
@@ -828,13 +867,15 @@ class ParserField:
             forward_refs=forward_refs,
             forward_key=attname,
         )
-        return cls(
+        parser_field = cls(
             attname=attname,
             name=(output_field or field).get_alias(
-                attname, generator=options.alias_generator if options else None
+                attname,
+                generator=options.alias_generator
             ),
             aliases=field.get_alias_from(
-                attname, generator=options.alias_from_generator if options else None
+                attname,
+                generator=options.alias_from_generator
             ),
             input_type=input_type,
             output_type=output_type,
@@ -845,3 +886,5 @@ class ParserField:
             # options=options,
             final=final,
         )
+        parser_field.validate_annotation(options=options)
+        return parser_field

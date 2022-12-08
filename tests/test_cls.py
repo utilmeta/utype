@@ -54,9 +54,7 @@ class TestClass:
         assert dt.age == 2
 
         @utype.dataclass(
-            set_properties=True,
-            allow_runtime=True,
-            init_super=True,
+            set_class_properties=True
         )
         class DataClass(dict):
             name: str = Field(max_length=10)
@@ -202,10 +200,12 @@ class TestClass:
         #     l_int_f: 'List[types.PositiveInt]' = Field(max_length=3)
 
     def test_class_vars(self):
-        def outer(k):
+        def outer(k=None):
             return k
 
         class TestSchema(Schema):
+            __options__ = Options(ignore_required=True)
+
             r1: typing.Any
             r2: "str"
             r3: None
@@ -222,8 +222,8 @@ class TestClass:
             def r7():
                 pass
 
-            r8 = outer
-            r9: type(None) = Field(alias_from=["_r9", "r9_"])
+            r8: Union[typing.Callable, typing.AnyStr] = outer
+            r9: type(None) = Field(alias_from=["_r9", "r9_"], default_factory=outer)
 
             class r10:
                 pass
@@ -240,13 +240,76 @@ class TestClass:
                 return int(self._r13)
 
             @r13.setter
-            @Field(alias_from=["r13_alias"], default="1.5")
-            def r13(self, value: str):
+            def r13(self, value: str = Field(alias_from=["r13_alias"], default="1.5")):
                 self._r13 = float(value)
 
-        with pytest.raises(Exception):
+            r14 = outer     # no annotation function
+            r15 = r10       # no annotation type (class)
+            r16 = r7        # no annotation staticmethod
 
-            class s(Schema):
+            r17: typing.ClassVar[str] = '3'
+            r18: typing.ClassVar = '3'
+            r19: typing.ForwardRef('str') = '3'
+            r20: typing.Final = 1
+            r21: typing.Final[str] = 'a'        # no input and immutable
+            r22: typing.Final[int]              # immutable
+
+        assert set(TestSchema.__parser__.fields) == {
+            'r1', 'r2', 'r3', 'r4', 'r8', 'r9', 'r12', 'r13',
+            'r19', 'r20', 'r21', 'r22'
+        }
+
+        t1 = TestSchema(r21='b', r22='3')
+        # no input field does not take input from __init__
+        # but can still apply default
+        assert t1.r21 == 'a'        # final
+        assert t1.r22 == 3
+
+        with pytest.raises(exc.UpdateError):
+            t1.r21 = 2
+
+        with pytest.raises(exc.UpdateError):
+            t1.r22 = 2
+
+        with pytest.raises(Exception):
+            class s(Schema):    # noqa
+                a: ''       # empty forward ref
+
+        with pytest.raises(Exception):
+            class s(Schema):    # noqa
+                # invalid annotation:
+                r14: outer
+
+        with pytest.raises(Exception):
+            class s(Schema):    # noqa
+                # invalid annotation:
+                r14: typing.Literal
+
+        with pytest.warns():
+            class s(Schema):    # noqa
+                # invalid annotation:
+                r14: typing.TypeVar
+
+        with pytest.raises(Exception):
+            class s(Schema):    # noqa
+                # invalid annotation:
+                r14: typing.TypeVar('T')
+
+        with pytest.raises(Exception):
+            class b(Schema):    # noqa
+                # invalid annotation:
+                f: typing.Final[str] = '3'
+
+            class c(b):    # noqa
+                # invalid annotation:
+                f: typing.Final[str] = '4'
+
+        with pytest.raises(Exception):
+            class s(Schema):     # noqa
+                items: list = Field(max_length=10)  # wrong
+
+        with pytest.raises(Exception):
+            class s(Schema):    # noqa
                 update: str = ""
 
     def test_functional_initialize_and_aliases(self):
@@ -542,26 +605,38 @@ class TestClass:
         assert t1.c == t1.b == 123      # test attribute update
         assert t1.a == '123'        # no default for update
         t1['c#'] = b'456'
+        assert 'c$' in t1
         assert t1.c == 456
         assert 'im' not in t1
 
-        with pytest.raises(AttributeError):
+        with pytest.raises(exc.ParseError):
+            t1['c#'] = b'abc'
+
+        with pytest.raises(exc.ParseError):
+            t1['c$'] = '1'
+
+        cp = t1.copy()
+        assert type(cp) == T
+        assert cp == t1
+
+        with pytest.raises(exc.UpdateError):
             t1.im = 3
 
-        with pytest.raises(AttributeError):
+        with pytest.raises(exc.UpdateError):
             t1['im'] = 3
 
-        with pytest.raises(AttributeError):
+        with pytest.raises(exc.DeleteError):
             del t1.im
 
-        with pytest.raises(AttributeError):
+        with pytest.raises(exc.DeleteError):
+            # delete required
             del t1.req
 
-        with pytest.raises(TypeError):
+        with pytest.raises(exc.DeleteError):
             del t1.im
 
     def test_logical(self):
-        @utype.dataclass
+        @utype.dataclass(eq=True)       # make eq so that instance can be compared
         class LogicalDataClass(metaclass=utype.LogicalMeta):
             name: str = Field(max_length=10)
             age: int
@@ -571,7 +646,3 @@ class TestClass:
         assert one_of_type({'name': 'test', 'age': '1'}) == LogicalDataClass(name='test', age=1)
         assert one_of_type([b'test', '1']) == ('test', 1)
 
-    def test_invalids(self):
-        with pytest.raises(Exception):
-            class DataSchema(utype.Schema):
-                items: list = Field(max_length=10)  # wrong

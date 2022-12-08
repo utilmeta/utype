@@ -160,10 +160,6 @@ class TypeTransformer:
     def __repr__(self):
         return f"{self.__class__.__name__}(no_explicit_cast={self.no_explicit_cast}, no_data_loss={self.no_data_loss})"
 
-    # @property
-    # def strict(self):
-    #     return self.options.strict_transform
-
     @classmethod
     def resolver_transformer(cls, t: type) -> Optional[Callable]:
         # resolve to it's subclass if both subclass and baseclass is provided

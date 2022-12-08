@@ -1,7 +1,10 @@
-from utype import Rule, Options, exc
+import decimal
+
+from utype import Rule, Lax, Options, exc
+from utype.parser.rule import LogicalType
 from utype import types
 import pytest
-from typing import List, Iterator, Iterable
+from typing import List, Iterator, Iterable, Literal
 from datetime import datetime, date, timedelta, time, timezone
 from enum import Enum
 
@@ -62,12 +65,6 @@ class TestRule:
         assert int_or_list(["a"]) == ["a"]
         assert int_or_list([1]) == ["1"]
 
-        from utype import Rule
-        from typing import Literal
-
-        from utype import Rule, exc
-        from typing import Literal
-
         class IntWeekDay(int, Rule):
             gt = 0
             le = 7
@@ -77,19 +74,14 @@ class TestRule:
         assert week_day('6') == 6
         assert week_day(b'tue') == 'tue'
 
-        try:
-            week_day('8') == 6
-        except exc.ParseError as e:
-            print(e)
-            """
-            CollectedParseError: Constraint: <le>: 7 violated;
-            Constraint: <enum>: ('mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun') violated
-            """
+        with pytest.raises(exc.ParseError):
+            week_day('8')
 
-        weekday_or_date = week_day ^ date
+        # weekday_or_date = week_day | date
+        weekday_or_date = LogicalType.any_of(week_day, date)
 
-        assert weekday_or_date(b'3') == 3
-        assert weekday_or_date('wed') == 'wed'
+        assert weekday_or_date(b'5') == 5
+        assert weekday_or_date('fri') == 'fri'
         assert weekday_or_date('2000-1-1') == date(2000, 1, 1)
 
     def test_length(self):
@@ -213,8 +205,16 @@ class TestRule:
             gt = [1]
             le = [10]
 
-        with pytest.raises(ValueError):
+        class DtB(Rule, datetime):
+            gt = datetime(2020, 1, 1)
+            le = datetime(2022, 1, 1)
 
+        assert DtB('2021-01-01') == datetime(2021, 1, 1)
+
+        with pytest.raises(exc.ConstraintError):
+            DtB('2023-02-03')
+
+        with pytest.raises(ValueError):
             class IntV(Rule):
                 gt = 3
                 lt = 2
@@ -266,18 +266,51 @@ class TestRule:
         with pytest.raises(exc.ConstraintError):
             MListB([10, 1])
 
+        class LaxEIntB(int, Rule):
+            ge = Lax(1)
+            le = Lax(10)
+
+        assert LaxEIntB('0') == 1
+        assert LaxEIntB(3.3) == 3
+        assert LaxEIntB(11) == 10
+
     def test_max_digits(self):
         class MaxFloat(types.Float):
-            max_digits = 3
+            max_digits = 6
 
         assert MaxFloat(b"33.123") == 33.123
-        assert MaxFloat("-133.123") == -133.123
+        assert MaxFloat("-33.123") == -33.123
+        assert MaxFloat("-0.123456") == -0.123456   # the left 0 does not count
+        assert MaxFloat("-0.003456") == -0.003456   # the left 0 does not count
+
+        with pytest.raises(exc.ConstraintError):
+            MaxFloat("-0.0034567")
 
         with pytest.raises(exc.ConstraintError):
             MaxFloat("3311.123")
 
         with pytest.raises(exc.ConstraintError):
             MaxFloat(-3311.123)
+
+        class Hundreds(int, Rule):
+            max_digits = 3
+            multiple_of = 100
+
+        assert Hundreds('200') == 200
+
+        with pytest.raises(exc.ConstraintError):
+            Hundreds(1000)
+
+        with pytest.raises(exc.ConstraintError):
+            Hundreds(120)
+
+        class MaxFloat(types.Float):
+            max_digits = Lax(6)
+
+        assert MaxFloat('123.4567') == 123.457      # round(123.4567, 3) == 123.457
+
+        with pytest.raises(exc.ConstraintError):
+            MaxFloat(1234567.123)
 
     def test_multiple_of(self):
         class MulInt(types.Int):
@@ -294,22 +327,50 @@ class TestRule:
             MulInt(32)
 
         class LooseMulInt(types.Int):
-            strict = False
-            multiple_of = 3
+            multiple_of = Lax(3)
 
         assert LooseMulInt("31.1") == 30
 
-    def test_round(self):
+    def test_decimals(self):
+        class D(decimal.Decimal, Rule):
+            decimal_places = 2
+            max_digits = 4
+
+        assert D(1.5) == decimal.Decimal('1.50')    # decimal places will shape Decimal
+
+        with pytest.raises(exc.ConstraintError):
+            D(111.3)     # -> '11.30'
+
+        with pytest.raises(exc.ConstraintError):
+            D(1.323)     # decimal places exceed
+
+        with pytest.raises(exc.ConstraintError):
+            D('1.500')     # decimal places exceed
+
+        class FD(float, Rule):
+            decimal_places = 3
+            max_digits = 4
+
+        assert FD(1.3) == 1.3
+        assert FD(111.3) == 111.3
+
+        with pytest.raises(exc.ConstraintError):
+            D(0.3234)     # decimal places exceed
+
         def make_round(r):
             class F(types.Float):
-                round = r
-
+                decimal_places = Lax(r)
             return F
 
         assert make_round(2)(1.2) == round(1.2, 2)  # noqa
         assert make_round(1)(1.24) == round(1.24, 1)  # noqa
         assert make_round(0)("1.245") == round(1.245, 0)  # noqa
         assert make_round(-1)("31.245") == round(31.245, -1)  # noqa
+
+        with pytest.raises(ValueError):
+            class D1(decimal.Decimal, Rule):
+                decimal_places = 3
+                max_digits = 2
 
     def test_contains(self):
         class IntArray(list, types.Array):
@@ -319,7 +380,7 @@ class TestRule:
 
         assert IntArray([1, 2, 3]) == [1, 2, 3]
         assert IntArray([1, 2, -1, "a", "b"]) == [1, 2, -1, "a", "b"]
-        assert IntArray(["1", True, b"2.3"])
+        assert IntArray(["1", True, b"2.3"]) == ["1", True, b"2.3"]     # no transform
 
         with pytest.raises(exc.ConstraintError):
             # NO EXPLICITLY POSITIVE INT
@@ -336,6 +397,21 @@ class TestRule:
         int_array = IntArray[int]
         assert int_array(["1", -3, b"2.3"]) == [1, -3, 2]
 
+        class Const1(int, Rule):
+            const = 1
+
+        class ConTuple(tuple, Rule):
+            contains = Const1
+            max_contains = 3
+
+        assert ConTuple([1, True]) == (1, True)
+
+        with pytest.raises(exc.ConstraintError):
+            ConTuple([0, 2])
+
+        with pytest.raises(exc.ConstraintError):
+            ConTuple([1, True, b'1', '1.0'])
+
     def test_unique_items(self):
         class UniqueArray(list, types.Array):
             unique_items = True
@@ -351,18 +427,10 @@ class TestRule:
         with pytest.raises(exc.ConstraintError):
             int_unique_array((1, "1", b"1"))
 
-    # def test_excludes(self):
-    #     rule = Rule(excludes=0)
-    #     assert rule(1) == 1
-    #     with pytest.raises(ValueError):
-    #         rule(0)
-    #     rule = Rule(template=[int], excludes=[1, 4])
-    #     assert rule(["2", "5"]) == [2, 5]
-    #     assert rule(3) == [3]
-    #     with pytest.raises(ValueError):
-    #         rule([1])
-    #     rule_ = Rule(template=[int], excludes=[1, 2], strict=False)
-    #     assert rule_([1, 4]) == [4]
+        class LaxUniqueArray(list, types.Array):
+            unique_items = Lax(True)
+
+        assert LaxUniqueArray([1, 1, 2, 3, 3]) == [1, 2, 3]
 
     def test_enum_const(self):
         class Const(Rule):
@@ -372,8 +440,7 @@ class TestRule:
             const = 1
 
         class LooseConst(Rule):
-            const = 1
-            strict = False
+            const = Lax(1)
 
         assert Const(1) == 1
         assert IntConst(True) == 1
@@ -407,6 +474,11 @@ class TestRule:
         assert array_enum("INFO") == ("INFO",)
         assert array_enum(["INFO", "ERROR"]) == ("INFO", "ERROR")
         assert unique_array_enum(["INFO", "ERROR"]) == ["INFO", "ERROR"]
+
+        class LaxEnumRule(Rule):
+            enum = Lax(choices)
+
+        assert LaxEnumRule('OTHER') in choices
 
         with pytest.raises(exc.ParseError):
             array_enum(["A", "E"])
@@ -458,6 +530,8 @@ class TestRule:
 
         level_array = Array[EnumLevel]
 
+        assert level_array('INFO') == [EnumLevel.info]    # not .value, but the enum instance
+
         class UniqueIntArray(list, types.Array):
             __args__ = int
 
@@ -475,7 +549,8 @@ class TestRule:
         class SingleItemDict(dict, types.Object):
             length = 1
 
-        class UniqueTuple(tuple, types.Array):
+        class UniqueTuple(types.Array):
+            __origin__ = tuple
             unique_items = True
 
         assert UniqueIntArray([-1, "2", True]) == [-1, 2, 1]

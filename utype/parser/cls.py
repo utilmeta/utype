@@ -10,12 +10,15 @@ from collections.abc import Mapping
 from .options import RuntimeOptions
 from functools import partial
 import warnings
+from types import FunctionType
 
 
 __all__ = ['ClassParser']
 
 
 class ClassParser(BaseParser):
+    IGNORE_ATTR_TYPES = (staticmethod, classmethod, FunctionType, type)
+    # if these type not having annotation, we will not recognize them as field
     function_parser_cls = FunctionParser
     fields: Dict[str, ParserField]
 
@@ -49,19 +52,30 @@ class ClassParser(BaseParser):
 
             attr = getattr(base, name, None)
             if self.is_class_internals(
-                attr, attname=name, class_qualname=base.__qualname__
+                attr,
+                attname=name,
+                class_qualname=base.__qualname__
             ):
                 raise TypeError(
                     f"field: {repr(name)} was declared in {base}, "
-                    f"so {self.obj} cannot annotate it again"
+                    f"so {self.obj} cannot annotate it as a field"
                 )
         return True
 
     @classmethod
-    def is_class_internals(cls, attr, attname: str, class_qualname: str):
+    def is_class_internals(cls, attr, attname: str, class_qualname: str = None):
+        if isinstance(attr, (staticmethod, classmethod)):
+            return True
+        if inspect.ismethoddescriptor(attr):
+            # like method_descriptor
+            return True
         qualname: str = getattr(attr, "__qualname__", None)
         name: str = getattr(attr, "__name__", None)
         if name and qualname:
+            if not class_qualname:
+                # loosely check
+                return attname == name and '.' in qualname
+
             if attname == name and qualname.startswith(f"{class_qualname}."):
                 return True
         return False
@@ -84,6 +98,12 @@ class ClassParser(BaseParser):
                 exclude_vars.add(key)
                 continue
             default = self.obj.__dict__.get(key, ...)
+            if annotation is None:
+                # a: None
+                # a: Optional[None]
+                # a: Union[None]
+                annotation = type(None)
+                # to make a difference to annotation=None
             fields.append(
                 self.schema_field_cls.generate(
                     attname=key,
@@ -106,6 +126,9 @@ class ClassParser(BaseParser):
                 or self.is_class_internals(
                     attr, attname=key, class_qualname=self.obj_name
                 )
+                or isinstance(attr, self.IGNORE_ATTR_TYPES)
+                # check class field name at last
+                # because this will check bases internals trying to find illegal override
                 or not self.validate_class_field_name(key)
             ):
                 exclude_vars.add(key)
@@ -242,11 +265,24 @@ class ClassParser(BaseParser):
             return self
         return self.resolve_parser(obj_self.__class__)
 
-    def make_contains(self, output_only: bool = False):
-        contains_func = self.obj.__dict__.get("__contains__")
-        if contains_func:
-            return
+    def _make_method(self, func: Callable, name: str = None):
+        if name:
+            func.__name__ = name
+        else:
+            name = func.__name__
 
+        if name in self.obj.__dict__:
+            # already declared
+            return False
+        attr_func = getattr(self.obj, name, None)
+        if hasattr(attr_func, '__parser__'):
+            # already inherited
+            return False
+        func.__parser__ = self
+        setattr(self.obj, name, func)
+        return True
+
+    def make_contains(self, output_only: bool = False):
         def __contains__(_obj_self, item: str):
             parser = self.get_parser(_obj_self)
             field = parser.get_field(item)
@@ -260,14 +296,16 @@ class ClassParser(BaseParser):
                 return False
             return True
 
-        setattr(self.obj, "__contains__", __contains__)
-        return __contains__
+        self._make_method(__contains__)
+
+    def make_eq(self):
+        def __eq__(_obj_self, other):
+            if not isinstance(other, _obj_self.__class__):
+                return False
+            return _obj_self.__dict__ == other.__dict__
+        self._make_method(__eq__)
 
     def make_repr(self, ignore_str: bool = False):
-        repr_func = self.obj.__dict__.get("__repr__")
-        if repr_func:
-            return
-
         def __repr__(_obj_self):
             parser = self.get_parser(_obj_self)
             items = []
@@ -278,57 +316,41 @@ class ClassParser(BaseParser):
                 items.append(f"{field.attname}={repr(val)}")
             values = ", ".join(items)
             return f"{parser.name}({values})"
-
-        def __str__(_obj_self):
-            return _obj_self.__repr__()
-
-        setattr(self.obj, "__repr__", __repr__)
+        self._make_method(__repr__)
 
         if not ignore_str:
-            setattr(self.obj, "__str__", __str__)
-
-        return __repr__
+            def __str__(_obj_self):
+                return _obj_self.__repr__()
+            self._make_method(__str__)
 
     def set_attributes(self,
-                       values,
+                       values: dict,
                        instance: object,
                        options: RuntimeOptions,
                        ):
-        parser = self
-        for key, field in parser.fields.items():
-            if key not in values:
-                continue
-                # value = field.get_default(parser.options, defer=False)
-                # if value is ...:
-                #     if field.attname in _obj_self.__dict__:
-                #         # delete attr for that unprovided value
-                #         # any access to this attribute will raise AttributeError
-                #         _obj_self.__dict__.pop(field.attname)
-                #     continue
-            elif field.no_output(values[key], options=options):
-                value = values.pop(key)
-                # for schema
-                # _obj_self.__dict__[field.attname] = value
-            else:
-                value = values[key]
 
-            if field.property:
-                try:
-                    field.property.fset(instance, values[key])      # call the original setter
-                    # setattr(instance, field.attname, values[key])
-                except Exception as e:
-                    error_option = field.get_on_error(options)
-                    msg = f"@property: {repr(field.attname)} assign failed with error: {e}"
-                    if error_option == options.THROW:
-                        raise e.__class__(msg) from e
-                    else:
-                        warnings.warn(msg)
+        for key, value in list(values.items()):
+            field = self.get_field(key)
+            if field:
+                if field.no_output(values[key], options=options):
+                    values.pop(key)
+                if field.property:
+                    try:
+                        field.property.fset(instance, values[key])  # call the original setter
+                        # setattr(instance, field.attname, values[key])
+                    except Exception as e:
+                        error_option = field.get_on_error(options)
+                        msg = f"@property: {repr(field.attname)} assign failed with error: {e}"
+                        if error_option == options.THROW:
+                            raise e.__class__(msg) from e
+                        else:
+                            warnings.warn(msg)
                     continue
-                # raise the error directly if setattr failed
-            else:
-                # TODO: it seems redundant for Schema, so we just use it as a fallback for now
-                # and work on it later if something went wrong
-                instance.__dict__[field.attname] = value
+
+            # TODO: it seems redundant for Schema, so we just use it as a fallback for now
+            # and work on it later if something went wrong
+            instance.__dict__[field.attname] = value
+            # set to __dict__ no matter field (maybe addition=True)
 
     def make_init(
         self,
