@@ -22,7 +22,7 @@ class RuntimeOptionsMixin:
 
     transformer_cls = TypeTransformer  # support custom with scope
     collect_errors: bool = False
-    max_errors: int = 0
+    max_errors: int = None
     # if errors reach to this limit, just throw and do not collect further
     # default strategy is fail-fast,
     # but if collect_errors = True. we will collect every error message of the data
@@ -163,7 +163,10 @@ class RuntimeOptions(RuntimeOptionsMixin):
     ):
         # err = Error(e)
         self.errors.append(e)
-        if force_raise or not self.collect_errors or len(self.errors) > self.max_errors:
+        if force_raise or not self.collect_errors:
+            raise e
+
+        if self.max_errors is not None and len(self.errors) > self.max_errors:
             raise e
 
     def collect_waring(self, warning, category=None):
@@ -189,7 +192,7 @@ class Options(RuntimeOptionsMixin):
         override: bool = False,
         immutable: bool = False,
         collect_errors: bool = False,
-        max_errors: int = 0,
+        max_errors: int = None,
         max_properties: int = None,
         min_properties: int = None,
         no_explicit_cast: Optional[bool] = False,
@@ -246,6 +249,11 @@ class Options(RuntimeOptionsMixin):
                 raise ValueError(
                     "Options force_default and no_default can not both specify"
                 )
+
+        if not collect_errors:
+            if max_errors:
+                warnings.warn(f'Options with max_errors: {max_errors} should turn on collect_errors=True')
+                max_errors = None
 
         options = {}
         for key, val in locals().items():

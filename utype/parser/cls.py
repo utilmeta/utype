@@ -331,6 +331,7 @@ class ClassParser(BaseParser):
 
         for key, value in list(values.items()):
             field = self.get_field(key)
+            attname = key
             if field:
                 if field.no_output(values[key], options=options):
                     values.pop(key)
@@ -346,10 +347,11 @@ class ClassParser(BaseParser):
                         else:
                             warnings.warn(msg)
                     continue
+                attname = field.attname
 
             # TODO: it seems redundant for Schema, so we just use it as a fallback for now
             # and work on it later if something went wrong
-            instance.__dict__[field.attname] = value
+            instance.__dict__[attname] = value
             # set to __dict__ no matter field (maybe addition=True)
 
     def make_init(
@@ -417,13 +419,14 @@ class ClassParser(BaseParser):
     detector=lambda cls: isinstance(getattr(cls, "__parser__", None), ClassParser),
 )
 def transform(transformer: TypeTransformer, data, cls):
-    parser: ClassParser = cls.__parser__
-    if not isinstance(data, (dict, Mapping)):
+    if not isinstance(data, Mapping):
+        # {} dict instance is a instance of Mapping too
         if transformer.no_explicit_cast:
             raise TypeError(f"invalid input type for {cls}, should be dict or Mapping")
         else:
             data = transformer(data, dict)
     if not transformer.options.vacuum:
+        parser: ClassParser = cls.__parser__
         if parser.options.allowed_runtime_options:
             # pass the runtime options
             data.update(__options__=transformer.options)

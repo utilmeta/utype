@@ -109,6 +109,11 @@ class DataClass(metaclass=LogicalMeta):
     #     obj.__runtime_options__ = self.__runtime_options__
     #     return obj
 
+    @classmethod
+    def __from__(cls, data, options=None):
+        options = cls.__options__.make_runtime(cls, options=options)
+        return options.transformer(data, cls)
+
     def __export__(self,
                    includes: Union[str, List[str]] = None,
                    excludes: Union[str, List[str]] = None,
@@ -156,10 +161,16 @@ class Schema(dict, metaclass=LogicalMeta):
             )
             setattr(cls, field.attname, hooked_property)
 
+        # if cls.__validate__ != Schema.__validate__:
+        #     cls.__validate__ = cls.__parser__.function_parser_cls.apply_for(cls.__validate__).wrap(
+        #         parse_params=True,
+        #         parse_result=False
+        #     )
+
     def __class_getitem__(cls, item):
         raise NotImplemented
 
-    def __validate__(self, options=None):
+    def __validate__(self):
         pass
 
     def __str__(self):
@@ -177,6 +188,11 @@ class Schema(dict, metaclass=LogicalMeta):
 
     def __repr__(self):
         return self.__str__()
+
+    @classmethod
+    def __from__(cls, data, options=None):
+        options = cls.__options__.make_runtime(cls, options=options)
+        return options.transformer(data, cls)
 
     # coerce_properties need to separate from set_attributes and execute by order
     # because the dependencies that the property need may not be set during one-time loop
@@ -225,7 +241,7 @@ class Schema(dict, metaclass=LogicalMeta):
         self.__runtime_options__ = options
         for key, field in self.__parser__.property_fields.items():
             self.__coerce_property__(field, options=options)
-        self.__validate__(options)
+        self.__validate__()
         options.raise_error()   # raise error if there is any
 
     def __contains__(self, item: str):

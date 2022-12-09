@@ -44,7 +44,6 @@ nav:
       - references/rule.md
       - references/field.md
       - references/options.md
-      - references/json-schema.md
   - 功能扩展:
       - extension/env.md
       - extension/cmd.md

@@ -40,6 +40,34 @@ class TestClass:
             "slug": "my-awesome-article"
         }
 
+        class PowerSchema(Schema):
+            result: float
+            num: float
+            exp: float
+
+            def __init__(self, num: float, exp: float):
+                assert isinstance(num, float)
+                assert isinstance(exp, float)
+
+                if num < 0:
+                    if 1 > exp > -1 and exp != 0:
+                        raise ValueError(f'operation not supported, '
+                                         f'complex result will be generated')
+                super().__init__(
+                    num=num,
+                    exp=exp,
+                    result=num ** exp
+                )
+
+        power = PowerSchema('3', 3)
+        assert power.result == 27
+
+        with pytest.raises(ValueError):
+            PowerSchema(-0.5, -0.5)
+
+        class v(Schema):
+            pow: PowerSchema
+
     def test_dataclass(self):
         class data(utype.DataClass):
             pass
@@ -634,6 +662,77 @@ class TestClass:
 
         with pytest.raises(exc.DeleteError):
             del t1.im
+
+    def test_combine(self):
+        class MemberSchema(Schema):
+            name: str
+            level: int = 0
+
+        class GroupSchema(Schema):
+            name: str
+            creator: MemberSchema
+            members: List[MemberSchema] = Field(default_factory=list)
+
+        alice = {'name': 'Alice', 'level': '3'}
+        bob = b'{"name": "Bob"}'
+
+        group = GroupSchema(name='test', creator=alice, members=(alice, bob))
+
+        assert group.creator.level == 3
+        assert group.members[1].name == 'Bob'
+
+        assert MemberSchema.__from__(bob) == group.members[1]
+
+        class UserSchema(Schema):
+            name: str
+            level: int = 0
+
+            class KeyInfo(Schema):
+                access_key: str
+                last_activity: datetime = None
+
+            access_keys: List[KeyInfo] = Field(default_factory=list)
+
+        assert issubclass(UserSchema.KeyInfo, Schema)
+        user = UserSchema(**{'name': 'Joe', 'access_keys': {'access_key': 'KEY'}})
+        assert user.access_keys[0].access_key == 'KEY'
+        assert user.access_keys[0].last_activity is None
+
+        class UsernameMixin(Schema):
+            username: str = Field(regex='[0-9a-zA-Z]{3,20}')
+
+        class PasswordMixin(Schema):
+            password: str = Field(min_length=6, max_length=20)
+
+        class ProfileSchema(UsernameMixin):
+            signup_time: datetime = Field(readonly=True)
+
+        class LoginSchema(UsernameMixin, PasswordMixin):
+            pass
+
+        from typing import Optional
+
+        class UserInfo(Schema):
+            username: str = Field(regex='[0-9a-zA-Z]{3,20}')
+
+        class LoginForm(UserInfo):
+            password: str = Field(min_length=6, max_length=20)
+
+        password_dict = {"alice": "123456"}
+
+        @utype.parse
+        def login(form: LoginForm) -> Optional[UserInfo]:
+            if password_dict.get(form.username) == form.password:
+                return {"username": form.username}
+            return None
+
+        user = login(b'{"username": "alice", "password": 123456}')
+        assert user.username == 'alice'
+
+        with pytest.raises(exc.ParseError):
+            login(b'{"username": "alice", "password": 123}')
+
+        assert login(b'{"username": "alice", "password": "wrong"}') is None
 
     def test_logical(self):
         @utype.dataclass(eq=True)       # make eq so that instance can be compared

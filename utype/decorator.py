@@ -1,10 +1,12 @@
-from typing import Any, Iterable, Callable, Type
+from typing import Any, Iterable, Callable, Type, TypeVar
 import warnings
 from .parser.func import FunctionParser
 from .parser.cls import ClassParser
 from .parser.options import Options
 from .parser.rule import Rule, Lax
 # from .utils.transform import register_transformer
+
+FUNC = TypeVar('FUNC')
 
 
 def parse(
@@ -22,7 +24,7 @@ def parse(
             f" which is basically meaningless..."
         )
 
-    def decorator(func):
+    def decorator(func: FUNC) -> FUNC:
         parser = parser_cls.apply_for(func, options=options, no_cache=no_cache)
         return parser.wrap(
             parse_params=not ignore_params, parse_result=not ignore_result

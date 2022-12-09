@@ -1486,23 +1486,23 @@ class Rule(metaclass=LogicalType):
             else:
                 contains += 1
         if not contains:
-            raise exc.ConstraintError(
+            options.handle_error(exc.ConstraintError(
                 f"{cls.contains} not contained in value",
                 constraint='contains',
                 constraint_value=cls.contains
-            )
-        if cls.min_contains and contains < cls.min_contains:
-            raise exc.ConstraintError(
+            ))
+        elif cls.min_contains and contains < cls.min_contains:
+            options.handle_error(exc.ConstraintError(
                 f"value contains {contains} of {cls.contains}, which is lower than min_contains",
                 constraint="min_contains",
                 constraint_value=cls.min_contains,
-            )
-        if cls.max_contains and contains > cls.max_contains:
-            raise exc.ConstraintError(
+            ))
+        elif cls.max_contains and contains > cls.max_contains:
+            options.handle_error(exc.ConstraintError(
                 f"value contains {contains} of {cls.contains}, which is bigger than max_contains",
                 constraint="max_contains",
                 constraint_value=cls.max_contains,
-            )
+            ))
         return value
 
     @classmethod
@@ -1554,15 +1554,17 @@ class Rule(metaclass=LogicalType):
         options = trans.options
 
         if options.no_data_loss and len(value) > len(cls.__args__):
-            raise exc.ItemsExceedError(
-                excess_items=list(range(len(cls.__args__), len(value)))
-            )
+            for item in range(len(cls.__args__), len(value)):
+                options.handle_error(exc.TupleExceedError(
+                    item=item,
+                    value=value[item]
+                ))
 
         for i, (arg, func) in enumerate(zip(cls.__args__, cls.__arg_transformers__)):
             if i >= len(value):
-                raise exc.AbsenceError(
+                options.handle_error(exc.AbsenceError(
                     f"prefixItems required prefix: [{i}] not provided", item=i
-                )
+                ))
             try:
                 result.append(trans.apply(value[i], arg, func=func))
             except Exception as e:

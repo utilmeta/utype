@@ -44,7 +44,6 @@ nav:
       - references/rule.md
       - references/field.md
       - references/options.md
-      - references/json-schema.md
   - Feature Extensions:
       - extension/env.md
       - extension/cmd.md

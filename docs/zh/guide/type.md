@@ -21,15 +21,15 @@ assert isinstance(my_inst, MyClass)
 
 Python 中已经有一些内置的类型，我们无需导入就可以直接引用，如
 
-* `int`：整数
-* `float`：浮点数
-* `bool`：布尔值，表示真（True）或假（False）
-* `str`：字符串
-* `bytes`：字节串，以二进制字节序列保存数据，可以与 str 进行互相转化
-* `list`：列表，长度和元素均可变
-* `tuple`：元组，长度固定，且不可修改其中的元素
-* `set`：集合，内部元素唯一且无序
-* `dict`：字典，提供着键与值的映射关系
+* `int`：整数，比如  `1`
+* `float`：浮点数，比如  `3.14`
+* `bool`：布尔值，比如  `True`（真）或  `False`（假）
+* `str`：字符串，比如  `'text'`
+* `bytes`：字节串，以二进制字节序列保存数据，可以与 str 进行互相转化，比如  `b'binary'`
+* `list`：列表，长度和元素均可变，比如  `[1, 2]`
+* `tuple`：元组，长度固定，且不可修改其中的元素，比如  `(1, 'a')`
+* `set`：集合，内部元素唯一且无序，比如  `{'b', 'a', 'c'}`
+* `dict`：字典，提供着键与值的映射关系，比如  `{'a': 1, 'b': 2}`
 
 还有一些标准库也提供了常用的类型，我们无需安装第三方依赖就可以直接导入，比如
 
@@ -545,6 +545,7 @@ print(revert_type | xor_type2)
 # Python >= 3.6 TypeError: unsupported operand type(s) for |: 'type' and 'type'
 # Python >= 3.10 TypeError: Cannot instantiate typing.Union
 ```
+
 
 ## 调节与扩展类型转化
 

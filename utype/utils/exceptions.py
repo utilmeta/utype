@@ -93,29 +93,33 @@ class ConstraintError(ParseError):
 
 class ExceedError(ParseError):
     # a key has excess the dict template and allow_excess=False in options
-    def __init__(
-        self, msg: str = None, excess_items: Union[list, set] = None, **kwargs
-    ):
-        self.excess_items = excess_items
-        super().__init__(msg, **kwargs)
+    # def __init__(
+    #     self, msg: str = None, excess_items: Union[list, set] = None, **kwargs
+    # ):
+    #     self.excess_items = excess_items
+    #     super().__init__(msg, **kwargs)
 
     @property
     def formatted_message(self):
-        msg = f"Items: {repr(self.excess_items)} is exceeded"
+        msg = f"parse item: [{repr(self.item)}] exceeded"
         if self.msg:
             msg += f": {self.msg}"
         return msg
+
+
+class TupleExceedError(ExceedError):
+    pass
 
 
 class AliasConflictError(ParseError):
     pass
 
 
-class ItemsExceedError(ExceedError):
-    pass
+# class ItemsExceedError(ExceedError):
+#     pass
 
 
-class PropertiesExceedError(ExceedError):
+class PropertiesExceedError(ParseError):
     def __init__(
         self,
         msg: str = None,

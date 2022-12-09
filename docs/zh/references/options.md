@@ -38,7 +38,6 @@
 * `ignore_no_input`
 * `ignore_no_output`
 * `ignore_alias_conflicts`
-* `ignore_error_prpperty`
 * `ignore_dependencies`
 
 
@@ -47,7 +46,7 @@
 * `case_insensitive`
 * `alias_generator`
 * `alias_from_generator`
-* `unprovided_attribute`
 * `immutable`
 
+### 运行时
 * `allow_runtime_options`

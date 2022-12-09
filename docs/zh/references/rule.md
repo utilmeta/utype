@@ -14,7 +14,6 @@ Rule 目前支持的内置约束如下
  * `ge` ：输入值必须大于等于 `ge` 值
  * `lt` ：输入值必须小于 `lt` 值
  * `le` ：输入值必须小于等于 `le` 值
-
 ```python
 from utype import Rule, exc
 
@@ -67,7 +66,6 @@ except exc.ConstraintError as e:
 * `length`:  输入数据的长度必须等于 `length` 值
 * `max_length`：输入数据的长度必须小于等于  `max_length` 的值
 * `min_length`：输入数据的长度必须大于等于  `min_length` 的值
-
 ```python
 from utype import Rule
 
@@ -102,7 +100,7 @@ from utype import Rule, exc
 class Email(str, Rule):  
     regex = r"([A-Za-z0-9]+[.-_])*[A-Za-z0-9]+@[A-Za-z0-9-]+(\.[A-Z|a-z]{2,})+"
 
-assert Email(b'dev@utype.io') == 'dev@utype.io'
+assert Email('dev@utype.io') == 'dev@utype.io'
 
 try:
 	Email('invalid#email.com')
@@ -119,7 +117,6 @@ except exc.ConstraintError as e:
 ### 常量与枚举
 
 * `const`：值得一个常量值，输入数据必须全等于该常量
-
 ```python
 from utype import Rule
 
@@ -145,7 +142,6 @@ except exc.ConstraintError as e:
 值得注意的是，`const` 不仅使用 Python 的全等符号（`==`）校验值与常量是否 “相等”，还会判断它们的类型是否相等，因为在 Python 中，通过 `__eq__` 方法能够使得一种类型与任意值相等，比如 `True == 1` 就是为真的，而 True 是 `bool` 类型，1 是 `int` 类型（在 Python 中 `bool` 是  `int` 的子类），所以无法通过 `const` 校验
 
 * `enum`：可以传入一个列表，集合或者一个 Enum 类，数据必须是在 `enum` 规定的取值范围之内
-
 ```python
 from utype import Rule, exc
 
@@ -174,7 +170,6 @@ except exc.ConstraintError as e:
 
 * `max_digits`：限制数字的的最大位数（不包括符号位或小数点）
 * `multiple_of`：数字必须是 `multiple_of` 指定的数值的倍数
-
 ```python
 from utype import Rule, exc
 
@@ -245,7 +240,6 @@ except exc.ConstraintError as e:
 * `contains`：指定一个类型（可以是普通类型或约束类型），数据中必须包含匹配的元素
 * `max_contains`：最多匹配 `contains` 类型的元素数量
 * `min_contains`：最少匹配 `contains` 类型的元素数量
-
 ```python
 from utype import Rule, exc
 
@@ -273,7 +267,8 @@ except exc.ConstraintError as e:
 	print(e)
 	"""
 	Constraint: <max_contains>: 3 violated: 
-	value contains 4 of Const1(int, const=1), which is bigger than max_contains
+	value contains 4 of Const1(int, const=1), 
+	which is bigger than max_contains
 	"""
 ```
 

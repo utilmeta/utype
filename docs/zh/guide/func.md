@@ -35,7 +35,7 @@ ArticleInfo(id=1, slug='my-article', info={'alice': 1, 'bob': 2})
 	虽然按照类型的声明，我们不应该在代码中这样调用函数，但是如果调用函数的是来自网络的 HTTP 请求，就可能会出现例子中的情况
 
 
-## 解析选项
+## 解析参数
 
 你可以在 `@utype.parse` 装饰器的参数中转入以下的函数解析选项
 * `ignore_params`：是否忽略对函数参数的解析，默认为 False

@@ -342,7 +342,7 @@ class BaseParser:
             # excluded vars cannot be carry in addition even if allowed
             return ...
         if options.addition is False:
-            options.handle_error(exc.ExceedError(item=key))
+            options.handle_error(exc.ExceedError(item=key, value=value))
             return ...
         if not options.addition:
             # None

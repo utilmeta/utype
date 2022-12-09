@@ -309,12 +309,13 @@ class FunctionParser(BaseParser):
 
         options = self.options.make_runtime(options=options)
         if self.is_async_generator:
-            f = self.get_async_generator(
+            f = wraps(self.obj)(self.get_async_generator(
                 options=options,
                 first_reserve=first_reserve,
                 parse_params=parse_params,
                 parse_result=parse_result,
-            )
+            ))
+
         elif self.is_coroutine:
 
             @wraps(self.obj)

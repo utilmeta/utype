@@ -222,8 +222,9 @@ class Month(PositiveInt):
     le = 12
 
 month_or_none = Month | None
-print(month_or_none('11.1'))
+print(month_or_none('11.0'))
 # > 11
+
 assert month_or_none(None) is None
 
 try:
@@ -281,6 +282,6 @@ utype 还在成长中，目前规划了以下将在新版本中实现的特性
 
 ## 用户交流与答疑
 
-中文答疑 QQ 群：183623597
+中文交流 QQ 群：183623597
 
 <img style="width: 300px" src="https://utype.io/assets/qq-group.jpg" alt="">
