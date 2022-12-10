@@ -1,11 +1,8 @@
 # Rule 类型约束
-
 在 utype 中，Rule 的作用是为类型施加约束，本篇文档我们来详细说明它的用法
 
 ## 内置约束
-Rule 类已经有了一系列的内置约束了，当你继承 Rule 的时候，只需要把约束作为属性声明出来即可获得该约束的能力
-
-Rule 目前支持的内置约束如下
+Rule 类已经内置了一系列的约束，当你继承 Rule 的时候，只需要把约束名称作为属性声明出来即可获得该约束的能力。Rule 目前支持的内置约束如下
 
 ### 范围约束
 范围约束用于限制数据的范围，如最大，最小值等，它们包括
@@ -345,7 +342,7 @@ print(LaxLength('abcd'))
 
 ## 声明方式
 
-### 绑定类型
+### 类型绑定
 ```python
 from utype import Rule
 
@@ -379,7 +376,7 @@ class PositiveInt(int, Rule):
 * Dict
 
 
-### 不绑定类型
+### 泛型约束
 
 ```python
 from utype import Rule
@@ -390,12 +387,29 @@ class LengthRule(Rule):
 
 assert LengthRule([1, 2, 3]) == [1, 2, 3]
 assert LengthRule('123') == '123'
+
+str_len = LengthRule[str]
+arr_len = LengthRule[list]
+
 ```
 
 比如对于 length 约束而言，如果没有绑定类型，任何拥有 `__len__` 方法的类型（能够使用 `len()`）都可以支持进行校验
 
 !!! note
 	如果没有绑定类型，并且没有指定任何约束，单纯的 Rule 类的行为就像 `typing.Any` 类型一样，可以接受任意类型的任意值，将输入值原样返回
+
+```python
+class LengthRule(Rule):  
+    min_length = 1  
+    max_length = 3  
+  
+str_len = LengthRule[str]
+arr_len = LengthRule[list]
+arr_int_len = LengthRule[list][int]
+
+print(arr_int_len((1, '2', b'3')))
+# > [1, 2, 3]
+```
 
 ### 混入与复用
 

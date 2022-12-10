@@ -202,11 +202,10 @@ class ClassParser(BaseParser):
             _obj_self.__dict__[field.attname] = value
             if callable(post_setattr):
                 post_setattr(_obj_self, field, value, options)
-
         return setter
 
     def make_deleter(self, field: ParserField, post_delattr=None):
-        def setter(_obj_self: object):
+        def deleter(_obj_self: object):
             if self.options.immutable or field.immutable:
                 raise AttributeError(
                     f"{self.name}: "
@@ -228,8 +227,7 @@ class ClassParser(BaseParser):
 
             if callable(post_delattr):
                 post_delattr(_obj_self, field, options)
-
-        return setter
+        return deleter
 
     def make_getter(self, field: ParserField):
         def getter(_obj_self: object):
@@ -238,7 +236,6 @@ class ClassParser(BaseParser):
                     f"{self.name}: {repr(field.attname)} not provided in schema"
                 )
             return _obj_self.__dict__[field.attname]
-
         return getter
 
     def assign_properties(self,
@@ -252,10 +249,26 @@ class ClassParser(BaseParser):
             if field.property:
                 continue
 
+            if getter:
+                field_getter = partial(getter, field=field)
+            else:
+                field_getter = self.make_getter(field)
+            if setter:
+                field_setter = partial(setter, field=field)
+            else:
+                field_setter = self.make_setter(field, post_setattr=post_setattr)
+            if deleter:
+                field_deleter = partial(deleter, field=field)
+            else:
+                field_deleter = self.make_deleter(field, post_delattr=post_delattr)
+
+            for f in (field_getter, field_setter, field_deleter):
+                f.__name__ = field.attname
+
             prop = property(
-                partial(getter, field=field) if getter else self.make_getter(field),
-                partial(setter, field=field) if setter else self.make_setter(field, post_setattr=post_setattr),
-                partial(deleter, field=field) if deleter else self.make_deleter(field, post_delattr=post_delattr),
+                fget=field_getter,
+                fset=field_setter,
+                fdel=field_deleter
             )
             # prop.__field__ = field        # cannot set attribute to @property
             setattr(self.obj, field.attname, prop)
@@ -313,7 +326,7 @@ class ClassParser(BaseParser):
                 field = parser.get_field(key)
                 if not field:
                     continue
-                items.append(f"{field.attname}={repr(val)}")
+                items.append(f"{field.attname}={field.repr_value(val)}")
             values = ", ".join(items)
             return f"{parser.name}({values})"
         self._make_method(__repr__)
@@ -375,7 +388,8 @@ class ClassParser(BaseParser):
             self.init_parser = init_parser
             return
 
-        if not inspect.isfunction(init_func):
+        if not inspect.isfunction(init_func) or self.function_parser_cls.function_pass(init_func):
+            # if __init__ is declared but passed, we still make a new one
 
             def __init__(_obj_self, **kwargs):
                 parser = self.get_parser(_obj_self)
@@ -396,8 +410,13 @@ class ClassParser(BaseParser):
 
             __init__.__parser__ = self
         else:
-            self.init_parser = self.function_parser_cls.apply_for(init_func)
-            __init__ = self.init_parser.wrap(parse_params=True, parse_result=False)
+            if not no_parse:
+                self.init_parser = self.function_parser_cls.apply_for(init_func)
+                __init__ = self.init_parser.wrap(parse_params=True, parse_result=False)
+                __init__.__parser__ = self
+                # wrapped function is not as same as parse.obj
+            else:
+                __init__ = init_func
 
         setattr(self.obj, "__init__", __init__)
         # self.obj.__dict__['__init__'] = __init__

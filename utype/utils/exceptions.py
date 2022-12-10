@@ -63,6 +63,13 @@ class TypeMismatchError(ParseError):
         return msg
 
 
+class DiscriminatorMismatchError(ParseError):
+    def __init__(self, discriminator: str, discriminator_value=None, **kwargs):
+        self.discriminator = discriminator
+        self.discriminator_value = discriminator_value
+        super().__init__(**kwargs)
+
+
 class ConstraintError(ParseError):
     def __init__(
         self,
@@ -118,29 +125,43 @@ class AliasConflictError(ParseError):
 # class ItemsExceedError(ExceedError):
 #     pass
 
-
-class PropertiesExceedError(ParseError):
+class DepthExceedError(ParseError):
     def __init__(
         self,
         msg: str = None,
-        max_properties: int = None,
-        properties_num: int = None,
+        max_depth: int = None,
+        depth: int = None,
         **kwargs,
     ):
-        self.properties_num = properties_num
-        self.max_properties = max_properties
+        self.depth = depth
+        self.max_depth = max_depth
+        super().__init__(msg, **kwargs)
 
 
-class PropertiesLackError(ParseError):
+class ParamsExceedError(ParseError):
     def __init__(
         self,
         msg: str = None,
-        min_properties: int = None,
-        properties_num: int = None,
+        max_params: int = None,
+        params_num: int = None,
         **kwargs,
     ):
-        self.properties_num = properties_num
-        self.min_properties = min_properties
+        self.params_num = params_num
+        self.max_params = max_params
+        super().__init__(msg, **kwargs)
+
+
+class ParamsLackError(ParseError):
+    def __init__(
+        self,
+        msg: str = None,
+        min_params: int = None,
+        params_num: int = None,
+        **kwargs,
+    ):
+        self.params_num = params_num
+        self.min_params = min_params
+        super().__init__(msg, **kwargs)
 
 
 class AbsenceError(ParseError):

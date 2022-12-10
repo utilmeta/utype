@@ -231,7 +231,7 @@ class TypeTransformer:
     #     return t(data)
 
     @register_transformer(type(None), allow_subclasses=False)
-    def to_null(self, data, t):
+    def to_null(self, data, t=type(None)):
         if data is None:
             return None
         if self.no_explicit_cast:
@@ -265,7 +265,7 @@ class TypeTransformer:
         return value
 
     @register_transformer(str)
-    def to_str(self, data, t: Type[str]):
+    def to_str(self, data, t: Type[str] = str):
         if isinstance(data, str):
             return t(data)
         data = self._from_byte_like(self._attempt_from(data))
@@ -274,7 +274,7 @@ class TypeTransformer:
         return t(data)
 
     @register_transformer(bytes, bytearray, memoryview)
-    def to_bytes(self, data, t: Type[bytes]):
+    def to_bytes(self, data, t: Type[bytes] = bytes):
         data = self._attempt_from(data)
 
         if isinstance(data, (bytes, bytearray, memoryview)):
@@ -291,7 +291,7 @@ class TypeTransformer:
         return t(str(data).encode())
 
     @register_transformer(list, tuple, set, frozenset, deque)
-    def to_array_types(self, data, t):
+    def to_array_types(self, data, t=list):
         if isinstance(data, t):
             return data
 
@@ -347,7 +347,7 @@ class TypeTransformer:
         # return t(data)
 
     @register_transformer(dict)
-    def to_dict(self, data, t) -> dict:
+    def to_dict(self, data, t=dict) -> dict:
         if isinstance(data, t):
             return data
         if isinstance(data, Mapping):
@@ -421,7 +421,7 @@ class TypeTransformer:
 
     # bool is a subclass of int
     @register_transformer(float)
-    def to_float(self, data, t: Type[float]) -> float:
+    def to_float(self, data, t: Type[float] = float) -> float:
         if isinstance(data, float):
             return t(data)
 
@@ -434,7 +434,7 @@ class TypeTransformer:
         return t(data)
 
     @register_transformer(int)
-    def to_integer(self, data, t: Type[int]) -> int:
+    def to_integer(self, data, t: Type[int] = int) -> int:
         if isinstance(data, int):
             # including bool:
             # True -> 1
@@ -460,8 +460,8 @@ class TypeTransformer:
 
         return t(data)
 
-    @register_transformer(decimal.Decimal)
-    def to_decimal(self, data, t: Type[decimal.Decimal]) -> Decimal:
+    @register_transformer(Decimal)
+    def to_decimal(self, data, t: Type[Decimal] = Decimal) -> Decimal:
         if isinstance(data, Decimal):
             return t(data)  # noqa
 
@@ -500,7 +500,7 @@ class TypeTransformer:
     @register_transformer(
         date, allow_subclasses=False
     )  # datetime is a subclass of date
-    def to_date(self, data, t: Type[date]) -> date:
+    def to_date(self, data, t: Type[date] = date) -> date:
         if isinstance(data, datetime):
             if self.no_data_loss:
                 raise ValueError(f"Invalid date: {data}, must be date")
@@ -515,7 +515,7 @@ class TypeTransformer:
         return dt.date()
 
     @register_transformer(datetime)
-    def to_datetime(self, data, t: Type[datetime]) -> datetime:
+    def to_datetime(self, data, t: Type[datetime] = datetime) -> datetime:
         if isinstance(data, t):
             return data
         elif isinstance(data, date):
@@ -545,7 +545,7 @@ class TypeTransformer:
         raise TypeError
 
     @register_transformer(timedelta)
-    def to_timedelta(self, data, t: Type[timedelta]) -> timedelta:
+    def to_timedelta(self, data, t: Type[timedelta] = timedelta) -> timedelta:
         if isinstance(data, t):
             return data
         data = self._from_byte_like(self._attempt_from(data))
@@ -587,7 +587,7 @@ class TypeTransformer:
         raise TypeError
 
     @register_transformer(time)
-    def to_time(self, data, t: Type[time]) -> time:
+    def to_time(self, data, t: Type[time] = time) -> time:
         if isinstance(data, t):
             return data
         data = self._attempt_from(data)
@@ -602,7 +602,7 @@ class TypeTransformer:
         raise TypeError
 
     @register_transformer(UUID)
-    def to_uuid(self, data, t: Type[UUID]):
+    def to_uuid(self, data, t: Type[UUID] = UUID):
         if isinstance(data, t):
             return data
 

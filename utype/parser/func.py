@@ -20,9 +20,25 @@ import warnings
 
 LAMBDA_NAME = (lambda: None).__name__
 LOCALS_NAME = "<locals>"
+def _f_pass_doc(): """"""
+
+
+def _f_pass(): pass
+
+
+PASSED_CODES = (
+    _f_pass.__code__.co_code,
+    _f_pass_doc.__code__.co_code,
+)
 
 
 class FunctionParser(BaseParser):
+    @classmethod
+    def function_pass(cls, f):
+        if not inspect.isfunction(f):
+            return False
+        return getattr(f, '__code__').co_code in PASSED_CODES
+
     @classmethod
     def validate_function(cls, f):
         return (
@@ -72,14 +88,16 @@ class FunctionParser(BaseParser):
         self.classmethod = isinstance(func, classmethod)
         self.staticmethod = isinstance(func, staticmethod)
 
+        func, self.first_reserve = self.analyze_func(func)
+
         self.is_method = inspect.ismethod(func)
         self.is_lambda = inspect.isfunction(func) and func.__name__ == LAMBDA_NAME
         self.is_coroutine = inspect.iscoroutinefunction(func)
         self.is_generator = inspect.isgeneratorfunction(func)
         self.is_async_generator = inspect.isasyncgenfunction(func)
         self.is_asynchronous = self.is_coroutine or self.is_async_generator
+        self.is_passed = self.function_pass(func)
 
-        func, self.first_reserve = self.analyze_func(func)
         parameters = inspect.signature(func).parameters.items()
 
         if not self.first_reserve and not self.is_method and not self.is_lambda:
@@ -254,18 +272,23 @@ class FunctionParser(BaseParser):
                 continue
             if param.kind in (param.VAR_KEYWORD, param.VAR_POSITIONAL):
                 continue
-            fields.append(
-                self.schema_field_cls.generate(
-                    attname=name,
-                    annotation=param.annotation
-                    if param.annotation is not param.empty
-                    else None,
-                    default=param.default if param.default is not param.empty else ...,
-                    global_vars=self.globals,
-                    forward_refs=self.forward_refs,
-                    options=self.options,
-                )
-            )
+
+            annotation = None
+            if param.annotation is not param.empty:
+                if param.annotation is None:
+                    annotation = type(None)
+                    # annotation = None means no annotation (param.empty)
+                else:
+                    annotation = param.annotation
+
+            fields.append(self.schema_field_cls.generate(
+                attname=name,
+                annotation=annotation,
+                default=param.default if param.default is not param.empty else ...,
+                global_vars=self.globals,
+                forward_refs=self.forward_refs,
+                options=self.options,
+            ))
 
         field_map = {}
         for field in fields:
@@ -274,11 +297,9 @@ class FunctionParser(BaseParser):
                     f"{self.obj}: field name: {repr(field.name)} conflicted at "
                     f"{field}, {field_map[field.name]}"
                 )
-            if not field.always_provided:
-                raise ValueError(
-                    f"{self.obj}: field(name={repr(field.name)}) is not required, "
-                    f"you should set a default"
-                )
+            if not self.is_passed:
+                # is function is :pass, we do not check for now
+                field.check_function(self.obj)      # check for function
             field_map[field.name] = field
         self.fields.update(field_map)
 
@@ -286,18 +307,50 @@ class FunctionParser(BaseParser):
         """
         all the non-keyword-only args need to check the
         non-keyword-only: required > has-default > no default (*pos)
-        keyword-only: required/has-default > no default (*kwargs)
+        keyword-only: required/has-default > no default (**kwargs)
         """
 
         super().validate_fields()
+
+        # validate DEFAULT order
+        optional_name = None
+        for i, (k, v) in enumerate(self.parameters):
+            v: inspect.Parameter
+            if v.kind == v.VAR_POSITIONAL:
+                continue
+            elif v.kind == v.VAR_KEYWORD:
+                continue
+
+            if v.kind == v.KEYWORD_ONLY:
+                # keyword args does not need to check for default order
+                continue
+
+            field = self.get_field(k)
+            if field:
+                required = field.field.no_default
+            else:
+                required = v.default != v.empty
+
+            if required:
+                if optional_name:
+                    msg = f'{self.obj}: non-default argument: {repr(k)} ' \
+                          f'follows default argument: {repr(optional_name)}'
+                    if v.kind == v.POSITIONAL_ONLY:
+                        raise SyntaxError(msg)
+                    else:
+                        warnings.warn(msg)
+            else:
+                optional_name = k
 
     def resolve_forward_refs(self, local_vars=None, ignore_errors: bool = True):
         resolved = super().resolve_forward_refs(
             local_vars=local_vars, ignore_errors=ignore_errors
         )
         if resolved:
-            self.position_type, r = resolve_forward_type(self.position_type)
-            self.return_type, r = resolve_forward_type(self.return_type)
+            if self.position_type:
+                self.position_type, r = resolve_forward_type(self.position_type)
+            if self.return_type:
+                self.return_type, r = resolve_forward_type(self.return_type)
 
     def wrap(
         self,
@@ -411,7 +464,7 @@ class FunctionParser(BaseParser):
         parsed_kwargs = self.parse_data(
             kwargs, options=options, excluded_keys=parsed_keys, as_attname=True
         )
-
+        options.raise_error()   # raise the parse error before calling the function
         return tuple(parsed_args), parsed_kwargs
 
     def get_params(
@@ -469,7 +522,7 @@ class FunctionParser(BaseParser):
                 error = exc.ParseError(
                     item="<return>", value=result, type=self.return_type, origin_exc=e
                 )
-                options.handle_error(error)
+                options.handle_error(error, force_raise=True)
         return result
 
     def sync_generator(self, generator: Generator, options: RuntimeOptions):

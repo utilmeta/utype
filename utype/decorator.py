@@ -1,4 +1,4 @@
-from typing import Any, Iterable, Callable, Type, TypeVar
+from typing import Any, Iterable, Callable, Type, TypeVar, Union
 import warnings
 from .parser.func import FunctionParser
 from .parser.cls import ClassParser
@@ -7,17 +7,18 @@ from .parser.rule import Rule, Lax
 # from .utils.transform import register_transformer
 
 FUNC = TypeVar('FUNC')
+CLS = TypeVar('CLS')
 
 
 def parse(
-    f=None,
+    f: FUNC = None,
     *,
     parser_cls: Type[FunctionParser] = FunctionParser,
-    options: Options = None,
+    options: Union[Options, Type[Options]] = None,
     no_cache: bool = False,
     ignore_params: bool = False,
     ignore_result: bool = False,
-):
+) -> Union[FUNC, Callable[[FUNC], FUNC]]:
     if ignore_params and ignore_result:
         warnings.warn(
             f"you turn off both params and result parse in @parse decorator,"
@@ -36,10 +37,10 @@ def parse(
 
 
 def dataclass(
-    obj=None,
+    obj: CLS = None,
     *,
     parser_cls: Type[ClassParser] = ClassParser,
-    options: Options = None,
+    options: Union[Options, Type[Options]] = None,
     no_cache: bool = False,
     no_parse: bool = False,
     set_class_properties: bool = False,
@@ -49,8 +50,8 @@ def dataclass(
     contains: bool = False,
     repr: bool = True,  # noqa
     eq: bool = False
-):
-    def decorator(cls):
+) -> Union[CLS, Callable[[CLS], CLS]]:
+    def decorator(cls: CLS) -> CLS:
         parser = parser_cls.apply_for(cls, options=options, no_cache=no_cache)
 
         parser.make_init(

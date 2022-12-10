@@ -42,9 +42,29 @@ class TestFunc:
             /,
             pos_and_kw: int = Field(default=1, alias_from=["pw1", "pw2"]),
             *,
-            kw_only1: str = Field(case_insensitive=True),
+            kw_only1: None = Field(case_insensitive=True),
         ):
             pass
+
+        def func3(
+            f0: str,
+            f1: str = Field(required=False, default=''),
+            f2: str = Field(required=True),
+            _p1: int = 0,
+            # positional only
+            /,
+            # positional or keyword
+            f3: str = Field(required=True),
+            f4: str = Field(required=True),
+            _p2: int = 0,
+            *args,  # positional var
+            # keyword only
+            f5: str = Field(required=True),
+            f6: str,
+            _p3: int = 0,
+            **kwargs  # keyword var
+        ):
+            return locals()
 
         # with pytest.warns(match='alias'):
         #     # positional only args's alias is meaningless
@@ -119,3 +139,47 @@ class TestFunc:
                     await wait_gen.asend(b"abc")
                 except StopAsyncIteration:
                     pass
+
+    def test_for_cls(self):
+        from utype import Schema, exc
+
+        class PowerSchema(Schema):
+            result: float
+            num: float
+            exp: float
+
+        @utype.parse
+        def get_power(num: float, exp: float) -> PowerSchema:
+            if num < 0:
+                if 1 > exp > -1 and exp != 0:
+                    raise exc.ParseError(f'operation not supported, '
+                                         f'complex result will be generated')
+            return PowerSchema(
+                num=num,
+                exp=exp,
+                result=num ** exp
+            )
+
+        power = get_power('3', 3)
+        assert power.result == 27
+
+        with pytest.raises(exc.ParseError):
+            get_power(-0.5, -0.5)
+
+        @utype.parse
+        def get_power_locals(num: float, exp: float) -> PowerSchema:
+            if num < 0:
+                if 1 > exp > -1 and exp != 0:
+                    raise exc.ParseError(f'operation not supported, '
+                                         f'complex result will be generated')
+            result = num ** exp
+            return locals()
+
+    def test_classmethod(self):
+        pass
+
+    def test_staticmethod(self):
+        pass
+
+    def test_property(self):
+        pass

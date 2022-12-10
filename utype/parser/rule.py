@@ -25,6 +25,8 @@ from collections import deque, Mapping, OrderedDict, Callable, Generator, AsyncG
 from decimal import Decimal
 
 T = typing.TypeVar("T")
+OTHER = TypeVar('OTHER')
+ORIGIN = TypeVar('ORIGIN')
 
 NUM_TYPES = (int, float, Decimal)
 SEQ_TYPES = (list, tuple, set, frozenset, deque)
@@ -119,6 +121,26 @@ class LogicalType(type):  # noqa
     @property
     def combinator(cls):
         return cls.__dict__.get("__combinator__", None)
+
+    def resolve_origins(cls) -> List[type]:
+        if cls.combinator:
+            origins = []
+            for arg in cls.args:
+                if isinstance(arg, LogicalType):
+                    for ori in arg.resolve_origins():
+                        if ori not in origins:
+                            origins.append(ori)
+                elif isinstance(arg, type):     # exclude forward ref
+                    if arg not in origins:
+                        origins.append(arg)
+            return origins
+
+        origin = getattr(cls, "__origin__", None)
+        if isinstance(origin, LogicalType):
+            return origin.resolve_origins()
+        elif isinstance(origin, type):
+            return [origin]
+        return []
 
     def resolve_combined_origin(cls) -> Optional["LogicalType"]:
         if cls.combinator:
@@ -243,26 +265,26 @@ class LogicalType(type):  # noqa
     def not_of(mcs, value):
         return mcs.combine("~", value)
 
-    def __and__(cls, other):
+    def __and__(cls: T, other: OTHER) -> Union[T, OTHER]:
         return cls.combine_by("&", other)
 
-    def __rand__(cls, other):
+    def __rand__(cls: T, other: OTHER) -> Union[OTHER, T]:
         return cls.combine_by("&", other, reverse=True)
 
-    def __or__(cls, other):
+    def __or__(cls: T, other: OTHER) -> Union[T, OTHER]:
         if getattr(other, "__origin__", None) == Union:
             return cls.combine_by("|", other.__args__)
         return cls.combine_by("|", other)
 
-    def __ror__(cls, other):
+    def __ror__(cls: T, other: OTHER) -> Union[OTHER, T]:
         if getattr(other, "__origin__", None) == Union:
             return cls.combine_by("|", other.__args__, reverse=True)
         return cls.combine_by("|", other, reverse=True)
 
-    def __xor__(cls, other):
+    def __xor__(cls: T, other: OTHER) -> Union[T, OTHER]:
         return cls.combine_by("^", other)
 
-    def __rxor__(cls, other):
+    def __rxor__(cls: T, other: OTHER) -> Union[OTHER, T]:
         return cls.combine_by("^", other, reverse=True)
 
     def __invert__(cls):
@@ -1068,6 +1090,19 @@ class Rule(metaclass=LogicalType):
     # Dict[int, int] patternProperties: {"[0-9]": {"type": integer}}, propertyNames: {"type": "integer"}
     # Dict[bool, int] patternProperties: {"true|false": {"type": integer}}, propertyNames: {"type": "boolean"}
 
+    def __class_getitem__(cls, item):
+        args = ()
+        origin = None
+        if isinstance(item, tuple):
+            args = item
+        elif cls.__origin__:
+            args = (item,)
+        else:
+            origin = item
+        if args and cls.__args__:
+            raise ValueError(f'{cls}: args: {cls.__args__} already specified')
+        return cls.annotate(origin, *args)
+
     def __init_subclass__(cls, **kwargs):
         # if not cls.__origin__:
         origin = None
@@ -1242,8 +1277,8 @@ class Rule(metaclass=LogicalType):
                     continue
                 args.append(annotation)
 
-        if not args and not constraints:
-            return type_
+        # if not args and not constraints:
+        #     return type_
 
         name = cls.__name__
         if type_ == Union:

@@ -1,5 +1,8 @@
-from utype import Field, Schema, exc, Options
+from utype import Field, Schema, DataClass, exc, Options, parse, dataclass
 import pytest
+import warnings
+from typing import Union, Literal
+from utype.utils.style import AliasGenerator
 
 
 class TestField:
@@ -10,8 +13,10 @@ class TestField:
             f3: str = Field(required=False)
             f4: str = Field(default_factory=str)
             f5: int = Field(default=0)
+            f6: str = ''
+            df: dict = Field(default_factory=dict, defer_default=True)
 
-        assert dict(T(f1=1, f2=2)) == {"f1": "1", "f2": "2", "f4": "", "f5": 0}
+        assert dict(T(f1=1, f2=2)) == {"f1": "1", "f2": "2", "f4": "", "f5": 0, 'f6': ''}
 
         with pytest.raises(exc.AbsenceError):
             T(f1=1)
@@ -19,13 +24,118 @@ class TestField:
         with pytest.raises(exc.AbsenceError):
             T(f2=1)
 
-    def test_field_alias_from(self):
+        t = T(f1=1, f2=2)
+        assert 'df' not in t
+        assert t.df == {}
+        t.df.update(info=[])
+        assert t.df == {}       # won't affect, because a new one is generated
+
+        with pytest.raises(AttributeError):
+            _ = t.f3
+
+        with pytest.raises(KeyError):
+            _ = t['f3']
+
+    def test_field_default_required_function(self):
+        # @parse
+        # def func(
+        #     f1: str,
+        #     f2: str = Field(required=True),
+        #     f3: str = Field(required=False),
+        #     f4: str = Field(default_factory=str),
+        #     f5: int = Field(default=0),
+        #     f6: str = ''
+        # ):
+        #     return locals()
+
+        with pytest.raises(Exception):
+            # not accept a not required field with no default
+            @parse
+            def func(f1: str = Field(required=False)):
+                return f1
+
+        @parse
+        def func(f1: str = Field(required=False)): pass
+        # a passed function can declare not-always-provided param
+
+        with pytest.warns():
+            @parse
+            def func(
+                f1: str = Field(required=False, default=''),
+                f2: str = Field(required=True),
+            ):
+                return f1, f2
+
+            # required param is after the optional param
+            # in not-keyword-only (can be positional passed) function
+
+        with pytest.raises(SyntaxError):
+            @parse
+            def func3(
+                f0: str,
+                f1: str = Field(required=False, default=''),
+                f2: str = Field(required=True),
+                _p1: int = 0,
+                # positional only
+                /,
+                # positional or keyword
+                f3: str = Field(required=True),
+            ):
+                return locals()
+            # required param is after the optional param
+            # in not-keyword-only (can be positional passed) function
+
+        with pytest.warns():
+            @parse
+            def func3(
+                f0: str,
+                f1: str = Field(required=False, default=''),
+                f2: str = Field(required=True),
+            ):
+                return locals()
+            # required param is after the optional param
+            # in not-keyword-only (can be positional passed) function
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+
+            @parse
+            def func(
+                *,  # if we add a key-word-only sign, it
+                f1: str = Field(default=''),
+                f2: str = Field(required=True),
+            ):
+                return f1, f2
+
+        with pytest.warns():
+            # defer default means nothing to
+            @parse
+            def func(f1: str = Field(default=0, defer_default=True)):
+                return f1
+
+    def test_field_alias(self):
         class T(Schema):
-            f1: str = Field(alias_from=["@f1", "_f1"])
-            f2: str = Field(alias="_f2")
+            f1: str = Field(alias_from=["@f1", "_f1"], required=False)
+            f2: str = Field(alias="_f2", required=False)
+
+            CAP_ATTR_NAME: str = Field(
+                alias_from=[
+                    AliasGenerator.camel,
+                    AliasGenerator.kebab,
+                    lambda x: "@" + x
+                ],
+                alias=AliasGenerator.cap_kebab,
+                required=False
+            )
 
         assert dict(T(_f1=1, f2=2)) == {"f1": "1", "_f2": "2"}
         assert dict(T(f1=1, _f2=2)) == {"f1": "1", "_f2": "2"}
+
+        cap_attr_name_vars = ['CAP_ATTR_NAME', '@CAP_ATTR_NAME', 'cap-attr-name', 'capAttrName', 'CAP-ATTR-NAME']
+        for var in cap_attr_name_vars:
+            t = T(**{var: 123})
+            assert t.CAP_ATTR_NAME == '123'
+            assert dict(t) == {'CAP-ATTR-NAME': '123'}
 
         with pytest.raises(Exception):
 
@@ -52,10 +162,22 @@ class TestField:
                 f2: str
 
     def test_field_case_insensitive(self):
-        class T(Schema):
-            some_field: str = Field(case_insensitive=True)
+        class T(DataClass):
+            some_field: str = Field(case_insensitive=True, alias_from=['field1'])
 
         assert T(soMe_FiEld=1).some_field == "1"
+
+        t = T(FIELD1=1)
+        assert t.some_field == "1"
+
+        assert 'some_FIELD' in t    # case insensitive contains
+
+        @dataclass
+        class T:
+            some_field: str = Field(case_insensitive=True, alias_from=['field1'])
+
+        t = T(soMe_FiEld=1)
+        assert t.some_field == "1"
 
         with pytest.raises(Exception):
 
@@ -187,9 +309,6 @@ class TestField:
     def test_field_on_error(self):
         pass
 
-    def test_field_unprovided(self):
-        pass
-
     def test_field_constraints(self):
         class T(Schema):
             st: str = Field(max_length=3, min_length=1)
@@ -237,10 +356,81 @@ class TestField:
         pass
 
     def test_field_immutable(self):
+        with pytest.warns():
+            # immutable means nothing to field
+            @parse
+            def func(f1: str = Field(immutable=True)):
+                pass
+
+    def test_field_secret(self):
         pass
 
     def test_field_discriminator(self):
-        pass
+        @dataclass
+        class Video:
+            name: Literal['video']
+            suffix: str = 'mp4'
+            path: str = ''
+            resolution: str = None
+
+        class Audio(Schema):
+            name: Literal['audio']
+            suffix: str = 'mp3'
+            path: str = ''
+            tone: str = None
+
+        class Other(Schema):
+            name = 'other'
+            suffix: str
+            path: str
+
+        class FileSchema(Schema):
+            file: Video | Audio = Field(discriminator=Audio.name)
+
+        video = FileSchema(file=b'{"name": "video", "path": "/file"}')
+        assert isinstance(video.file, Video)
+        assert video.file.path == '/file'
+        assert video.file.suffix == 'mp4'
+
+        audio = FileSchema(file=b'{"name": "audio", "tone": 1}')
+        assert isinstance(audio.file, Audio)
+        assert audio.file.tone == '1'
+        assert audio.file.suffix == 'mp3'
+
+        @parse
+        def func(cls, file: Video | Audio = Field(discriminator='name')):
+            assert isinstance(file, cls)
+            return file.name, file.suffix
+
+        assert func(Audio, b'{"name": "audio", "tone": 1}') == ('audio', 'mp3')
+        assert func(Video, b'{"name": "video", "path": "/file"}') == ('video', 'mp4')
+
+        class FileSchema2(Schema):
+            file: Video ^ Audio = Field(discriminator='name')
+
+        video = FileSchema2(file=b'{"name": "video", "path": "/file"}')
+        assert isinstance(video.file, Video)
+
+        class FileSchema3(Schema):
+            file: Union[Video, Audio, None] = Field(discriminator='name')
+
+        video = FileSchema3(file=b'{"name": "video", "path": "/file"}')
+        assert isinstance(video.file, Video)
+
+        none = FileSchema3(file=None)
+        assert none.file is None
+
+        with pytest.raises(Exception):
+            class FileSchema_(Schema):  # noqa
+                file: Video = Field(discriminator='name')
+
+        with pytest.raises(Exception):
+            class FileSchema_(Schema):  # noqa
+                file: str = Field(discriminator='name')
+
+        with pytest.raises(Exception):
+            class FileSchema_(Schema):  # noqa
+                file: Video | Other = Field(discriminator='name')
 
     def test_deprecated(self):
         class T(Schema):

@@ -156,6 +156,23 @@ class TestRule:
         with pytest.raises(exc.ConstraintError):
             Length3(range(0, 4))
 
+    def test_generic(self):
+        class LengthRule(Rule):
+            min_length = 1
+            max_length = 3
+
+        str_len = LengthRule[str]
+        assert str_len(b'123') == '123'
+        with pytest.raises(exc.ConstraintError):
+            str_len(b'1234')
+
+        arr_len = LengthRule[list]
+        assert arr_len((1, 2, 3)) == [1, 2, 3]
+        arr_int_len = LengthRule[list][int]
+        assert arr_int_len((1, '2', b'3')) == [1, 2, 3]
+        with pytest.raises(exc.ConstraintError):
+            arr_int_len([1, 2, 3, 4])
+
     def test_value_bound(self):
         class IntB(Rule):
             gt = 1

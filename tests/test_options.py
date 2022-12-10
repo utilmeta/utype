@@ -1,3 +1,4 @@
+import utype
 from utype import Schema, Options, exc, Field
 from utype.utils.style import AliasGenerator
 import pytest
@@ -195,6 +196,12 @@ class TestOptions:
     def test_type_transform(self):
         pass
 
+    def test_max_min_params(self):
+        pass
+
+    def test_max_depth(self):
+        pass
+
     def test_defaults(self):
 
         class NoDefaultSchema(Schema):
@@ -237,6 +244,22 @@ class TestOptions:
 
             username: str = Field(regex='[0-9a-zA-Z]{3,20}')
             password: str = Field(min_length=6, max_length=20)
+
+        @utype.parse(options=Options(
+            addition=False,
+            collect_errors=True,
+            case_insensitive=True
+        ))
+        def login(
+            username: str = Field(regex='[0-9a-zA-Z]{3,20}'),
+            password: str = Field(min_length=6, max_length=20)
+        ):
+            pass
+
+        with pytest.raises(exc.CollectedParseError) as collected:
+            login(**form)
+
+        assert len(collected.value.errors) == 3
 
     def test_inherit_override(self):
         class BSchema(Schema):

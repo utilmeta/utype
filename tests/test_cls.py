@@ -1,6 +1,6 @@
 import typing
 import utype
-from utype import Rule, Options, exc, Field, Schema, register_transformer
+from utype import Rule, Options, exc, Field, Schema, DataClass, register_transformer
 from utype import types
 from typing import List, Dict, Tuple, Union, Set, Optional, Type, Any
 from datetime import datetime, date, timedelta, time, timezone
@@ -59,8 +59,9 @@ class TestClass:
                     result=num ** exp
                 )
 
-        power = PowerSchema('3', 3)
+        power = PowerSchema('3', 3, ignore='other')
         assert power.result == 27
+        assert 'ignore' not in power
 
         with pytest.raises(ValueError):
             PowerSchema(-0.5, -0.5)
@@ -69,24 +70,90 @@ class TestClass:
             pow: PowerSchema
 
     def test_dataclass(self):
-        class data(utype.DataClass):
-            pass
+        class DT(utype.DataClass):
+            name: str = Field(max_length=10)
+            age: int
 
-        @utype.dataclass
+        dt = DT.__from__(b'{"name": 1, "age": "2"}')
+        assert dt.name == '1'
+        assert dt.age == '1'
+
+        with pytest.raises(exc.ParseError):
+            DT.__from__(b'{"name": 1, "age": "2"}', options=Options(no_explicit_cast=True))
+
+        with pytest.raises(exc.ParseError):
+            dt.name = '*' * 20
+
+        with pytest.raises(exc.ParseError):
+            dt.age = 'abc'
+
+        @utype.dataclass(set_class_properties=False)
         class DataClass:
             name: str = Field(max_length=10)
             age: int
+
+        assert isinstance(DataClass.name, Field)
+        with pytest.raises(AttributeError):
+            _ = DataClass.age
 
         dt = DataClass(name=b"test", age="2")
         assert dt.name == "test"
         assert dt.age == 2
 
+        dt.name = '*' * 20  # will not raise error
+        assert dt.name == '*' * 20
+
         @utype.dataclass(
-            set_class_properties=True
+            set_class_properties=True,
+            contains=True,
+            repr=True,
+            eq=True,
         )
-        class DataClass(dict):
+        class DataProp(dict):
             name: str = Field(max_length=10)
             age: int
+
+        assert isinstance(DataProp.name, property)
+        assert isinstance(DataProp.age, property)
+
+        v = DataProp(name=1, age='2', other='3')
+        assert v.name == '1'
+        assert 'age' in v
+        assert 'other' in v
+        assert v == DataProp(name=1, age='2')
+        assert repr(v) == "DataProp(name='1', age=2)"
+
+        with pytest.raises(exc.ParseError):
+            dt.name = '*' * 20
+
+        with pytest.raises(exc.ParseError):
+            dt.age = 'abc'
+
+        # test no parse
+        @utype.dataclass(
+            no_parse=True,
+        )
+        class DataNoParse(dict):
+            name: str = Field(max_length=10)
+            age: int
+
+        a = DataNoParse(name=1, age='2', other='ignore')
+        assert a.name == 1
+        assert a.age == '2'
+        assert a.other == 'ignore'
+
+        @utype.dataclass(
+            no_parse=True,
+        )
+        class DataNoParse(dict):
+            name: str = Field(max_length=10)
+            age: int
+
+            def __init__(self, name: str):
+                super().__init__(name=name, age=0)
+
+        with pytest.raises(TypeError):
+            DataNoParse(name=1, age='2')
 
     def test_setup(self):
         class CustomType:
@@ -362,6 +429,9 @@ class TestClass:
         o0 = OmitSchema(named_n2=1)
         o1 = OmitSchema(1, _n1="2", **{"@n2": 2.5})
         o2 = OmitSchema(0, 3, **{"@n2": "2"})
+        o2_ = OmitSchema(0, 3, **{"@n2": "2"}, invalid='none')
+
+        assert o2 == o2_        # test that init can ignore additions
 
         assert o0.n0 == 0
         assert o0.n1 == 1
@@ -704,11 +774,11 @@ class TestClass:
         class PasswordMixin(Schema):
             password: str = Field(min_length=6, max_length=20)
 
-        class ProfileSchema(UsernameMixin):
-            signup_time: datetime = Field(readonly=True)
-
         class LoginSchema(UsernameMixin, PasswordMixin):
             pass
+
+        log = LoginSchema(username=123456, password=123456)
+        assert log.username == log.password == '123456'
 
         from typing import Optional
 
@@ -745,3 +815,11 @@ class TestClass:
         assert one_of_type({'name': 'test', 'age': '1'}) == LogicalDataClass(name='test', age=1)
         assert one_of_type([b'test', '1']) == ('test', 1)
 
+        class LogicalUser(DataClass):
+            name: str = Field(max_length=10)
+            age: int
+
+        one_of_type = LogicalUser ^ Tuple[str, int]
+
+        assert one_of_type({'name': 'test', 'age': '1'}) == LogicalDataClass(name='test', age=1)
+        assert one_of_type([b'test', '1']) == ('test', 1)

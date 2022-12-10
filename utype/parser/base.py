@@ -279,7 +279,7 @@ class BaseParser:
         for key, field in self.fields.items():
             field.apply_fields(
                 self.fields,
-                excluded_vars=self.exclude_vars,
+                # excluded_vars=self.exclude_vars,
                 alias_map=alias_map,
             )
 
@@ -308,18 +308,18 @@ class BaseParser:
         as_attname: bool = None,
         excluded_keys: List[str] = None,
     ):
-        if options.max_properties:
-            if len(data) > options.max_properties:
+        if options.max_params:
+            if len(data) > options.max_params:
                 options.handle_error(
-                    exc.PropertiesExceedError(
-                        max_properties=options.max_properties, properties_num=len(data)
+                    exc.ParamsExceedError(
+                        max_params=options.max_params, properties_num=len(data)
                     )
                 )
-        if options.min_properties:
-            if len(data) < options.min_properties:
+        if options.min_params:
+            if len(data) < options.min_params:
                 options.handle_error(
-                    exc.PropertiesLackError(
-                        min_properties=options.min_properties, properties_num=len(data)
+                    exc.ParamsLackError(
+                        min_params=options.min_params, properties_num=len(data)
                     )
                 )
         dfs = (

@@ -1,3 +1,6 @@
+from typing import Optional
+
+
 def multi(f):
     return isinstance(
         f, (list, set, frozenset, tuple, type({}.values()), type({}.keys()))
@@ -22,3 +25,18 @@ def copy_value(data):
     elif isinstance(data, dict):
         return {k: copy_value(v) for k, v in data.items()}
     return data
+
+
+def get_name(func) -> Optional[str]:
+    if isinstance(func, str):
+        return func
+    if isinstance(func, property):
+        func = func.fget
+    from functools import partial
+    if isinstance(func, partial):
+        if hasattr(func, '__name__'):
+            return func.__name__
+        func = func.func
+    if hasattr(func, '__name__'):
+        return func.__name__
+    return None

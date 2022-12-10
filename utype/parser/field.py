@@ -12,24 +12,25 @@ from typing import (
     Iterable,
     Set,
     Dict,
+    Optional
 )
-from .rule import Rule, Lax, LogicalType, resolve_forward_type
+from .rule import Rule, ConstraintMode, Lax, LogicalType, resolve_forward_type
 from .options import Options, RuntimeOptions
 from ..utils.compat import get_args, is_final
 from ..utils import exceptions as exc
 from collections.abc import Mapping
-from ..utils.functional import multi, copy_value
+from ..utils.functional import multi, copy_value, get_name
 from ipaddress import IPv4Address, IPv6Address
 
 
 class Field:
-    DEFAULT_REQUIRED = True
+    # DEFAULT_REQUIRED = True
 
     def __init__(
         self,
         *,
         alias: Union[str, Callable] = None,
-        alias_from: Union[str, List[str], Callable] = None,
+        alias_from: Union[str, List[str], Callable, List[Callable]] = None,
         # can also be a generator
         case_insensitive: bool = None,
         # alias_for: str = None,     we may cancel alias for and replace it with alias
@@ -57,7 +58,7 @@ class Field:
         on_error: Literal["exclude", "preserve", "throw"] = None,  # follow the options
         # unprovided: Any = ...,
         immutable: bool = False,
-        secret: bool = False,
+        secret: bool = None,    # None means depend on the Options.secret_names
         dependencies: Union[list, str, property] = None,
         # (backup: internal, disallow, unacceptable)
         # unacceptable: we do not accept this field as an input,
@@ -81,19 +82,19 @@ class Field:
         lt=None,
         le=None,
         regex: str = None,
-        length: Union[int, Lax] = None,
-        max_length: Union[int, Lax] = None,
+        length: Union[int, ConstraintMode] = None,
+        max_length: Union[int, ConstraintMode] = None,
         min_length: int = None,
         # number
-        max_digits: Union[int, Lax] = None,
-        decimal_places: Union[int, Lax] = None,
+        max_digits: Union[int, ConstraintMode] = None,
+        decimal_places: Union[int, ConstraintMode] = None,
         round: int = None,
-        multiple_of: Union[int, Lax] = None,
+        multiple_of: Union[int, ConstraintMode] = None,
         # array
         contains: type = None,
         max_contains: int = None,
         min_contains: int = None,
-        unique_items: Union[bool, Lax] = None,
+        unique_items: Union[bool, ConstraintMode] = None,
     ):
         if mode:
             if readonly or writeonly:
@@ -130,7 +131,11 @@ class Field:
                 raise ValueError(F'Field: specify defer_default=True without any default')
 
         if required is None:
-            required = self.DEFAULT_REQUIRED
+            required = True
+
+        if required:
+            if on_error == 'exclude':
+                raise ValueError(f'Field: required field does not support on_error="exclude"')
 
         if isinstance(no_input, str):
             if mode:
@@ -178,11 +183,15 @@ class Field:
                 dependencies = [dependencies]
 
             for dep in dependencies:
-                if isinstance(dep, property):
-                    dep = dep.fget.__name__
+                dep = get_name(dep)
                 if not isinstance(dep, str):
                     raise ValueError(f'Invalid dependency: {repr(dep)}, must be str or property')
                 deps.append(dep)
+
+        if discriminator:
+            discriminator = get_name(discriminator)
+            if not isinstance(discriminator, str):
+                raise ValueError(f'Field.discriminator must be a str, got {repr(discriminator)}')
 
         self.dependencies = deps
         self.discriminator = discriminator
@@ -240,22 +249,24 @@ class Field:
 
     def get_alias_from(self, attname: str, generator=None) -> Set[str]:
         aliases = {attname}
+        alias_from = []
         if self.alias_from:
             if not multi(self.alias_from):
                 alias_from = [self.alias_from]
             else:
                 alias_from = self.alias_from
-            if generator:
-                alias_from.append(generator)
-            for alias in alias_from:
-                if callable(alias):
-                    alias = alias(attname)
-                if multi(alias):
-                    aliases.update([a for a in alias if isinstance(a, str) and a])
-                elif isinstance(alias, str) and alias:
-                    aliases.add(alias)
-        # if self.case_insensitive:
-        #     aliases = set(a.lower() for a in aliases)
+            # field alias_from will override generator
+        elif generator:
+            alias_from.append(generator)
+
+        for alias in alias_from:
+            if callable(alias):
+                alias = alias(attname)
+            if multi(alias):
+                aliases.update([a for a in alias if isinstance(a, str) and a])
+            elif isinstance(alias, str) and alias:
+                aliases.add(alias)
+
         return aliases
 
     def to_spec(self):
@@ -306,6 +317,9 @@ class ParserField:
         IPv6Address: "ipv6",
     }
 
+    SECRET_EXEMPT_TYPES = (bool,)
+    SECRET_REPR = '*' * 6
+
     field_cls = Field
     rule_cls = Rule
     # transformer_cls = TypeTransformer
@@ -350,13 +364,49 @@ class ParserField:
         self.attr_dependencies = set()
         self.dependants = set()
 
+        self.secret = field.secret
         self.input_transformer = None
         self.output_transformer = None
         self.deprecated_to = None
         self.const = ...
         self.discriminator_map = {}
 
-    def validate_annotation(self, options: Options):
+    @property
+    def input_origins(self) -> List[type]:
+        if isinstance(self.type, LogicalType):
+            return self.type.resolve_origins()
+        elif isinstance(self.type, type):
+            return [self.type]
+        return []     # not set or ForwardRef
+
+    @property
+    def output_origins(self) -> List[type]:
+        if isinstance(self.output_type, LogicalType):
+            return self.output_type.resolve_origins()
+        elif isinstance(self.output_type, type):
+            return [self.output_type]
+        return []  # not set or ForwardRef
+
+    def repr_value(self, value):
+        if self.secret:
+            return self.SECRET_REPR
+        return repr(value)
+
+    def setup(self, options: Options):
+        if self.secret is None:
+            if options.secret_names:
+                is_secret = False
+                for name in options.secret_names:
+                    if name in self.all_aliases:
+                        is_secret = True
+                        break
+                if is_secret:
+                    # some types like bool is not some type to hide even if name in the secret names
+                    origins = self.input_origins
+                    if not all([ori in self.SECRET_EXEMPT_TYPES for ori in origins]):
+                        is_secret = False
+                self.secret = is_secret
+
         if isinstance(self.type, type):
             if issubclass(self.type, Rule):
                 self.const = getattr(self.type, "const", ...)
@@ -400,6 +450,10 @@ class ParserField:
                 from .cls import ClassParser
 
                 for arg in comb.args:
+                    if arg is type(None):
+                        # we accept None
+                        continue
+
                     cls_parser = ClassParser.resolve_parser(arg)
                     if not cls_parser:
                         raise ValueError(
@@ -454,7 +508,7 @@ class ParserField:
     def apply_fields(
         self,
         fields: Dict[str, "ParserField"],
-        excluded_vars: Set[str],
+        # excluded_vars: Set[str],
         alias_map: dict,
         # attr_alias_map: dict,
     ):
@@ -515,7 +569,8 @@ class ParserField:
 
     @property
     def always_provided(self):
-        return self.field.required or not self.field.no_default
+        # required is mode str or callable does not means
+        return self.field.required is True or not self.field.no_default
 
     @property
     def immutable(self):
@@ -662,15 +717,31 @@ class ParserField:
 
         return bool(no_output)
 
-    def check_function(self):
-        # TODO
-        if not self.field.required and self.field.no_default:
-            pass
+    def check_function(self, func):
+        if not self.always_provided:
+            raise TypeError(f'{func}: Field(name={repr(self.name)}) in function with required=False '
+                            f'must specify a default or default_factory')
+
         if self.field.no_output:
             warnings.warn(
-                f"Field.no_output has no meanings in function params, please consider move it"
+                f"{func}: Field(name={repr(self.name)}).no_output has no meanings in function params,"
+                f" please consider move it"
             )
-            pass
+        if self.field.immutable:
+            warnings.warn(
+                f"{func}: Field(name={repr(self.name)}).immutable has no meanings in function params, "
+                f"please consider move it"
+            )
+        if self.field.defer_default:
+            warnings.warn(
+                f"{func}: Field(name={repr(self.name)}).defer_default has no meanings in function params,"
+                f" please consider move it"
+            )
+        if self.field.secret:
+            warnings.warn(
+                f"{func}: Field(name={repr(self.name)}).secret has no meanings in function params,"
+                f" please consider move it"
+            )
 
     def parse_output_value(self, value, options: RuntimeOptions):
         type = self.output_type
@@ -706,14 +777,29 @@ class ParserField:
             )
 
         type = self.type
-        if self.discriminator_map:
-            if isinstance(value, dict):
-                discriminator = value.get(self.field.discriminator)
-                if discriminator in self.discriminator_map:
-                    type = self.discriminator_map[discriminator]
-                    # directly assign type instead parse it in a Logical context
-
         trans = options.transformer
+
+        if self.discriminator_map and value is not None:
+            if not isinstance(value, Mapping):
+                value = trans.to_dict(value)
+            discriminator = value.get(self.field.discriminator)
+            if discriminator in self.discriminator_map:
+                type = self.discriminator_map[discriminator]
+                # directly assign type instead parse it in a Logical context
+            else:
+                options.handle_error(exc.DiscriminatorMismatchError(
+                    discriminator=self.field.discriminator,
+                    discriminator_value=discriminator,
+                    field=self,
+                    value=value,
+                    item=self.name,
+                    type=self.type
+                ))
+                return ...
+
+        if not type:
+            # type is None, not type(None), means the exact same as Any / Rule
+            return value
         try:
             return trans(value, type)
         except Exception as e:
@@ -886,5 +972,5 @@ class ParserField:
             # options=options,
             final=final,
         )
-        parser_field.validate_annotation(options=options)
+        parser_field.setup(options=options)
         return parser_field

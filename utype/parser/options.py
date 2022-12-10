@@ -1,9 +1,19 @@
 import inspect
 import warnings
-from typing import Literal, Union, List, Optional, Any, Callable, Type
+from typing import Literal, Union, List, Optional, Any, Callable, Type, Set
 from ..utils.transform import TypeTransformer
 from ..utils.functional import multi
 from ..utils import exceptions as exc
+
+DEFAULT_SECRET_NAMES = (
+    'password',
+    'secret',
+    'dsn',
+    'private_key',
+    'session_key',
+    'pwd',
+    'passphrase',
+)
 
 
 class RuntimeOptionsMixin:
@@ -31,8 +41,8 @@ class RuntimeOptionsMixin:
     # this options is for debug-only
 
     max_depth: int = None
-    max_properties: int = None
-    min_properties: int = None
+    max_params: int = None
+    min_params: int = None
     # max/min properties is validate BEFORE parse, to avoid a too big input data
 
     addition: Union[bool, None, type] = None
@@ -104,6 +114,9 @@ class RuntimeOptions(RuntimeOptionsMixin):
             for key, val in options.items():
                 if hasattr(RuntimeOptionsMixin, key):
                     self.__dict__[key] = val
+
+        if self.max_depth and self.depth > self.max_depth:
+            raise exc.DepthExceedError(max_depth=self.max_depth, depth=self.depth, type=cls)
 
     def __repr__(self):
         return f"{self.__class__.__name__}(cls={self.cls}, options={self.options})"
@@ -179,6 +192,7 @@ class Options(RuntimeOptionsMixin):
     case_insensitive: bool = None
     alias_from_generator: Union[Callable, List[Callable]] = None
     alias_generator: Callable = None
+    secret_names: Union[Set[str], List[str]] = DEFAULT_SECRET_NAMES
     # unprovided_attribute: Any = ...
     immutable: bool = False
     override: bool = False
@@ -193,8 +207,8 @@ class Options(RuntimeOptionsMixin):
         immutable: bool = False,
         collect_errors: bool = False,
         max_errors: int = None,
-        max_properties: int = None,
-        min_properties: int = None,
+        max_params: int = None,
+        min_params: int = None,
         no_explicit_cast: Optional[bool] = False,
         no_data_loss: Optional[bool] = False,
         addition: Union[bool, type, None] = None,
@@ -202,6 +216,7 @@ class Options(RuntimeOptionsMixin):
         invalid_keys: Literal["exclude", "preserve", "throw"] = "throw",
         invalid_values: Literal["exclude", "preserve", "throw"] = "throw",
         unresolved_types: Literal["ignore", "init", "throw"] = "throw",
+        secret_names: Union[Set[str], List[str]] = DEFAULT_SECRET_NAMES,
         # you can define your own unresolved behaviour by inherit
         # TypeTransformer and tweak handle_unresolved()
         ignore_error_property: bool = False,

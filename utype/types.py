@@ -235,6 +235,11 @@ class Second(Int):
     le = 59
 
 
+class SecondRule(Rule):
+    ge = 0
+    le = 59
+
+
 class EmailStr(Str):
     format = "email"
     regex = r"([A-Za-z0-9]+[.-_])*[A-Za-z0-9]+@[A-Za-z0-9-]+(\.[A-Z|a-z]{2,})+"

@@ -5,8 +5,11 @@ from .parser.options import Options, RuntimeOptions
 from .parser.cls import ClassParser
 from .parser.field import ParserField
 from .utils import exceptions as exc
-from typing import Union, Callable, List
+from typing import Union, Callable, List, TypeVar, Type
 from functools import partial
+
+T = TypeVar('T')
+OTHER = TypeVar('OTHER')
 
 
 class LogicalMeta(type):
@@ -27,32 +30,32 @@ class LogicalMeta(type):
             )
         return f"{cls.__module__}.{name}"
 
-    def __and__(cls, other):
+    def __and__(cls: T, other: T) -> Union[T, OTHER]:
         if isinstance(other, LogicalType):
             return other.__rand__(cls)  # noqa
         return cls.__logical_type__.combine("&", cls, other)
 
-    def __rand__(cls, other):
+    def __rand__(cls: T, other: OTHER) -> Union[OTHER, T]:
         return cls.__logical_type__.combine("&", other, cls)
 
-    def __or__(cls, other):
+    def __or__(cls: T, other: OTHER) -> Union[T, OTHER]:
         if getattr(other, "__origin__", None) == Union:
             return cls.__logical_type__.combine("|", cls, *other.__args__)
         if isinstance(other, LogicalType):
             return other.__ror__(cls)  # noqa
         return cls.__logical_type__.combine("|", cls, other)
 
-    def __ror__(cls, other):
+    def __ror__(cls: T, other: OTHER) -> Union[OTHER, T]:
         if getattr(other, "__origin__", None) == Union:
             return cls.__logical_type__.combine("|", *other.__args__, cls)
         return cls.__logical_type__.combine("|", other, cls)
 
-    def __xor__(cls, other):
+    def __xor__(cls: T, other: OTHER) -> Union[T, OTHER]:
         if isinstance(other, LogicalType):
             return other.__rxor__(cls)  # noqa
         return cls.__logical_type__.combine("^", cls, other)
 
-    def __rxor__(cls, other):
+    def __rxor__(cls: T, other: OTHER) -> Union[OTHER, T]:
         return cls.__logical_type__.combine("^", other, cls)
 
     def __invert__(cls):
@@ -63,6 +66,8 @@ class DataClass(metaclass=LogicalMeta):
     __parser_cls__ = ClassParser
     __parser__: ClassParser
     __options__: Options
+
+    def __init__(self, **kwargs): pass
 
     def __init_subclass__(cls, **kwargs):
         options = getattr(cls, "__options__", None)
@@ -110,7 +115,7 @@ class DataClass(metaclass=LogicalMeta):
     #     return obj
 
     @classmethod
-    def __from__(cls, data, options=None):
+    def __from__(cls: Type[T], data, options=None) -> T:
         options = cls.__options__.make_runtime(cls, options=options)
         return options.transformer(data, cls)
 
@@ -152,12 +157,19 @@ class Schema(dict, metaclass=LogicalMeta):
             # if field.property.fset:
             #   if field.always_no_output(cls.__options__.make_runtime(cls)) and not field.dependants:
             #       continue
+            getter = partial(cls.__field_getter__, field=field, getter=field.property.fget)
+            setter = partial(cls.__field_setter__, field=field, setter=field.property.fset) \
+                if field.property.fset else None
+            deleter = partial(cls.__field_deleter__, field=field, deleter=field.property.fdel) \
+                if field.property.fdel else None
+
+            for f in (getter, setter, deleter):
+                f.__name__ = field.attname
+
             hooked_property = property(
-                fget=partial(cls.__field_getter__, field=field, getter=field.property.fget),
-                fset=partial(cls.__field_setter__, field=field, setter=field.property.fset)
-                if field.property.fset else None,
-                fdel=partial(cls.__field_deleter__, field=field, deleter=field.property.fdel)
-                if field.property.fdel else None,
+                fget=getter,
+                fset=setter,
+                fdel=deleter
             )
             setattr(cls, field.attname, hooked_property)
 
@@ -178,7 +190,8 @@ class Schema(dict, metaclass=LogicalMeta):
         for key, val in self.items():
             field = self.__parser__.get_field(key)
             name = field.attname if field else key
-            items.append(f"{name}={repr(val)}")
+            repr_val = field.repr_value(val) if field else repr(val)
+            items.append(f"{name}={repr_val}")
         values = ", ".join(items)
         return f"{self.__name__}({values})"
 
@@ -409,7 +422,7 @@ class Schema(dict, metaclass=LogicalMeta):
         # TODO: reduce the dependant property calculation times if there are duplicate dependants
 
         # options = self.__options__.patch(
-        #     ignored_options=['min_properties'],
+        #     ignored_options=['min_params'],
         #     ignore_required=True,
         #     no_default=True,
         # ).make_runtime()
