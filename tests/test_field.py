@@ -1,7 +1,7 @@
 from utype import Field, Schema, DataClass, exc, Options, parse, dataclass
 import pytest
 import warnings
-from typing import Union, Literal
+from typing import Union, Literal, Final
 from utype.utils.style import AliasGenerator
 
 
@@ -280,6 +280,11 @@ class TestField:
         assert test.noi == "1"
         assert "noi" in test
 
+        test.nooc = 'some value'
+        assert 'nooc' in test       # fill a value that dissatisfy the no_output, so field is back in the data
+        test.nooc = ''
+        assert 'nooc' not in test   # fill empty value again
+
         test2 = T(**test, noo="noo", nooc="", __options__=Options(mode="r"))
         with pytest.raises(AttributeError):
             _ = test2.noir
@@ -306,8 +311,30 @@ class TestField:
                 # no input does not in mode
                 noi: str = Field(mode="r", no_output="ra")
 
+        with pytest.warns():
+            # no_output has no meanings for function
+            @parse
+            def func(f: str = Field(no_output=True)): pass
+
     def test_field_on_error(self):
-        pass
+        class T(Schema):
+            default: str = Field(on_error=None, required=False, length=3)
+            throw: str = Field(on_error='throw', min_length=2, required=False)
+            exclude: str = Field(on_error='exclude', max_length=3, required=False)
+            preserve: int = Field(on_error='preserve', ge=0, required=False)
+
+        with pytest.raises(exc.ParseError):
+            t = T(default='1234')
+
+        with pytest.raises(exc.ParseError):
+            t = T(throw='1')
+
+        t = T(exclude='1234')
+        assert 'exclude' not in t
+
+        with pytest.warns():
+            t = T(preserve=-10)
+            assert 'preserve' in t
 
     def test_field_constraints(self):
         class T(Schema):
@@ -356,11 +383,56 @@ class TestField:
         pass
 
     def test_field_immutable(self):
-        with pytest.warns():
-            # immutable means nothing to field
-            @parse
-            def func(f1: str = Field(immutable=True)):
-                pass
+        class T(DataClass):
+            immutable: str = Field(immutable=True, default='')
+
+        class T2(Schema):
+            immutable: str = Field(immutable=True, default='')
+            final: Final[str] = '123'
+            mutable: int = 0
+
+        a = T()
+        a2 = T2()
+        assert a.immutable == ''
+        a2.update({
+            'mutable': 2,
+        })
+
+        with pytest.raises(exc.UpdateError):
+            a.immutable = 2
+
+        with pytest.raises(exc.UpdateError):
+            a2.immutable = 2
+
+        with pytest.raises(exc.UpdateError):
+            a2.final = '321'
+
+        with pytest.raises(exc.UpdateError):
+            a2['immutable'] = 2
+
+        with pytest.raises(exc.UpdateError):
+            a2['final'] = 2
+
+        with pytest.raises(exc.DeleteError):
+            a2.pop('immutable')
+
+        with pytest.raises(exc.DeleteError):
+            a2.pop('final')
+
+        with pytest.raises(exc.DeleteError):
+            a2.clear()
+
+        with pytest.raises(exc.UpdateError):
+            a2.update({
+                'immutable': 2,
+                'mutable': 3,
+            })
+
+        with pytest.raises(exc.UpdateError):
+            a2.update({
+                'final': 2,
+                'mutable': 3,
+            })
 
     def test_field_secret(self):
         pass
@@ -448,3 +520,31 @@ class TestField:
 
             class T(Schema):
                 det: str = Field(deprecated="not_exists")
+
+        class RequestSchema(Schema):
+            url: str
+
+            query: dict = Field(default=None)
+            querystring: dict = Field(
+                default=None,
+                deprecated=True,
+                description='"query" is prefered'
+            )
+
+            data: bytes = Field(default=None)
+            body: bytes = Field(default=None, deprecated='data')
+
+            def __validate__(self):
+                if self.querystring:
+                    self.query = self.querystring
+                    del self.querystring
+                if self.body:
+                    self.data = self.body
+                    del self.body
+
+        old_data = {
+            'url': 'https://test.com',
+            'querystring': {'key': 'value'},
+            'body': b'binary'
+        }
+        request = RequestSchema(**old_data)

@@ -164,7 +164,8 @@ class Schema(dict, metaclass=LogicalMeta):
                 if field.property.fdel else None
 
             for f in (getter, setter, deleter):
-                f.__name__ = field.attname
+                if f:
+                    f.__name__ = field.attname
 
             hooked_property = property(
                 fget=getter,
@@ -215,7 +216,12 @@ class Schema(dict, metaclass=LogicalMeta):
             return
 
         if not field.dependencies.issubset(self):
-            return
+            # maybe some of the dependencies is no_output=True, but still accessible through attribute
+            # check if any of those dependencies is not in __dict__, and directly return if found one
+            for dep in field.dependants:
+                dep_field = self.__parser__.get_field(dep)
+                if not dep_field or dep_field.attname not in self.__dict__:
+                    return
 
         try:
             attr = field.property.fget(self)    # get from the original getter

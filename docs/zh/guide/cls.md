@@ -118,7 +118,6 @@ class ArticleSchema(Schema):
     created_at: datetime = Field(  
         alias='createdAt',  
         required=False,  
-        unprovided=None  
     )  
     tags: List[str] = Field(default_factory=list, no_output=lambda v: not v)
 
@@ -164,11 +163,9 @@ except exc.ParseError as e:
     """
 ```
 
-* `created_at`：文章的创建时间字段，使用 `alias` 指定了字段在输出时的别名为 `'createdAt'`，使用 `required=False` 标记这是一个可选字段，由于没有提供默认值，它使用了 `unprovided=None` 指定了当没有提供值时，访问属性会得到 None（如果没有指定 `unprovided`，则当该字段没有提供值时，访问属性会抛出 `AttributeError`）
-
+* `created_at`：文章的创建时间字段，使用 `alias` 指定了字段在输出时的别名为 `'createdAt'`，使用 `required=False` 标记这是一个可选字段，并且没有指定默认值，所以当你没有输入该字段时，它不会出现在数据中，如
 ```python
 assert 'createdAt' not in article   # True
-assert article.created_at is None   # True
 article.created_at = '2022-02-02 10:11:12'  
 print(dict(article))  
 # {
@@ -179,7 +176,7 @@ print(dict(article))
 # }
 ```
 
-在为 created_at 赋值后，它被转化为了字段的类型 datetime，并且在输出数据（转化为字典的数据）中，created_at 字段的名称变成了它指定的 `alias` 参数的值 `'createdAt'`
+在为 `created_at` 字段赋值后，它被转化为了字段的类型 datetime，并且在输出数据（转化为字典的数据）中，`created_at` 字段的名称变成了它指定的 `alias` 参数的值 `'createdAt'`
 
 * `tags`：文章的标签字段，指定了默认值的工厂函数为 list，也就是说如果这个字段没有提供，将会制造一个空列表（`list()`） 作为默认值，另外指定了 `no_output` 函数，表示当值为空时不进行输出
 
@@ -195,7 +192,7 @@ print(dict(article))
 * **别名配置**：`alias`，`alias_from`，`case_insensitive` 等，用于为字段指定属性名外的名称，以及大小写是否敏感等，可以用于定义属性声明不支持的字段名称
 * **模式配置**：`readonly`，`writeonly`，`mode` 等，用于配置数据类或函数在不同的解析模式下的行为
 * **输入与输出配置**：`no_input`，`no_output`，用于控制字段的输入和输出行为
-* **属性行为配置**：`immutable`，`unprovided`，用于控制字段对应属性的可变更性
+* **属性行为配置**：`immutable`，`secret`，用于控制字段对应属性的可变更性，显示行为等
 
 更完整的 Field 配置参数及用法，可以参考 [Field 字段配置的 API 参考](/zh/references/field)
 
@@ -1089,7 +1086,7 @@ DataClass 类对应的偏好配置是
 与 Schema 类不同，DataClass 实例中的字段数据都是存储在属性 `__dict__` 中的，
 
 * no_output：在实例的属性中并不区分是否 output，DataClass 声明了一个 `__export__` 方法，用于导出数据
-* unprovided/defered default：如果输入数据没有提供，且 default 是 defer 的，那么对应的属性就不会赋值给 `__dict__`，只会在访问到对应数据时才会计算 default，而且每次访问都会计算
+* defered default：如果输入数据没有提供，且 default 是 defer 的，那么对应的属性就不会赋值给 `__dict__`，只会在访问到对应数据时才会计算 default，而且每次访问都会计算
 * property：property 并不迫使计算，只有在访问时或输出时（没有 no_output）进行计算，所以也无需调控关联更新
 
 contains 行为：与 Schema 一样仅包含可输出的字段
@@ -1132,6 +1129,13 @@ contains 行为：与 Schema 一样仅包含可输出的字段
 
 ### 输入-输出
 
+* 在函数参数中使用的是输入模板
+* 在函数返回值中使用的是输出模板
+
+另一种视角是 HTTP 请求，在提供给用户的 API 文档中
+
+* 请求参数对应的是输入模板
+* 响应参数对应的是输出模板
 
 ### 选择模式
 

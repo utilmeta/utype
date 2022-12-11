@@ -686,52 +686,77 @@ class TestClass:
             with pytest.raises(AttributeError):
                 _ = article.title
 
+    def test_input_output(self):
+        class KeyInfo(Schema):
+            access_key: str = Field(no_output=True)
+            last_activity: datetime = Field(default_factory=datetime.now, no_input=True)
+
+            @property
+            def key_sketch(self) -> str:
+                return self.access_key[:5] + '*' * (len(self.access_key) - 5)
+
+        info = KeyInfo(access_key='QWERTYUIOP')
+        assert 'key_sketch' in info
+        assert info['key_sketch'] == 'QWERT*****'
+
+        class ArticleSchema(Schema):
+            slug: str = Field(no_input=True)
+            title: str
+            updated_at: datetime = Field(default_factory=datetime.now, no_input=True)
+
+            def __validate__(self):
+                assert 'slug' not in self
+                self.slug = '-'.join([''.join(filter(str.isalnum, v))
+                                      for v in self.title.split()]).lower()
+
+        article = ArticleSchema(title='My Awesome Article', slug='ignore')
+
     def test_schema_dict(self):
-        class T(Schema):
-            a: str = Field(max_length=10, default='default')
-            b: int = 0
-            c: int = Field(ge=10, required=False, alias_from=['c$', 'c#'])
-            im: str = Field(required=False, default=None, defer_default=True, immutable=True)
-            req: int
+            class T(Schema):
+                a: str = Field(max_length=10, default='default')
+                b: int = 0
+                c: int = Field(ge=10, required=False, alias_from=['c$', 'c#'])
+                im: str = Field(required=False, default=None, defer_default=True, immutable=True)
+                req: int
 
-        t1 = T(a='123', req=True)
-        t1.update({
-            'b': '123',
-            'c$': b'123',
-            # test ignore required
-        })
-        assert t1.c == t1.b == 123      # test attribute update
-        assert t1.a == '123'        # no default for update
-        t1['c#'] = b'456'
-        assert 'c$' in t1
-        assert t1.c == 456
-        assert 'im' not in t1
+            t1 = T(a='123', req=True)
+            t1.update({
+                'b': '123',
+                'c$': b'123',
+                # test ignore required
+            })
+            assert t1.c == t1.b == 123      # test attribute update
+            assert t1.a == '123'        # no default for update
+            t1['c#'] = b'456'
+            assert 'c$' in t1
+            assert t1.c == 456
+            assert 'im' not in t1
 
-        with pytest.raises(exc.ParseError):
-            t1['c#'] = b'abc'
+            with pytest.raises(exc.ParseError):
+                t1['c#'] = b'abc'
 
-        with pytest.raises(exc.ParseError):
-            t1['c$'] = '1'
+            with pytest.raises(exc.ParseError):
+                t1['c$'] = '1'
 
-        cp = t1.copy()
-        assert type(cp) == T
-        assert cp == t1
+            cp = t1.copy()
+            assert type(cp) == T
+            assert cp == t1
 
-        with pytest.raises(exc.UpdateError):
-            t1.im = 3
+            with pytest.raises(exc.UpdateError):
+                t1.im = 3
 
-        with pytest.raises(exc.UpdateError):
-            t1['im'] = 3
+            with pytest.raises(exc.UpdateError):
+                t1['im'] = 3
 
-        with pytest.raises(exc.DeleteError):
-            del t1.im
+            with pytest.raises(exc.DeleteError):
+                del t1.im
 
-        with pytest.raises(exc.DeleteError):
-            # delete required
-            del t1.req
+            with pytest.raises(exc.DeleteError):
+                # delete required
+                del t1.req
 
-        with pytest.raises(exc.DeleteError):
-            del t1.im
+            with pytest.raises(exc.DeleteError):
+                del t1.im
 
     def test_combine(self):
         class MemberSchema(Schema):

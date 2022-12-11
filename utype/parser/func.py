@@ -1,6 +1,7 @@
 from typing import Tuple, List
 from .options import Options, RuntimeOptions
 from ..utils.functional import pop
+from ..utils.compat import is_final, is_classvar
 from ..utils import exceptions as exc
 from .rule import resolve_forward_type, Rule
 from .field import ParserField
@@ -280,6 +281,10 @@ class FunctionParser(BaseParser):
                     # annotation = None means no annotation (param.empty)
                 else:
                     annotation = param.annotation
+                    if is_final(annotation) or is_classvar(annotation):
+                        warnings.warn(f'{self.obj}: param: {repr(name)} invalid annotation: {annotation}, '
+                                      f'this is only for class variables, please use the type directly')
+                        continue
 
             fields.append(self.schema_field_cls.generate(
                 attname=name,

@@ -34,6 +34,42 @@ class TestFunc:
             query="id=1&slug=my-article", body=b'[{"alice": 1}, {"bob": 2}]'
         ) == ArticleInfo(id=1, slug="my-article", likes={"alice": 1, "bob": 2})
 
+    def test_input(self):
+        @utype.parse
+        def func(
+            f1: str = Field(no_input=True, default='default'),
+            f2: str = Field(no_input=True, default_factory=list),
+        ):
+            return f1, f2
+
+    def test_invalids(self):
+        from typing import Final, ClassVar
+        with pytest.warns():
+            @utype.parse
+            def func2(
+                f1: Final[str] = Field(no_input=True, default='default'),
+            ):
+                return f1
+
+        with pytest.warns():
+            @utype.parse
+            def func2(
+                f1: ClassVar[str] = Field(no_input=True, default='default'),
+            ):
+                return f1
+
+        with pytest.warns():
+            # immutable means nothing to field
+            @utype.parse
+            def func(f1: str = Field(immutable=True)):
+                return f1
+
+        with pytest.warns():
+            # immutable means nothing to field
+            @utype.parse
+            def func(f1: str = Field(secret=True)):
+                return f1
+
     def test_args_assign(self):
         @utype.parse
         def complex_func(

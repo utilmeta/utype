@@ -17,7 +17,6 @@ class ArticleSchema(Schema):
         alias='createdAt',
         readonly=True,
         required=False,
-        unprovided=None
     )
     tags: List[str] = Field(default_factory=list, no_output=lambda v: not v)
 
@@ -28,7 +27,6 @@ article = ArticleSchema(
     tags=[]
 )
 assert 'createdAt' not in article
-assert article.created_at is None
 
 print(article)
 # > ArticleSchema(slug='test-article', content='article body', views=0)
