@@ -436,7 +436,7 @@ class TestType:
             for input_value, output_value, no_explicit_cast, no_data_loss in values:
                 options = Options(
                     no_explicit_cast=no_explicit_cast, no_data_loss=no_data_loss
-                ).make_runtime(force_error=True)
+                ).make_context(force_error=True)
                 transformer = TypeTransformer(options)
                 try:
                     result = transformer(input_value, target_type)

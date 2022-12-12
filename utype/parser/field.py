@@ -15,17 +15,18 @@ from typing import (
     Optional
 )
 from .rule import Rule, ConstraintMode, Lax, LogicalType, resolve_forward_type
-from .options import Options, RuntimeOptions
+from .options import Options, RuntimeContext
 from ..utils.compat import get_args, is_final
+from ..utils.datastructures import unprovided
 from ..utils import exceptions as exc
 from collections.abc import Mapping
 from ..utils.functional import multi, copy_value, get_name
 from ipaddress import IPv4Address, IPv6Address
 
+represent = repr
+
 
 class Field:
-    # DEFAULT_REQUIRED = True
-
     def __init__(
         self,
         *,
@@ -45,7 +46,7 @@ class Field:
         # api def: cannot be part of the response body
         # null: bool = False,
         # use null in type like Optional[int] / int | None
-        default=...,
+        default=unprovided,
         default_factory: Callable = None,
         defer_default: bool = False,
         deprecated: Union[bool, str] = False,
@@ -58,7 +59,8 @@ class Field:
         on_error: Literal["exclude", "preserve", "throw"] = None,  # follow the options
         # unprovided: Any = ...,
         immutable: bool = False,
-        secret: bool = None,    # None means depend on the Options.secret_names
+        # secret: bool = None,    # None means depend on the Options.secret_names
+        repr: Union[bool, str, Callable] = None,    # noqa
         dependencies: Union[list, str, property] = None,
         # (backup: internal, disallow, unacceptable)
         # unacceptable: we do not accept this field as an input,
@@ -72,10 +74,10 @@ class Field:
         # --- ANNOTATES ---
         title: str = None,
         description: str = None,
-        example=...,
+        example=unprovided,
         # message: str = None,  # report this message if error occur
         # --- CONSTRAINTS ---
-        const: Any = ...,
+        const: Any = unprovided,
         enum: Iterable = None,
         gt=None,
         ge=None,
@@ -99,7 +101,7 @@ class Field:
         if mode:
             if readonly or writeonly:
                 raise ValueError(
-                    f"Field: mode: ({repr(mode)}) cannot set with readonly or writeonly"
+                    f"Field: mode: ({represent(mode)}) cannot set with readonly or writeonly"
                 )
 
         if readonly and writeonly:
@@ -112,22 +114,22 @@ class Field:
         if deprecated:
             required = False
 
-        if default is not ...:
+        if not unprovided(default):
             required = False
             if default_factory:
                 raise ValueError(
-                    f"Field: default: {repr(default)} and default factory cannot set both"
+                    f"Field: default: {represent(default)} and default factory cannot set both"
                 )
 
         if default_factory:
             required = False
             if not callable(default_factory):
                 raise ValueError(
-                    f"Field: default_factory: {repr(default_factory)} must be a callable"
+                    f"Field: default_factory: {represent(default_factory)} must be a callable"
                 )
 
         if defer_default:
-            if default is ... and not default_factory:
+            if unprovided(default) and not default_factory:
                 raise ValueError(F'Field: specify defer_default=True without any default')
 
         if required is None:
@@ -141,20 +143,20 @@ class Field:
             if mode:
                 if no_input not in mode:
                     raise ValueError(
-                        f"Field no_input: {repr(no_input)} is not in mode: {repr(mode)}"
+                        f"Field no_input: {represent(no_input)} is not in mode: {represent(mode)}"
                     )
 
         if isinstance(no_output, str):
             if mode:
                 if no_output not in mode:
                     raise ValueError(
-                        f"Field no_output: {repr(no_output)} is not in mode: {repr(mode)}"
+                        f"Field no_output: {represent(no_output)} is not in mode: {represent(mode)}"
                     )
 
         if round:
             if decimal_places and decimal_places not in (round, Lax(round)):
                 raise ValueError(f'Field round: {round} is a shortcut for decimal_places=Lax({round}), '
-                                 f'but you specified a different decimal_places: {repr(decimal_places)}')
+                                 f'but you specified a different decimal_places: {represent(decimal_places)}')
 
             decimal_places = Lax(round)
 
@@ -185,13 +187,13 @@ class Field:
             for dep in dependencies:
                 dep = get_name(dep)
                 if not isinstance(dep, str):
-                    raise ValueError(f'Invalid dependency: {repr(dep)}, must be str or property')
+                    raise ValueError(f'Invalid dependency: {represent(dep)}, must be str or property')
                 deps.append(dep)
 
         if discriminator:
             discriminator = get_name(discriminator)
             if not isinstance(discriminator, str):
-                raise ValueError(f'Field.discriminator must be a str, got {repr(discriminator)}')
+                raise ValueError(f'Field.discriminator must be a str, got {represent(discriminator)}')
 
         self.dependencies = deps
         self.discriminator = discriminator
@@ -202,7 +204,18 @@ class Field:
         self.description = description
         self.example = example
         # self.message = message
-        self.secret = secret  # will display "******" instead of real value in repr
+        # self.secret = secret  # will display "******" instead of real value in repr
+
+        if isinstance(repr, bool):
+            if repr:
+                repr = represent    # noqa
+            else:
+                repr = lambda v: unprovided     # noqa
+        elif isinstance(repr, str):
+            def repr(v, _=repr):    # noqa
+                return _
+
+        self.repr: Optional[Callable] = repr
 
         constraints = {
             k: v
@@ -226,14 +239,14 @@ class Field:
             ).items()
             if v is not None
         }
-        if const is not ...:
+        if not unprovided(const):
             constraints.update(const=const)
 
         self.constraints = constraints
 
     @property
     def no_default(self):
-        return self.default is ... and not self.default_factory
+        return unprovided(self.default) and not self.default_factory
 
     def get_alias(self, attname: str, generator=None):
         alias = attname
@@ -364,11 +377,13 @@ class ParserField:
         self.attr_dependencies = set()
         self.dependants = set()
 
-        self.secret = field.secret
+        # self.secret = field.secret
+        # self.secret_repr = field.secret if isinstance(field.secret, str) else self.SECRET_REPR
+        self.repr_func = self.field.repr
         self.input_transformer = None
         self.output_transformer = None
         self.deprecated_to = None
-        self.const = ...
+        self.const = unprovided
         self.discriminator_map = {}
 
     @property
@@ -388,12 +403,15 @@ class ParserField:
         return []  # not set or ForwardRef
 
     def repr_value(self, value):
-        if self.secret:
-            return self.SECRET_REPR
-        return repr(value)
+        if self.repr_func:
+            rp = self.repr_func(value)
+            if unprovided(rp):
+                return rp
+            return str(rp)
+        return represent(value)
 
     def setup(self, options: Options):
-        if self.secret is None:
+        if self.repr_func is None:
             if options.secret_names:
                 is_secret = False
                 for name in options.secret_names:
@@ -403,13 +421,15 @@ class ParserField:
                 if is_secret:
                     # some types like bool is not some type to hide even if name in the secret names
                     origins = self.input_origins
-                    if not all([ori in self.SECRET_EXEMPT_TYPES for ori in origins]):
+                    if any([ori in self.SECRET_EXEMPT_TYPES for ori in origins]):
                         is_secret = False
-                self.secret = is_secret
+
+                if is_secret:
+                    self.repr_func = lambda v: self.SECRET_REPR
 
         if isinstance(self.type, type):
             if issubclass(self.type, Rule):
-                self.const = getattr(self.type, "const", ...)
+                self.const = getattr(self.type, "const", unprovided)
             else:
                 trans = Rule.transformer_cls.resolver_transformer(self.type)
                 if not trans:
@@ -595,21 +615,21 @@ class ParserField:
     #         return value()
     #     return copy_value(value)
 
-    def get_default(self, options: RuntimeOptions, defer: bool = False):
+    def get_default(self, options: Options, defer: bool = False):
         # options = options or self.options
         if options.no_default:
-            return ...
+            return unprovided
 
         if not defer:
             if self.field.defer_default or options.defer_default:
-                return ...
+                return unprovided
         else:
             if not self.field.defer_default and not options.defer_default:
-                return ...
+                return unprovided
 
-        if options.force_default is not ...:
+        if not unprovided(options.force_default):
             default = options.force_default
-        elif self.field.default is not ...:
+        elif not unprovided(self.field.default):
             default = self.field.default
         elif self.field.default_factory:
             try:
@@ -621,30 +641,30 @@ class ParserField:
                     f"Field(name={repr(self.name)}) generate default failed with error: {e}"
                 ) from e
         else:
-            return ...
+            return unprovided
         return copy_value(default)
 
-    def get_on_error(self, options: RuntimeOptions):
+    def get_on_error(self, options: Options):
         if self.field.on_error:
             return self.field.on_error
         return options.invalid_values
 
     def get_example(self):
-        if self.field.example is not ...:
+        if not unprovided(self.field.example):
             return self.field.example
 
-    def is_required(self, options: RuntimeOptions):
+    def is_required(self, options: Options):
         if options.ignore_required or not self.field.required:
             return False
         if self.always_no_input(options):
             return False
-        if options.force_required or self.field.required is True:
+        if self.field.required is True:
             return True
         if not options.mode:
             return False
         return options.mode in self.field.required
 
-    def no_input(self, value, options: RuntimeOptions):
+    def no_input(self, value, options: Options):
         if self.final:
             if not self.field.no_default:
                 return True
@@ -667,7 +687,7 @@ class ParserField:
 
         return bool(no_input)
 
-    def always_no_input(self, options: RuntimeOptions):
+    def always_no_input(self, options: Options):
         # calculate before get the value
         if self.final:
             if not self.field.no_default:
@@ -675,6 +695,8 @@ class ParserField:
         field = self.field
         if field.no_input is True:
             return True
+        if not options.mode:
+            return False
         if callable(field.no_input):
             return False
         if isinstance(field.no_input, (str, list, set, tuple)):
@@ -683,11 +705,13 @@ class ParserField:
             return options.mode not in field.mode
         return False
 
-    def always_no_output(self, options: RuntimeOptions):
+    def always_no_output(self, options: Options):
         # calculate before get the value
         field = self.output_field or self.field
         if field.no_output is True:
             return True
+        if not options.mode:
+            return False
         if callable(field.no_output):
             return False
         if isinstance(field.no_output, (str, list, set, tuple)):
@@ -696,7 +720,7 @@ class ParserField:
             return options.mode not in field.mode
         return False
 
-    def no_output(self, value, options: RuntimeOptions):
+    def no_output(self, value, options: Options):
         field = self.output_field or self.field
         # prefer the config in output field rather than input field
         no_output = (
@@ -737,57 +761,66 @@ class ParserField:
                 f"{func}: Field(name={repr(self.name)}).defer_default has no meanings in function params,"
                 f" please consider move it"
             )
-        if self.field.secret:
+        if self.field.repr:
             warnings.warn(
-                f"{func}: Field(name={repr(self.name)}).secret has no meanings in function params,"
+                f"{func}: Field(name={repr(self.name)}).repr has no meanings in function params,"
                 f" please consider move it"
             )
 
-    def parse_output_value(self, value, options: RuntimeOptions):
+    # 1. deal with parse: use context
+    def parse_output_value(self, value, context: RuntimeContext):
         type = self.output_type
         if not type:
             return value
-        trans = options.transformer
+        trans = context.transformer
         try:
-            return trans(value, type)
+            return trans(value, type)   # noqa
         except Exception as e:
             error = exc.ParseError(
                 item=self.name, type=self.output_type, value=value, field=self, origin_exc=e
             )
             # todo: apply and distinct input field / output field
-            error_option = (self.output_field.on_error if self.output_field else None) or options.invalid_values
-            if error_option == options.EXCLUDE:
-                options.collect_waring(error.formatted_message)
-            elif error_option == options.PRESERVE:
-                options.collect_waring(error.formatted_message)
+            error_option = (self.output_field.on_error if self.output_field else None
+                            ) or context.options.invalid_values
+            if error_option == context.options.EXCLUDE:
+                context.collect_waring(error.formatted_message)
+            elif error_option == context.options.PRESERVE:
+                context.collect_waring(error.formatted_message)
                 return value
             else:
-                options.handle_error(error)
-            return ...
+                context.handle_error(error)
+            return unprovided
 
-    def parse_value(self, value, options: RuntimeOptions):
+    def parse_value(self, value, context: RuntimeContext):
         if self.field.deprecated:
             to = (
                 f", use {repr(self.deprecated_to)} instead"
                 if self.deprecated_to
                 else ""
             )
-            options.collect_waring(
+            context.collect_waring(
                 f"{repr(self.name)} is deprecated{to}", category=DeprecationWarning
             )
 
         type = self.type
-        trans = options.transformer
+        # trans = context.transformer
 
         if self.discriminator_map and value is not None:
             if not isinstance(value, Mapping):
-                value = trans.to_dict(value)
+                try:
+                    value = context.transformer.to_dict(value)
+                except Exception as e:
+                    context.handle_error(exc.ParseError(
+                        item=self.name, type=dict, value=value, field=self, origin_exc=e
+                    ))
+                    return unprovided
+
             discriminator = value.get(self.field.discriminator)
             if discriminator in self.discriminator_map:
                 type = self.discriminator_map[discriminator]
                 # directly assign type instead parse it in a Logical context
             else:
-                options.handle_error(exc.DiscriminatorMismatchError(
+                context.handle_error(exc.DiscriminatorMismatchError(
                     discriminator=self.field.discriminator,
                     discriminator_value=discriminator,
                     field=self,
@@ -795,30 +828,32 @@ class ParserField:
                     item=self.name,
                     type=self.type
                 ))
-                return ...
+                return unprovided
 
         if not type:
             # type is None, not type(None), means the exact same as Any / Rule
             return value
-        try:
-            return trans(value, type)
-        except Exception as e:
-            error = exc.ParseError(
-                item=self.name, type=self.type, value=value, field=self, origin_exc=e
-            )
-            error_option = self.get_on_error(options)
-            if error_option == options.EXCLUDE:
-                if self.is_required(options):
-                    # required field cannot be excluded
-                    options.handle_error(error)
+
+        with context.enter(self.name) as new_context:
+            try:
+                return new_context.transformer(value, type)   # noqa
+            except Exception as e:
+                error = exc.ParseError(
+                    item=self.name, type=self.type, value=value, field=self, origin_exc=e
+                )
+                error_option = self.get_on_error(context.options)
+                if error_option == context.options.EXCLUDE:
+                    if self.is_required(context.options):
+                        # required field cannot be excluded
+                        context.handle_error(error)
+                    else:
+                        context.collect_waring(error.formatted_message)
+                elif error_option == context.options.PRESERVE:
+                    context.collect_waring(error.formatted_message)
+                    return value
                 else:
-                    options.collect_waring(error.formatted_message)
-            elif error_option == options.PRESERVE:
-                options.collect_waring(error.formatted_message)
-                return value
-            else:
-                options.handle_error(error)
-            return ...
+                    context.handle_error(error)
+                return unprovided
 
     @classmethod
     def generate(
@@ -841,7 +876,7 @@ class ParserField:
 
         if isinstance(default, property):
             prop = default
-            default = ...
+            default = unprovided
             if prop.fset:
                 _, (k, param) = inspect.signature(prop.fset).parameters.items()
                 param: inspect.Parameter

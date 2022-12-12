@@ -3,8 +3,15 @@ import pytest
 import warnings
 from typing import Union, Literal, Final
 from utype.utils.style import AliasGenerator
+from datetime import datetime
 
 
+@pytest.fixture(params=(False, True))
+def dfs(request):
+    return request.param
+
+
+# @pytest.mark.parametrize(argnames='dfs', argvalues=(False, True))
 class TestField:
     def test_field_default_required(self):
         class T(Schema):
@@ -113,8 +120,10 @@ class TestField:
             def func(f1: str = Field(default=0, defer_default=True)):
                 return f1
 
-    def test_field_alias(self):
+    def test_field_alias(self, dfs):
         class T(Schema):
+            __options__ = Options(data_first_search=dfs)
+
             f1: str = Field(alias_from=["@f1", "_f1"], required=False)
             f2: str = Field(alias="_f2", required=False)
 
@@ -161,8 +170,9 @@ class TestField:
                 f1: str = Field(alias="f2")
                 f2: str
 
-    def test_field_case_insensitive(self):
+    def test_field_case_insensitive(self, dfs):
         class T(DataClass):
+            __options__ = Options(data_first_search=dfs)
             some_field: str = Field(case_insensitive=True, alias_from=['field1'])
 
         assert T(soMe_FiEld=1).some_field == "1"
@@ -197,8 +207,10 @@ class TestField:
                 some_field: str = Field(case_insensitive=True)
                 f2: int = Field(alias="some_FIELD")
 
-    def test_field_mode(self):
+    def test_field_mode(self, dfs):
         class T(Schema):
+            __options__ = Options(data_first_search=dfs)
+
             ro: str = Field(readonly=True)
             wo: str = Field(writeonly=True)
             ra: str = Field(mode="ra")
@@ -210,7 +222,7 @@ class TestField:
         class Twa(T):
             __options__ = Options(mode="wa")
 
-        assert dict(T(__options__=Options(mode="r"), ro=1, wo=1, ra=1, wa=1)) == {
+        assert dict(T.__from__(dict(ro=1, wo=1, ra=1, wa=1), options=Options(mode="r"))) == {
             "ro": "1",
             "ra": "1",
         }
@@ -223,15 +235,15 @@ class TestField:
             "wo": "1",
             "wa": "1",
         }
-        assert dict(T(__options__=Options(mode="w"), ro=1, wo=1, ra=1, wa=1)) == {
+        assert dict(T.__from__(dict(ro=1, wo=1, ra=1, wa=1), options=Options(mode="w"))) == {
             "wo": "1",
             "wa": "1",
         }
-        assert dict(T(__options__=Options(mode="a"), ro=1, wo=1, ra=1, wa=1)) == {
+        assert dict(T.__from__(dict(ro=1, wo=1, ra=1, wa=1), options=Options(mode="a"))) == {
             "ra": "1",
             "wa": "1",
         }
-        assert dict(T(__options__=Options(mode="ra"), ro=1, wo=1, ra=1, wa=1)) == {
+        assert dict(T.__from__(dict(ro=1, wo=1, ra=1, wa=1), options=Options(mode="ra"))) == {
             "ra": "1",
         }
 
@@ -250,8 +262,99 @@ class TestField:
             class T(Schema):  # noqa
                 rwo: str = Field(writeonly=True, mode="rw")
 
-    def test_field_no_input_output(self):
+        class UserSchema(Schema):
+            __options__ = Options(data_first_search=dfs)
+
+            username: str
+            password: str = Field(mode='wa')
+            followers_num: int = Field(readonly=True)  # or mode='r'
+            signup_time: datetime = Field(
+                mode='ra',
+                no_input='a',
+                default_factory=datetime.now
+            )
+
+        new_user_form = 'username=new-user&password=123456'
+        new_user = UserSchema.__from__(new_user_form, options=Options(mode='a'))
+
+        assert isinstance(new_user['signup_time'], datetime)
+        assert 'followers_num' not in new_user
+        assert new_user.password == '123456'
+
+        user_query_result = {
+            'username': 'new-user',
+            'followers_num': '3',
+            'signup_time': '2022-03-04 10:11:12',
+        }
+        queried_user = UserSchema.__from__(user_query_result, options=Options(mode='r'))
+
+        assert isinstance(queried_user['signup_time'], datetime)
+        assert 'followers_num' in queried_user
+        assert queried_user['username'] == 'new-user'
+
+        with pytest.raises(AttributeError):
+            _ = queried_user.password
+
+        @parse(options=Options(mode='w', override=True, data_first_search=dfs))
+        def update_user(user: UserSchema):
+            return dict(user)
+
+        @parse(options=Options(mode='a', override=True, data_first_search=dfs))
+        def create_user(user: UserSchema):
+            return dict(user)
+
+        dic = create_user(new_user_form)
+        assert isinstance(dic['signup_time'], datetime)
+        assert dic['username'] == 'new-user'
+
+        class UserRead(UserSchema):
+            __options__ = Options(mode='r')
+
+        class UserUpdate(UserSchema):
+            __options__ = Options(mode='w')
+
+        class UserCreate(UserSchema):
+            __options__ = Options(mode='a')
+
+        user_updated_data = {
+            'username': 'new-username',
+            'password': 'new-password',
+            'followers_num': '3',
+            'signup_time': '2022-03-04 10:11:12',
+        }
+        updated_user = UserUpdate(**user_updated_data)
+        assert 'followers_num' not in updated_user
+        assert 'signup_time' not in updated_user
+        assert updated_user['username'] == 'new-username'
+
+        updated_user.followers_num = 3  # test
+        assert 'followers_num' not in updated_user  # still not in
+
+        class Article(Schema):
+            __options__ = Options(data_first_search=dfs)
+
+            slug: str = Field(no_input='wa')
+            title: str
+            created_at: datetime = Field(
+                mode='ra',
+                no_input='a',
+                default_factory=datetime.now
+            )
+
+            def __validate__(self):
+                if 'slug' not in self:
+                    self.slug = '-'.join([''.join(filter(str.isalnum, v))
+                                          for v in self.title.split()]).lower()
+
+        new_article_json = b'{"title": "My Awesome Article!", "created_at": "ignored"}'
+        new_article = Article.__from__(new_article_json, options=Options(mode='a'))
+        assert new_article.slug == 'my-awesome-article'
+        assert isinstance(new_article.created_at, datetime)
+
+    def test_field_no_input_output(self, dfs):
         class T(Schema):
+            __options__ = Options(data_first_search=dfs)
+
             noi: str = Field(no_input=True)
             noo: str = Field(no_output=True)
             noic: str = Field(no_input=lambda v: not v)
@@ -285,13 +388,13 @@ class TestField:
         test.nooc = ''
         assert 'nooc' not in test   # fill empty value again
 
-        test2 = T(**test, noo="noo", nooc="", __options__=Options(mode="r"))
+        test2 = T.__from__(dict(**test, noo="noo", nooc=""), options=Options(mode="r"))
         with pytest.raises(AttributeError):
             _ = test2.noir
 
         assert dict(test2) == {"noic": "v", "noiwa": "noiwa"}
 
-        test3 = T(**test, noo="noo", nooc="", __options__=Options(mode="wa"))
+        test3 = T.__from__(dict(**test, noo="noo", nooc=""), options=Options(mode="wa"))
         with pytest.raises(AttributeError):
             _ = test3.noiwa
         assert dict(test3) == {
@@ -314,10 +417,13 @@ class TestField:
         with pytest.warns():
             # no_output has no meanings for function
             @parse
-            def func(f: str = Field(no_output=True)): pass
+            def func(f: str = Field(no_output=True)):
+                return f
 
-    def test_field_on_error(self):
+    def test_field_on_error(self, dfs):
         class T(Schema):
+            __options__ = Options(data_first_search=dfs)
+
             default: str = Field(on_error=None, required=False, length=3)
             throw: str = Field(on_error='throw', min_length=2, required=False)
             exclude: str = Field(on_error='exclude', max_length=3, required=False)
@@ -336,8 +442,10 @@ class TestField:
             t = T(preserve=-10)
             assert 'preserve' in t
 
-    def test_field_constraints(self):
+    def test_field_constraints(self, dfs):
         class T(Schema):
+            __options__ = Options(data_first_search=dfs)
+
             st: str = Field(max_length=3, min_length=1)
             num: int = Field(ge=0, le=10)
 
@@ -360,14 +468,12 @@ class TestField:
                 num: bool = Field(max_digits=10)
 
         with pytest.raises(Exception):
-
             class T(Schema):
                 num: int = Field(unique_items=True)
 
         with pytest.raises(Exception):
-
             class T(Schema):
-                num: str = Field(max_contains=3, contains=int)
+                num: int = Field(max_contains=3, contains=int)
 
         with pytest.raises(Exception):
 
@@ -378,9 +484,6 @@ class TestField:
 
             class T(Schema):
                 num: list = Field(max_contains=3, min_contains=10, contains=int)
-
-    def test_field_dependencies(self):
-        pass
 
     def test_field_immutable(self):
         class T(DataClass):
@@ -434,10 +537,19 @@ class TestField:
                 'mutable': 3,
             })
 
-    def test_field_secret(self):
-        pass
+    def test_field_repr(self, dfs):
+        class AccessInfo(Schema):
+            __options__ = Options(data_first_search=dfs)
 
-    def test_field_discriminator(self):
+            access_key: str = Field(repr=lambda v: repr(v[:3] + '*' * (len(v) - 3)))
+            secret_key: str = Field(repr='<secret key>')
+            last_activity: datetime = Field(default_factory=datetime.now, repr=False)
+
+        access = AccessInfo(access_key='ABCDEFG', secret_key='qwertyu')
+        # even in the locals, we deprecate the __qualname__ to use __name__
+        assert repr(access) == str(access) == "AccessInfo(access_key='ABC****', secret_key=<secret key>)"
+
+    def test_field_discriminator(self, dfs):
         @dataclass
         class Video:
             name: Literal['video']
@@ -457,6 +569,8 @@ class TestField:
             path: str
 
         class FileSchema(Schema):
+            __options__ = Options(data_first_search=dfs)
+
             file: Video | Audio = Field(discriminator=Audio.name)
 
         video = FileSchema(file=b'{"name": "video", "path": "/file"}')
@@ -469,7 +583,7 @@ class TestField:
         assert audio.file.tone == '1'
         assert audio.file.suffix == 'mp3'
 
-        @parse
+        @parse(options=Options(data_first_search=dfs))
         def func(cls, file: Video | Audio = Field(discriminator='name')):
             assert isinstance(file, cls)
             return file.name, file.suffix
@@ -548,3 +662,40 @@ class TestField:
             'body': b'binary'
         }
         request = RequestSchema(**old_data)
+
+    def test_field_dependencies(self, dfs):
+        class Account(Schema):
+            __options__ = Options(data_first_search=dfs)
+
+            name: str
+            billing_address: str = Field(alias='billing', default=None)  # test with default
+            credit_card: str = Field(required=False, dependencies=['billing_address'])
+
+        Account(name='bill')
+
+        account = Account(name='alice', billing_address='some city, some street', credit_card=123456)
+        assert account.credit_card == '123456'
+
+        with pytest.raises(exc.DependenciesAbsenceError):
+            Account(name='alice', credit_card=123456)
+
+        class UserSchema(Schema):
+            __options__ = Options(data_first_search=dfs)
+
+            username: str
+            signup_time: datetime = Field(required=False)
+
+            @property
+            @Field(dependencies=['signup_time'])
+            def signup_days(self) -> int:
+                return (datetime.now() - self.signup_time).total_seconds() / (3600 * 24)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            new_user = UserSchema(username='test')
+            assert 'signup_days' not in new_user
+            # False
+
+        signup_user = UserSchema(username='test', signup_time='2021-10-11 11:22:33')
+        assert 'signup_days' in signup_user
+        assert isinstance(signup_user.signup_days, int)

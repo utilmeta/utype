@@ -14,8 +14,9 @@ import inspect
 from ..utils.compat import get_origin, get_args, ForwardRef, evaluate_forward_ref
 from ..utils.transform import TypeTransformer, register_transformer
 from ..utils.functional import pop, multi
+from ..utils.datastructures import unprovided
 from ..utils import exceptions as exc
-from .options import RuntimeOptions
+from .options import RuntimeContext
 from enum import EnumMeta, Enum
 from functools import partial
 
@@ -320,11 +321,11 @@ class LogicalType(type):  # noqa
     def __str__(cls):
         return repr(cls)
 
-    def parse(cls, *args, **kwargs):
+    def parse(cls, value, *args, **kwargs):
         pass
 
-    def logical_parse(cls, value, __options__: RuntimeOptions = None, **kwargs):
-        options = __options__.clone() if __options__ else RuntimeOptions()
+    def logical_parse(cls, value, /, context: RuntimeContext = None, **kwargs):
+        context = context or RuntimeContext()
         # IMPORTANT:
         # we must do clone here (as the parser do make_runtime)
         # to prompt a new RuntimeOptions, to collect the error in this layer
@@ -334,9 +335,9 @@ class LogicalType(type):  # noqa
                 try:
                     # each value transform will pass on to the next condition
                     # like NormalFloat = AllOf(Float, Not(AbnormalFloat))('3.3')
-                    value = options.transformer(value, con)
+                    value = context.transformer(value, con)
                 except Exception as e:
-                    options.handle_error(e)
+                    context.handle_error(e)
                     break
             return value
 
@@ -347,13 +348,17 @@ class LogicalType(type):  # noqa
                     return value
             # 2. try to transform in strict mode
             # strict_transformer = options.get_transformer(no_explicit_cast=True, no_data_loss=True)
-            for con in cls.args:
-                try:
-                    value = options.transformer(value, con)
-                    options.clear_tmp_error()
-                    break
-                except Exception as e:
-                    options.collect_tmp_error(e)
+
+            with context.enter(cls.combinator) as new_context:
+                for con in cls.args:
+                    try:
+                        # error isolation
+                        value = new_context.transformer(value, con)
+                    except Exception as e:
+                        context.collect_tmp_error(e)
+                    else:
+                        context.clear_tmp_error()
+                        break
 
         elif cls.combinator == "^":
             # 1. check EXACT identical type
@@ -363,44 +368,46 @@ class LogicalType(type):  # noqa
                     return value
 
             xor = None
-            for con in cls.args:
-                try:
-                    value = options.transformer(value, con)
-                    if xor is None:
-                        xor = con
-                    else:
-                        options.handle_error(
-                            exc.OneOfViolatedError(
-                                f"More than 1 conditions ({xor}, {con}) is True in XOR conditions"
+
+            with context.enter(cls.combinator) as new_context:
+                for con in cls.args:
+                    try:
+                        value = new_context.transformer(value, con)
+                        if xor is None:
+                            xor = con
+                        else:
+                            context.handle_error(
+                                exc.OneOfViolatedError(
+                                    f"More than 1 conditions ({xor}, {con}) is True in XOR conditions"
+                                )
                             )
-                        )
-                        xor = None
-                        break
-                except Exception as e:
-                    options.collect_tmp_error(e)
+                            xor = None
+                            break
+                    except Exception as e:
+                        context.collect_tmp_error(e)
 
             if xor is not None:
                 # only one condition is satisfied in XOR
-                options.clear_tmp_error()
+                context.clear_tmp_error()
 
         elif cls.combinator == "~":
             for con in cls.args:
                 try:
-                    options.transformer(value, con)
-                    options.handle_error(
+                    context.transformer(value, con)
+                    context.handle_error(
                         exc.NegateViolatedError(f"Negate condition: {con} is violated")
                     )
                 except Exception:  # noqa
                     pass
                     # value = cls._get_error_result(e, value, **kwargs)
 
-        options.raise_error()  # raise error if collected
+        context.raise_error()  # raise error if collected
         return value
 
-    def __call__(cls, *args, **kwargs):
+    def __call__(cls, value, *args, **kwargs):
         if cls.combinator:
-            return cls.logical_parse(*args, **kwargs)
-        return cls.parse(*args, **kwargs)
+            return cls.logical_parse(value, *args, **kwargs)
+        return cls.parse(value, *args, **kwargs)
 
 
 class ConstraintMode:
@@ -745,7 +752,7 @@ class Constraints:
         for key in self.rule_cls.__constraints__:
             if hasattr(self.rule_cls, key) and hasattr(self.__class__, key):
                 value = getattr(self.rule_cls, key)
-                if value is ...:
+                if unprovided(value):
                     # this is a sign that the subclass cancel a constraint from the base class
                     # and to differ with None (for const constraint, None is still consider a valid param)
                     continue
@@ -1014,7 +1021,7 @@ class Constraints:
 class Rule(metaclass=LogicalType):
     transformer_cls = TypeTransformer
     constraints_cls = Constraints
-    options_cls = RuntimeOptions
+    context_cls = RuntimeContext
 
     __origin__: type = None
     __abstract__: bool = False
@@ -1399,26 +1406,26 @@ class Rule(metaclass=LogicalType):
         return True
 
     @classmethod
-    def parse(cls, value, __options__: RuntimeOptions = None):
+    def parse(cls, value, context: RuntimeContext = None):
         # use __options__ instead of options is to identify much clearer with other subclass init kwargs
-        options = __options__.clone() if __options__ else cls.options_cls()
+        context = context or cls.context_cls()
+        options = context.options
         # IMPORTANT:
         # we must do clone here (as the parser do make_runtime)
         # to prompt a new RuntimeOptions, to collect the error in this layer
-        trans = cls.transformer_cls(options)
-        value = cls.pre_validate(value, options)
+        value = cls.pre_validate(value, context)
 
         if cls.__origin__:
             # no matter cls.__transformer__ is None or not
             try:
-                value = trans.apply(
+                value = context.transformer.apply(
                     value, cls.__origin__, func=cls.__origin_transformer__
                 )
             except Exception as e:
                 error = exc.ParseError(origin_exc=e)
                 # if type cannot convert, the following args and constraints cannot validate
                 # can just abort and stop collect errors if it is specified
-                options.handle_error(error, force_raise=True)
+                context.handle_error(error, force_raise=True)
 
             if value is None:
                 # do not continue if value is None after parse
@@ -1427,7 +1434,7 @@ class Rule(metaclass=LogicalType):
                 return value
 
         if cls.__args_parser__:
-            value = cls.__args_parser__(value, trans)
+            value = cls.__args_parser__(value, context)
 
             if not cls.__abstract__ and type(value) != cls.__origin__:
                 # for abstract types (like Sequence / Iterable)
@@ -1451,27 +1458,29 @@ class Rule(metaclass=LogicalType):
                     )
                     # if validator already throw a constraint error
                     # may an inner constraint (like max_contains in contains) is violated
-                    options.handle_error(error)
+                    context.handle_error(error)
 
             if cls.contains:
-                value = cls._parse_contains(value, options)
+                value = cls._parse_contains(value, context=context)
 
-        options.raise_error()
+        context.raise_error()
         # raise error if collected
         # and leave the error the upper layer to collect
-        return cls.post_validate(value, options)
+        return cls.post_validate(value, context)
 
     @classmethod
-    def pre_validate(cls, value, options: RuntimeOptions = None):
+    def pre_validate(cls, value, context: RuntimeContext = None):
         # meant to be inherited to define user-specific logic before type transform
         return value
 
     @classmethod
-    def post_validate(cls, value, options: RuntimeOptions = None):
+    def post_validate(cls, value, context: RuntimeContext = None):
         # meant to be inherited to define user-specific logic after the transform and constraints validation
         return value
 
     def __init__(self, value):
+        # just to let the IDE know that this class can be init with single param
+        # this function will not get called
         self._value = self.parse(value)
 
     def __repr__(self):
@@ -1502,38 +1511,40 @@ class Rule(metaclass=LogicalType):
         elif not contains:
             return
 
-        if not cls.__origin__ or isinstance(cls.__origin__, SEQ_TYPES):
-            raise ValueError(f'Rule: constraint: contains is only for {SEQ_TYPES}, got {cls.__origin__}')
+        from collections.abc import Iterable
+        if isinstance(cls.__origin__, type) and not issubclass(cls.__origin__, Iterable):
+            raise ValueError(f'Rule: constraint: contains is only for Iterable, got {cls.__origin__}')
 
     @classmethod
-    def _parse_contains(cls, value, options):
+    def _parse_contains(cls, value, context: RuntimeContext):
         # validate max_contains and min_contains as well
         if not cls.contains:
             return value
 
         contains = 0
-        transformer = options.transformer
-        for item in value:
-            try:
-                transformer(item, cls.contains)
-            except (TypeError, ValueError):
-                pass
-            else:
-                contains += 1
+        for i, item in enumerate(value):
+            with context.enter(route=i) as item_context:
+                try:
+                    item_context.transformer(item, cls.contains)
+                except (TypeError, ValueError):
+                    pass
+                else:
+                    contains += 1
+
         if not contains:
-            options.handle_error(exc.ConstraintError(
+            context.handle_error(exc.ConstraintError(
                 f"{cls.contains} not contained in value",
                 constraint='contains',
                 constraint_value=cls.contains
             ))
         elif cls.min_contains and contains < cls.min_contains:
-            options.handle_error(exc.ConstraintError(
+            context.handle_error(exc.ConstraintError(
                 f"value contains {contains} of {cls.contains}, which is lower than min_contains",
                 constraint="min_contains",
                 constraint_value=cls.min_contains,
             ))
         elif cls.max_contains and contains > cls.max_contains:
-            options.handle_error(exc.ConstraintError(
+            context.handle_error(exc.ConstraintError(
                 f"value contains {contains} of {cls.contains}, which is bigger than max_contains",
                 constraint="max_contains",
                 constraint_value=cls.max_contains,
@@ -1584,96 +1595,102 @@ class Rule(metaclass=LogicalType):
         return None
 
     @classmethod
-    def _parse_tuple_args(cls, value: tuple, trans: TypeTransformer):
+    def _parse_tuple_args(cls, value: tuple, context: RuntimeContext):
         result = []
-        options = trans.options
+        options = context.options
 
         if options.no_data_loss and len(value) > len(cls.__args__):
             for item in range(len(cls.__args__), len(value)):
-                options.handle_error(exc.TupleExceedError(
+                context.handle_error(exc.TupleExceedError(
                     item=item,
                     value=value[item]
                 ))
 
         for i, (arg, func) in enumerate(zip(cls.__args__, cls.__arg_transformers__)):
             if i >= len(value):
-                options.handle_error(exc.AbsenceError(
+                context.handle_error(exc.AbsenceError(
                     f"prefixItems required prefix: [{i}] not provided", item=i
                 ))
-            try:
-                result.append(trans.apply(value[i], arg, func=func))
-            except Exception as e:
-                error = exc.ParseError(item=i, value=value[i], type=arg, origin_exc=e)
-                if options.invalid_items == options.PRESERVE:
-                    options.collect_waring(error.formatted_message)
-                    result.append(value[i])
-                    continue
-                options.handle_error(error)
+
+            with context.enter(route=i) as arg_context:
+                try:
+                    result.append(arg_context.transformer.apply(value[i], arg, func=func))
+                except Exception as e:
+                    error = exc.ParseError(item=i, value=value[i], type=arg, origin_exc=e)
+                    if options.invalid_items == options.PRESERVE:
+                        context.collect_waring(error.formatted_message)
+                        result.append(value[i])
+                        continue
+                    context.handle_error(error)
+
         return cls.__origin__(result)
 
     @classmethod
-    def _parse_seq_args(cls, value: Union[list, set], trans: TypeTransformer):
+    def _parse_seq_args(cls, value: Union[list, set], context: RuntimeContext):
         result = []
         arg_type = cls.__args__[0]
         arg_transformer = cls.__arg_transformers__[0]
-        options = trans.options
+        options = context.options
 
         for i, item in enumerate(value):
-            try:
-                result.append(trans.apply(item, arg_type, func=arg_transformer))
-            except Exception as e:
-                error = exc.ParseError(
-                    item=i, value=value[i], type=arg_type, origin_exc=e
-                )
-                if options.invalid_items == options.EXCLUDE:
-                    options.collect_waring(error.formatted_message)
-                    continue
-                if options.invalid_items == options.PRESERVE:
-                    options.collect_waring(error.formatted_message)
-                    result.append(item)
-                    continue
-                options.handle_error(error)
+            with context.enter(route=i) as arg_context:
+                try:
+                    result.append(arg_context.transformer.apply(item, arg_type, func=arg_transformer))
+                except Exception as e:
+                    error = exc.ParseError(
+                        item=i, value=value[i], type=arg_type, origin_exc=e
+                    )
+                    if options.invalid_items == options.EXCLUDE:
+                        context.collect_waring(error.formatted_message)
+                        continue
+                    if options.invalid_items == options.PRESERVE:
+                        context.collect_waring(error.formatted_message)
+                        result.append(item)
+                        continue
+                    context.handle_error(error)
         return result
 
     @classmethod
-    def _parse_map_args(cls, value: dict, trans: TypeTransformer):
+    def _parse_map_args(cls, value: dict, context: RuntimeContext):
         result = {}
         key_type, value_type = cls.__args__
         key_transformer, value_transformer = cls.__arg_transformers__
-        options = trans.options
+        options = context.options
+
         for _key, _val in value.items():
-            try:
-                key = trans.apply(_key, key_type, func=key_transformer)
-            except Exception as e:
-                error = exc.ParseError(
-                    item=f"{_key}<key>", value=_key, type=key_type, origin_exc=e
-                )
+            with context.enter(route=f'{_key}<key>') as key_context:
+                try:
+                    key = key_context.transformer.apply(_key, key_type, func=key_transformer)
+                except Exception as e:
+                    error = exc.ParseError(
+                        item=f"{_key}<key>", value=_key, type=key_type, origin_exc=e
+                    )
+                    if options.invalid_keys == options.EXCLUDE:
+                        context.collect_waring(error.formatted_message)
+                        continue
+                    elif options.invalid_keys == options.PRESERVE:
+                        key = _key
+                        context.collect_waring(error.formatted_message)
+                    else:
+                        context.handle_error(error)
+                        continue
 
-                if options.invalid_keys == options.EXCLUDE:
-                    options.collect_waring(error.formatted_message)
-                    continue
-                elif options.invalid_keys == options.PRESERVE:
-                    key = _key
-                    options.collect_waring(error.formatted_message)
-                else:
-                    options.handle_error(error)
-                    continue
-
-            try:
-                value = trans.apply(_val, value_type, func=value_transformer)
-            except Exception as e:
-                error = exc.ParseError(
-                    item=_key, value=_val, type=value_type, origin_exc=e
-                )
-                if options.invalid_values == options.EXCLUDE:
-                    options.collect_waring(error.formatted_message)
-                    continue
-                elif options.invalid_values == options.PRESERVE:
-                    options.collect_waring(error.formatted_message)
-                    value = _val
-                else:
-                    options.handle_error(error)
-                    continue
+            with context.enter(route=key) as value_context:
+                try:
+                    value = value_context.transformer.apply(_val, value_type, func=value_transformer)
+                except Exception as e:
+                    error = exc.ParseError(
+                        item=key, value=_val, type=value_type, origin_exc=e
+                    )
+                    if options.invalid_values == options.EXCLUDE:
+                        context.collect_waring(error.formatted_message)
+                        continue
+                    elif options.invalid_values == options.PRESERVE:
+                        context.collect_waring(error.formatted_message)
+                        value = _val
+                    else:
+                        context.handle_error(error)
+                        continue
             result[key] = value
         return result
 
@@ -1687,4 +1704,4 @@ def transform_callable(transformer: TypeTransformer, value, t):
 
 @register_transformer(metaclass=LogicalType)
 def transform_rule(transformer: TypeTransformer, value, t: LogicalType):
-    return t(value, __options__=transformer.options)
+    return t(value, context=transformer.context)

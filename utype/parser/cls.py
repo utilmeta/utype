@@ -1,19 +1,21 @@
 from .base import BaseParser
 from .func import FunctionParser
 from ..utils.compat import is_classvar, is_final
-from ..utils.functional import pop
 from .field import ParserField
-from typing import Callable, Dict
+from typing import Callable, Dict, Type, TypeVar
 import inspect
 from ..utils.transform import register_transformer, TypeTransformer
-from collections.abc import Mapping
-from .options import RuntimeOptions
+from ..utils.datastructures import unprovided
+from ..utils import exceptions as exc
+from .options import RuntimeContext, Options
 from functools import partial
 import warnings
 from types import FunctionType
+from collections.abc import Mapping
 
+T = TypeVar('T')
 
-__all__ = ['ClassParser']
+__all__ = ['ClassParser', 'init_dataclass']
 
 
 class ClassParser(BaseParser):
@@ -26,7 +28,6 @@ class ClassParser(BaseParser):
         if not inspect.isclass(obj):
             raise TypeError(f"{self.__class__}: object need to be a class, got {obj}")
         super().__init__(obj, *args, **kwargs)
-        self.name = getattr(self.obj, "__qualname__", self.obj.__name__)
         self.init_parser = None
 
     def setup(self):
@@ -97,7 +98,7 @@ class ClassParser(BaseParser):
             ):
                 exclude_vars.add(key)
                 continue
-            default = self.obj.__dict__.get(key, ...)
+            default = self.obj.__dict__.get(key, unprovided)
             if annotation is None:
                 # a: None
                 # a: Optional[None]
@@ -119,11 +120,11 @@ class ClassParser(BaseParser):
             if key in annotations:
                 continue
             if (
-                attr is ...
+                # attr is ...
                 # if this attr is a field in bases, this means to exclude this field in current class
                 # otherwise this attr declared that this field is never take from input
                 # or isinstance(attr, property)
-                or self.is_class_internals(
+                self.is_class_internals(
                     attr, attname=key, class_qualname=self.obj_name
                 )
                 or isinstance(attr, self.IGNORE_ATTR_TYPES)
@@ -162,14 +163,14 @@ class ClassParser(BaseParser):
         attr_alias_map = {}
         case_insensitive_names = set()
         exclude_vars = set()
-        option_list = []
+        # option_list = []
 
         for base in reversed(self.obj.__bases__):  # according to MRO
             if not isinstance(base, type(self.obj)) or base is object:
                 continue
             parser = self.apply_for(base)  # should use cache
-            if not parser.options.vacuum:
-                option_list.append(parser.options)
+            # if not parser.options.vacuum:
+            #     option_list.append(parser.options)
 
             fields.update(parser.fields)
 
@@ -178,11 +179,12 @@ class ClassParser(BaseParser):
             attr_alias_map.update(parser.attr_alias_map)
             case_insensitive_names.update(parser.case_insensitive_names)
 
-        cls_options = self.options  # add current cls options
-        if cls_options:
-            option_list.append(cls_options)
+        # cls_options = self.options  # add current cls options
+        # if cls_options:
+        #     option_list.append(cls_options)
+        #
+        # self.options = self.options_cls.generate_from(*option_list)
 
-        self.options = self.options_cls.generate_from(*option_list)
         self.fields = fields
         self.exclude_vars = exclude_vars
         self.field_alias_map = alias_map
@@ -192,41 +194,41 @@ class ClassParser(BaseParser):
     def make_setter(self, field: ParserField, post_setattr=None):
         def setter(_obj_self: object, value):
             if self.options.immutable or field.immutable:
-                raise AttributeError(
+                raise exc.UpdateError(
                     f"{self.name}: "
                     f"Attempt to set immutable attribute: [{repr(field.attname)}]"
                 )
 
-            options = self.options.make_runtime(_obj_self.__class__, force_error=True)
-            value = field.parse_value(value, options=options)
+            context = self.options.make_context(_obj_self.__class__, force_error=True)
+            value = field.parse_value(value, context=context)
             _obj_self.__dict__[field.attname] = value
             if callable(post_setattr):
-                post_setattr(_obj_self, field, value, options)
+                post_setattr(_obj_self, field, value, context)
         return setter
 
     def make_deleter(self, field: ParserField, post_delattr=None):
         def deleter(_obj_self: object):
             if self.options.immutable or field.immutable:
-                raise AttributeError(
+                raise exc.DeleteError(
                     f"{self.name}: "
                     f"Attempt to set immutable attribute: [{repr(field.attname)}]"
                 )
 
-            options = self.options.make_runtime(_obj_self.__class__, force_error=True)
-            if field.is_required(options):
-                raise AttributeError(
+            context = self.options.make_context(_obj_self.__class__, force_error=True)
+            if field.is_required(context.options):
+                raise exc.DeleteError(
                     f"{self.name}: Attempt to delete required schema key: {repr(field.attname)}"
                 )
 
             if field.attname not in _obj_self.__dict__:
-                raise AttributeError(
+                raise exc.DeleteError(
                     f"{self.name}: Attempt to delete nonexistent key: {repr(field.attname)}"
                 )
 
             _obj_self.__dict__.pop(field.attname)
 
             if callable(post_delattr):
-                post_delattr(_obj_self, field, options)
+                post_delattr(_obj_self, field, context)
         return deleter
 
     def make_getter(self, field: ParserField):
@@ -339,7 +341,7 @@ class ClassParser(BaseParser):
     def set_attributes(self,
                        values: dict,
                        instance: object,
-                       options: RuntimeOptions,
+                       options: Options,
                        ):
 
         for key, value in list(values.items()):
@@ -393,25 +395,32 @@ class ClassParser(BaseParser):
 
             def __init__(_obj_self, **kwargs):
                 parser = self.get_parser(_obj_self)
-                options = parser.options.make_runtime(
-                    parser.obj,
-                    options=pop(kwargs, "__options__")  # if allow_runtime else None,
-                )
+
+                context = getattr(_obj_self, '__context__', None)
+                if not isinstance(context, RuntimeContext):
+                    context: RuntimeContext = parser.options.make_context(parser.obj)
 
                 if no_parse:
                     values = kwargs
                 else:
-                    values = parser(kwargs, options=options)
+                    values = parser(kwargs, context=context)
 
-                parser.set_attributes(values, _obj_self, options=options)
+                parser.set_attributes(values, _obj_self, options=context.options)
 
                 if post_init:
-                    post_init(_obj_self, values, options)
+                    post_init(_obj_self, values, context)
 
             __init__.__parser__ = self
         else:
             if not no_parse:
                 self.init_parser = self.function_parser_cls.apply_for(init_func)
+                if self.init_parser.pos_only_keys:
+                    raise ValueError(f'{self.obj}: positional only keys: {self.init_parser.pos_only_keys} '
+                                     f'is not allowed for dataclasses __init__')
+                if self.init_parser.pos_var:
+                    raise ValueError(f'{self.obj}: positional var: {self.init_parser.pos_var} '
+                                     f'is not allowed for dataclasses __init__')
+
                 __init__ = self.init_parser.wrap(parse_params=True, parse_result=False)
                 __init__.__parser__ = self
                 # wrapped function is not as same as parse.obj
@@ -433,20 +442,37 @@ class ClassParser(BaseParser):
         return __init__
 
 
+def init_dataclass(cls: Type[T], data, options: Options = None, context: RuntimeContext = None) -> T:
+    parser: ClassParser = getattr(cls, '__parser__', None)
+    if not isinstance(parser, ClassParser):
+        raise TypeError(f'Invalid dataclass: {cls}')
+
+    new_context: RuntimeContext = (options or parser.options).make_context(cls, context=context)
+    transformer = new_context.transformer
+
+    if not isinstance(data, Mapping):
+        # {} dict instance is an instance of Mapping too
+        if transformer.no_explicit_cast:
+            raise TypeError(f"invalid input type for {cls}, should be dict or Mapping")
+        else:
+            data = transformer.to_dict(data)
+
+    inst = cls.__new__(cls)
+    inst.__context__ = new_context
+
+    # if parser.init_parser:
+    cls.__init__(inst, **data)
+
+    return inst
+
+
 @register_transformer(
     attr="__parser__",
     detector=lambda cls: isinstance(getattr(cls, "__parser__", None), ClassParser),
 )
-def transform(transformer: TypeTransformer, data, cls):
-    if not isinstance(data, Mapping):
-        # {} dict instance is a instance of Mapping too
-        if transformer.no_explicit_cast:
-            raise TypeError(f"invalid input type for {cls}, should be dict or Mapping")
-        else:
-            data = transformer(data, dict)
-    if not transformer.options.vacuum:
-        parser: ClassParser = cls.__parser__
-        if parser.options.allowed_runtime_options:
-            # pass the runtime options
-            data.update(__options__=transformer.options)
-    return cls(**data)
+def transform_dataclass(transformer: TypeTransformer, data, cls):
+    if transformer.options.allow_subclasses:
+        if isinstance(data, cls):
+            # subclass
+            return data
+    return init_dataclass(cls, data, context=transformer.context)

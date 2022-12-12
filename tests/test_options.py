@@ -2,11 +2,16 @@ import utype
 from utype import Schema, Options, exc, Field
 from utype.utils.style import AliasGenerator
 import pytest
-from typing import List
+from typing import List, Dict
 from datetime import date, timedelta, datetime
 
 
-class TestOptions:    
+@pytest.fixture(params=('throw', 'exclude', 'preserve'))
+def on_error(request):
+    return request.param
+
+
+class TestOptions:
     def test_schema_options(self):
         class UserSchemaIgnore(Schema):
             __options__ = Options(ignore_required=True)
@@ -136,34 +141,70 @@ class TestOptions:
         assert user['age'] == user.age == 19
         # test additional property access
 
-    def test_invalids(self):
+    def test_invalids(self, on_error):
         class BestEffortSchema(Schema):
-            __options__ = Options(invalid_values='preserve')
-            attr: int = Field(const=10)
-            tp: int
+            __options__ = Options(invalid_values=on_error)
+            attr: int = Field(const=10, required=False)
+            tp: int = Field(required=False)
+            rq: int
 
-        assert dict(BestEffortSchema(attr=3, tp='xx')) == {'attr': 3, 'tp': 'xx'}
-        assert dict(BestEffortSchema(attr=3, tp='33')) == {'attr': 3, 'tp': 33}
+        if on_error == 'preserve':
+            with pytest.warns():
+                assert dict(BestEffortSchema(attr=10, rq='4', tp='xx')) == {'attr': 10, 'rq': 4, 'tp': 'xx'}
+            with pytest.warns():
+                assert dict(BestEffortSchema(attr=3, rq='4', tp='33')) == {'attr': 3, 'rq': 4, 'tp': 33}
+        elif on_error == 'exclude':
+            with pytest.warns():
+                assert dict(BestEffortSchema(attr=10, rq='4', tp='xx')) == {'attr': 10, 'rq': 4}
+            with pytest.warns():
+                assert dict(BestEffortSchema(attr=3, rq='4', tp='33')) == {'rq': 4, 'tp': 33}
+
+            with pytest.raises(exc.ParseError):
+                BestEffortSchema(attr=3, rq='@@@', tp='33')
+
+        else:
+            with pytest.raises(exc.ParseError):
+                BestEffortSchema(attr=3, tp='xx')
 
         class IndexSchema(Schema):
+            __options__ = Options(invalid_items=on_error)
             indexes: List[int]
 
-        class IndexSchemaExclude(Schema):
-            __options__ = Options(invalid_items='exclude')
-            indexes: List[int]
+        if on_error == 'preserve':
+            with pytest.warns():
+                assert dict(IndexSchema(indexes=[1, 2, "ab"])) == {
+                    "indexes": [1, 2, "ab"]
+                }
+        elif on_error == 'exclude':
+            with pytest.warns():
+                assert dict(IndexSchema(indexes=[1, 2, "ab"])) == {"indexes": [1, 2]}
+        else:
+            with pytest.raises(exc.ParseError):
+                IndexSchema(indexes=[1, 2, "ab"])
 
-        with pytest.raises(exc.ParseError):
-            IndexSchema(indexes=[1, 2, "ab"])
+        # from utype.types import PositiveInt
 
-        assert dict(IndexSchemaExclude(indexes=[1, 2, "ab"])) == {"indexes": [1, 2]}
+        class DicSchema(Schema):
+            __options__ = Options(invalid_keys=on_error, invalid_values=on_error)
 
-        class IndexSchemaPreserve(Schema):
-            __options__ = Options(invalid_items='preserve')
-            indexes: List[int]
+            dic: Dict[int, int]
 
-        assert dict(IndexSchemaPreserve(indexes=[1, 2, "ab"])) == {
-            "indexes": [1, 2, "ab"]
-        }
+        if on_error == 'preserve':
+            with pytest.warns():
+                assert DicSchema(dic={'3': 'x', 'x': '3'}).dic == {
+                    3: 'x',
+                    'x': 3
+                }
+
+        elif on_error == 'exclude':
+            with pytest.warns():
+                assert DicSchema(dic={'3': '1', '2': 'x', 'x': '3'}).dic == {
+                    3: 1,
+                }
+
+        else:
+            with pytest.raises(exc.ParseError):
+                DicSchema(dic={'3': '1', '2': 'x', 'x': '3'})
 
     def test_runtime(self):
         # test options in data
@@ -200,7 +241,39 @@ class TestOptions:
         pass
 
     def test_max_depth(self):
+
+        class T(Schema):
+            a: str = ''
+            b: int = Field(ge=0)
+            t: 'T' = None
+
+        data = {
+            'a': b'3',
+            'b': '4'
+        }
+        data['t1'] = data       # recursive references (Circular reference)
+
+        t = T(**data)
+
+    def test_nested(self):
         pass
+
+        class T1(Schema):
+            a: str = ''
+            b: int = Field(ge=0)
+
+        class T2(T1):
+            t1: T1
+            t1_lst: List[T1]
+
+        data = {
+            # '__options__': Options(ignore_required=True),
+            'a': b'3',
+            'b': '4',
+            't1': {
+                # '__options__': Options(ignore_constraints=True),
+            }
+        }
 
     def test_defaults(self):
 

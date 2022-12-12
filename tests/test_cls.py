@@ -19,8 +19,14 @@ class Self(Schema):
     self_lst: List["Self"] = Field(default_factory=list)
 
 
+@pytest.fixture(params=(False, True))
+def dfs(request):
+    return request.param
+
+
+# @pytest.mark.parametrize(argnames='dfs', argvalues=(False, True))
 class TestClass:
-    def test_init(self):
+    def test_init(self, dfs):
         class Slug(str, Rule):
             regex = r"[a-z0-9]+(?:-[a-z0-9]+)*"
 
@@ -34,6 +40,8 @@ class TestClass:
             )
 
         class ArticleSchema(Schema):
+            __options__ = Options(data_first_search=dfs)
+
             slug: Slug
 
         assert dict(ArticleSchema(slug=b"My Awesome Article!")) == {
@@ -41,6 +49,8 @@ class TestClass:
         }
 
         class PowerSchema(Schema):
+            __options__ = Options(data_first_search=dfs)
+
             result: float
             num: float
             exp: float
@@ -69,8 +79,10 @@ class TestClass:
         class v(Schema):
             pow: PowerSchema
 
-    def test_dataclass(self):
+    def test_dataclass(self, dfs):
         class DT(utype.DataClass):
+            __options__ = Options(data_first_search=dfs)
+
             name: str = Field(max_length=10)
             age: int
 
@@ -87,7 +99,7 @@ class TestClass:
         with pytest.raises(exc.ParseError):
             dt.age = 'abc'
 
-        @utype.dataclass(set_class_properties=False)
+        @utype.dataclass(set_class_properties=False, options=Options(data_first_search=dfs))
         class DataClass:
             name: str = Field(max_length=10)
             age: int
@@ -228,9 +240,9 @@ class TestClass:
             def static_method(param: str):
                 pass
 
-    def test_forward_ref(self):
+    def test_forward_ref(self, dfs):
         class T(Schema):
-            __options__ = Options(ignore_required=True)
+            __options__ = Options(ignore_required=True, data_first_search=dfs)
 
             forward_con: "types.Second" = Field(ge=30)
             with_con: types.Str | None = Field(max_length=5)
@@ -294,12 +306,12 @@ class TestClass:
         #     l_int: List['types.PositiveInt'] = Field(length=5)
         #     l_int_f: 'List[types.PositiveInt]' = Field(max_length=3)
 
-    def test_class_vars(self):
+    def test_class_vars(self, dfs):
         def outer(k=None):
             return k
 
         class TestSchema(Schema):
-            __options__ = Options(ignore_required=True)
+            __options__ = Options(ignore_required=True, data_first_search=dfs)
 
             r1: typing.Any
             r2: "str"
@@ -407,9 +419,10 @@ class TestClass:
             class s(Schema):    # noqa
                 update: str = ""
 
-    def test_functional_initialize_and_aliases(self):
+    def test_functional_initialize_and_aliases(self, dfs):
         # test omit init
         class OmitSchema(Schema):
+            __options__ = Options(data_first_search=dfs)
             n0: int
             n1: int
             n2: Any = Field(alias_from=["named_n2"])
@@ -443,9 +456,11 @@ class TestClass:
         assert o2.n1 == 3
         assert o2.n2 == 2  # int does the type cast
 
-    def test_schema_rule(self):
+    def test_schema_rule(self, dfs):
         # require / default / omit / null
         class RuleSchema(Schema):
+            __options__ = Options(data_first_search=dfs)
+
             required1: str
             required2: int = Field(required=True)
             default1: str = "default"
@@ -598,8 +613,10 @@ class TestClass:
                                 (True, True, False),
                                 (False, False, True)
                              ])
-    def test_property(self, no_output: bool, immutable: bool, no_input: bool):
+    def test_property(self, dfs, no_output: bool, immutable: bool, no_input: bool):
         class UserSchema(Schema):
+            __options__ = Options(data_first_search=dfs)
+
             name: str
             level: int = 0
 
@@ -628,6 +645,8 @@ class TestClass:
         # test dependencies
 
         class ArticleSchema(Schema):
+            __options__ = Options(data_first_search=dfs)
+
             _slug: str
             _title: str
 
@@ -686,8 +705,10 @@ class TestClass:
             with pytest.raises(AttributeError):
                 _ = article.title
 
-    def test_input_output(self):
+    def test_input_output(self, dfs):
         class KeyInfo(Schema):
+            __options__ = Options(data_first_search=dfs)
+
             access_key: str = Field(no_output=True)
             last_activity: datetime = Field(default_factory=datetime.now, no_input=True)
 
@@ -700,6 +721,8 @@ class TestClass:
         assert info['key_sketch'] == 'QWERT*****'
 
         class ArticleSchema(Schema):
+            __options__ = Options(data_first_search=dfs)
+
             slug: str = Field(no_input=True)
             title: str
             updated_at: datetime = Field(default_factory=datetime.now, no_input=True)
@@ -711,59 +734,63 @@ class TestClass:
 
         article = ArticleSchema(title='My Awesome Article', slug='ignore')
 
-    def test_schema_dict(self):
-            class T(Schema):
-                a: str = Field(max_length=10, default='default')
-                b: int = 0
-                c: int = Field(ge=10, required=False, alias_from=['c$', 'c#'])
-                im: str = Field(required=False, default=None, defer_default=True, immutable=True)
-                req: int
+    def test_schema_dict(self, dfs):
+        class T(Schema):
+            __options__ = Options(data_first_search=dfs)
 
-            t1 = T(a='123', req=True)
-            t1.update({
-                'b': '123',
-                'c$': b'123',
-                # test ignore required
-            })
-            assert t1.c == t1.b == 123      # test attribute update
-            assert t1.a == '123'        # no default for update
-            t1['c#'] = b'456'
-            assert 'c$' in t1
-            assert t1.c == 456
-            assert 'im' not in t1
+            a: str = Field(max_length=10, default='default')
+            b: int = 0
+            c: int = Field(ge=10, required=False, alias_from=['c$', 'c#'])
+            im: str = Field(required=False, default=None, defer_default=True, immutable=True)
+            req: int
 
-            with pytest.raises(exc.ParseError):
-                t1['c#'] = b'abc'
+        t1 = T(a='123', req=True)
+        t1.update({
+            'b': '123',
+            'c$': b'123',
+            # test ignore required
+        })
+        assert t1.c == t1.b == 123      # test attribute update
+        assert t1.a == '123'        # no default for update
+        t1['c#'] = b'456'
+        assert 'c$' in t1
+        assert t1.c == 456
+        assert 'im' not in t1
 
-            with pytest.raises(exc.ParseError):
-                t1['c$'] = '1'
+        with pytest.raises(exc.ParseError):
+            t1['c#'] = b'abc'
 
-            cp = t1.copy()
-            assert type(cp) == T
-            assert cp == t1
+        with pytest.raises(exc.ParseError):
+            t1['c$'] = '1'
 
-            with pytest.raises(exc.UpdateError):
-                t1.im = 3
+        cp = t1.copy()
+        assert type(cp) == T
+        assert cp == t1
 
-            with pytest.raises(exc.UpdateError):
-                t1['im'] = 3
+        with pytest.raises(exc.UpdateError):
+            t1.im = 3
 
-            with pytest.raises(exc.DeleteError):
-                del t1.im
+        with pytest.raises(exc.UpdateError):
+            t1['im'] = 3
 
-            with pytest.raises(exc.DeleteError):
-                # delete required
-                del t1.req
+        with pytest.raises(exc.DeleteError):
+            del t1.im
 
-            with pytest.raises(exc.DeleteError):
-                del t1.im
+        with pytest.raises(exc.DeleteError):
+            # delete required
+            del t1.req
 
-    def test_combine(self):
+        with pytest.raises(exc.DeleteError):
+            del t1.im
+
+    def test_combine(self, dfs):
         class MemberSchema(Schema):
             name: str
             level: int = 0
 
         class GroupSchema(Schema):
+            __options__ = Options(data_first_search=dfs)
+
             name: str
             creator: MemberSchema
             members: List[MemberSchema] = Field(default_factory=list)
@@ -815,7 +842,7 @@ class TestClass:
 
         password_dict = {"alice": "123456"}
 
-        @utype.parse
+        @utype.parse(options=Options(data_first_search=dfs))
         def login(form: LoginForm) -> Optional[UserInfo]:
             if password_dict.get(form.username) == form.password:
                 return {"username": form.username}
@@ -829,9 +856,10 @@ class TestClass:
 
         assert login(b'{"username": "alice", "password": "wrong"}') is None
 
-    def test_logical(self):
+    def test_logical(self, dfs):
         @utype.dataclass(eq=True)       # make eq so that instance can be compared
         class LogicalDataClass(metaclass=utype.LogicalMeta):
+            __options__ = Options(data_first_search=dfs)
             name: str = Field(max_length=10)
             age: int
 

@@ -67,7 +67,7 @@ class TestFunc:
         with pytest.warns():
             # immutable means nothing to field
             @utype.parse
-            def func(f1: str = Field(secret=True)):
+            def func(f1: str = Field(repr=False)):
                 return f1
 
     def test_args_assign(self):

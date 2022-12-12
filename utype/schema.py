@@ -1,11 +1,12 @@
 import warnings
 
 from .parser.rule import LogicalType
-from .parser.options import Options, RuntimeOptions
-from .parser.cls import ClassParser
+from .parser.options import Options, RuntimeContext
+from .parser.cls import ClassParser, init_dataclass
 from .parser.field import ParserField
 from .utils import exceptions as exc
-from typing import Union, Callable, List, TypeVar, Type
+from .utils.datastructures import unprovided
+from typing import Union, Callable, List, TypeVar
 from functools import partial
 
 T = TypeVar('T')
@@ -95,17 +96,16 @@ class DataClass(metaclass=LogicalMeta):
     def __class_getitem__(cls, item):
         pass
 
-    def __validate__(self, options=None):
+    def __validate__(self):
         pass
 
-    def __post_init__(self, options: RuntimeOptions):
-        self.__runtime_options__ = options
-        self.__validate__(options)
+    def __post_init__(self, values, context: RuntimeContext):      # noqa
+        self.__validate__()
 
-    def __post_setattr__(self, field: ParserField, value, options: RuntimeOptions):
+    def __post_setattr__(self, field: ParserField, value, context: RuntimeContext):
         pass
 
-    def __post_delattr__(self, field: ParserField, options: RuntimeOptions):
+    def __post_delattr__(self, field: ParserField, context: RuntimeContext):
         pass
 
     # def __copy__(self):
@@ -115,9 +115,8 @@ class DataClass(metaclass=LogicalMeta):
     #     return obj
 
     @classmethod
-    def __from__(cls: Type[T], data, options=None) -> T:
-        options = cls.__options__.make_runtime(cls, options=options)
-        return options.transformer(data, cls)
+    def __from__(cls, data, options: Options = None):
+        return init_dataclass(cls, data, options=options)
 
     def __export__(self,
                    includes: Union[str, List[str]] = None,
@@ -174,12 +173,6 @@ class Schema(dict, metaclass=LogicalMeta):
             )
             setattr(cls, field.attname, hooked_property)
 
-        # if cls.__validate__ != Schema.__validate__:
-        #     cls.__validate__ = cls.__parser__.function_parser_cls.apply_for(cls.__validate__).wrap(
-        #         parse_params=True,
-        #         parse_result=False
-        #     )
-
     def __class_getitem__(cls, item):
         raise NotImplemented
 
@@ -191,7 +184,13 @@ class Schema(dict, metaclass=LogicalMeta):
         for key, val in self.items():
             field = self.__parser__.get_field(key)
             name = field.attname if field else key
-            repr_val = field.repr_value(val) if field else repr(val)
+            if field:
+                repr_val = field.repr_value(val)
+                if unprovided(repr_val):
+                    # do not print
+                    continue
+            else:
+                repr_val = repr(val)
             items.append(f"{name}={repr_val}")
         values = ", ".join(items)
         return f"{self.__name__}({values})"
@@ -205,20 +204,19 @@ class Schema(dict, metaclass=LogicalMeta):
 
     @classmethod
     def __from__(cls, data, options=None):
-        options = cls.__options__.make_runtime(cls, options=options)
-        return options.transformer(data, cls)
+        return init_dataclass(cls, data, options=options)
 
     # coerce_properties need to separate from set_attributes and execute by order
     # because the dependencies that the property need may not be set during one-time loop
     # (which is guarantee by the field orders, and consider not reliable)
-    def __coerce_property__(self, field: ParserField, options: RuntimeOptions):
-        if field.always_no_output(options):
+    def __coerce_property__(self, field: ParserField, context: RuntimeContext):
+        if field.always_no_output(context.options):
             return
 
         if not field.dependencies.issubset(self):
             # maybe some of the dependencies is no_output=True, but still accessible through attribute
             # check if any of those dependencies is not in __dict__, and directly return if found one
-            for dep in field.dependants:
+            for dep in field.dependencies:
                 dep_field = self.__parser__.get_field(dep)
                 if not dep_field or dep_field.attname not in self.__dict__:
                     return
@@ -228,20 +226,20 @@ class Schema(dict, metaclass=LogicalMeta):
         except Exception as e:
             error_option = field.output_field.on_error if field.output_field else None
             msg = f"@property: {repr(field.attname)} calculate failed with error: {e}"
-            if error_option == options.THROW:
+            if error_option == context.options.THROW:
                 raise e.__class__(msg) from e
             else:
                 warnings.warn(msg)
             return
 
         value = field.parse_output_value(       # parse @property result also
-            attr, options=options
+            attr, context=context
         )
 
-        if value is ...:
+        if unprovided(value):
             return
 
-        if not field.no_output(value, options=options):
+        if not field.no_output(value, options=context.options):
             super().__setitem__(field.name, value)
             # values[key] = value
             # do not apply cache here
@@ -255,13 +253,13 @@ class Schema(dict, metaclass=LogicalMeta):
 
         return value
 
-    def __post_init__(self, values, options: RuntimeOptions):
+    def __post_init__(self, values, context: RuntimeContext):
         super().__init__(values)
-        self.__runtime_options__ = options
+        self.__options__ = context.options      # set options
         for key, field in self.__parser__.property_fields.items():
-            self.__coerce_property__(field, options=options)
+            self.__coerce_property__(field, context=context)
         self.__validate__()
-        options.raise_error()   # raise error if there is any
+        context.raise_error()   # raise error if there is any
 
     def __contains__(self, item: str):
         field = self.__parser__.get_field(item)
@@ -276,17 +274,18 @@ class Schema(dict, metaclass=LogicalMeta):
         if field.attname in self.__dict__:
             # maybe a no_output field
             return self.__dict__[field.attname]
-        options = self.__options__.make_runtime(__class__, force_error=True)
+
         if callable(getter):
-            value = field.parse_output_value(getter(self), options=options)
-            if value is ...:
+            context = self.__options__.make_context(__class__, force_error=True)
+            value = field.parse_output_value(getter(self), context=context)
+            if unprovided(value):
                 raise AttributeError(
                     f"{self.__name__}: @property: {repr(field.attname)} failed to calculate"
                 )
             return value
 
-        deferred_default = field.get_default(options=options, defer=True)    # get deferred default
-        if deferred_default is not ...:
+        deferred_default = field.get_default(options=self.__options__, defer=True)    # get deferred default
+        if not unprovided(deferred_default):
             return deferred_default
         raise AttributeError(
             f"{self.__name__}: {repr(field.attname)} not provided in schema instance"
@@ -306,8 +305,8 @@ class Schema(dict, metaclass=LogicalMeta):
                 f"Attempt to set immutable attribute: [{repr(field.attname)}]"
             )
 
-        options = self.__options__.make_runtime(__class__, force_error=True)
-        value = field.parse_value(value, options=options)
+        context = self.__options__.make_context(__class__, force_error=True)
+        value = field.parse_value(value, context=context)
 
         if field.property:
             if callable(setter):
@@ -315,9 +314,9 @@ class Schema(dict, metaclass=LogicalMeta):
                 setter(self, value)
 
             # force calculate property
-            self.__coerce_property__(field, options=options)
+            self.__coerce_property__(field, context=context)
         else:
-            if field.no_output(value, options=options):
+            if field.no_output(value, options=self.__options__):
                 self.__dict__[field.attname] = value
                 # no output
                 if field.name in self:
@@ -330,7 +329,7 @@ class Schema(dict, metaclass=LogicalMeta):
             for dep in field.dependants:
                 dep_field = self.__parser__.get_field(dep)
                 if dep_field and dep_field.property:
-                    self.__coerce_property__(dep_field, options=options)
+                    self.__coerce_property__(dep_field, context=context)
 
     def __setitem__(self, alias: str, value):
         if self.__options__.immutable:
@@ -345,9 +344,9 @@ class Schema(dict, metaclass=LogicalMeta):
                 raise exc.UpdateError(
                     f"{self.__class__}: Attempt to set excluded attribute: {repr(alias)}"
                 )
-            options = self.__options__.make_runtime(__class__, force_error=True)
-            addition = self.__parser__.parse_addition(alias, value, options=options)
-            if addition is ...:
+            context = self.__options__.make_context(__class__, force_error=True)
+            addition = self.__parser__.parse_addition(alias, value, context=context)
+            if unprovided(addition):
                 # ignore addition
                 return
             return super().__setitem__(alias, value)
@@ -358,7 +357,7 @@ class Schema(dict, metaclass=LogicalMeta):
         if self.__options__.immutable or field.immutable:
             raise exc.DeleteError(
                 f"{self.__name__}: "
-                f"Attempt to set immutable attribute: [{repr(field.attname)}]"
+                f"Attempt to delete immutable attribute: [{repr(field.attname)}]"
             )
 
         if callable(deleter):
@@ -367,8 +366,7 @@ class Schema(dict, metaclass=LogicalMeta):
             if field.name in self:
                 super().__delitem__(field.name)
         else:
-            options = self.__options__.make_runtime(__class__, force_error=True)
-            if field.is_required(options):
+            if field.is_required(self.__options__):
                 raise exc.DeleteError(
                     f"{self.__name__}: Attempt to delete required schema key: {repr(field.attname)}"
                 )
@@ -410,8 +408,7 @@ class Schema(dict, metaclass=LogicalMeta):
             raise exc.DeleteError(
                 f"{self.__name__}: Attempt to pop immutable item: [{repr(key)}]"
             )
-        options = self.__options__.make_runtime(__class__, force_error=True)
-        if field.is_required(options):
+        if field.is_required(self.__options__):
             raise exc.DeleteError(
                 f"{self.__name__}: Attempt to delete required schema key: {repr(key)}"
             )
@@ -452,7 +449,6 @@ class Schema(dict, metaclass=LogicalMeta):
         # since self.<data> is validated
         # we directly call dict.update to avoid calling the parsing methods again
         obj.__dict__ = self.__dict__
-        obj.__runtime_options__ = self.__runtime_options__
         return obj
 
     def clear(self):
@@ -460,13 +456,12 @@ class Schema(dict, metaclass=LogicalMeta):
             raise exc.DeleteError(
                 f"{self.__name__}: Attempt to clear in Options(immutable=True) schema"
             )
-        options = self.__options__.make_runtime(__class__, force_error=True)
         for key, field in self.__parser__.fields.items():
             if field.immutable:
                 raise exc.DeleteError(
                     f"{self.__name__}: Attempt to clear schema with immutable field: {repr(field.name)}"
                 )
-            if field.is_required(options=options):  # unless options is ignore_required
+            if field.is_required(self.__options__):  # unless options is ignore_required
                 raise exc.DeleteError(
                     f"{self.__name__}: Attempt to delete required schema key: {repr(key)}"
                 )

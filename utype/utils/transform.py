@@ -1,7 +1,6 @@
 import inspect
-from typing import Optional, Callable, Type
+from typing import Optional, Callable, Type, TypeVar
 import json
-import decimal
 from collections.abc import Mapping, Sequence, Iterable
 from collections import deque
 import re
@@ -15,7 +14,9 @@ from uuid import UUID
 from .exceptions import TypeMismatchError
 
 if TYPE_CHECKING:
-    from ..parser.options import RuntimeOptions
+    from ..parser.options import RuntimeContext
+
+T = TypeVar('T')
 
 __transformers__ = []
 __cache__ = {}
@@ -104,7 +105,7 @@ class TypeTransformer:
     EPOCH = datetime(1970, 1, 1)
     MS_WATERSHED = int(2e10)
     ARRAY_SEPARATORS = (",", ";")
-    NULL_VALUES = ("none", "nil", "null")
+    NULL_VALUES = ("null", "none", "nil")
     FALSE_VALUES = ("0", "false", "no", "off", "f")
     TRUE_VALUES = ("1", "true", "yes", "on", "t", "y")
     STRUCTURE_BRACKET = [
@@ -137,25 +138,29 @@ class TypeTransformer:
 
     def __init__(
         self,
-        options: "RuntimeOptions",
+        context: "RuntimeContext",
         no_explicit_cast: bool = None,
         no_data_loss: bool = None,
         unresolved_types: str = None,
     ):
-        self.options = options
+        self.context = context
         self.no_explicit_cast = (
             no_explicit_cast
             if no_explicit_cast is not None
-            else options.no_explicit_cast
+            else context.options.no_explicit_cast
         )
         self.no_data_loss = (
-            no_data_loss if no_data_loss is not None else options.no_data_loss
+            no_data_loss if no_data_loss is not None else context.options.no_data_loss
         )
         self.unresolved_types = (
             unresolved_types
             if unresolved_types is not None
-            else options.unresolved_types
+            else context.options.unresolved_types
         )
+
+    @property
+    def options(self):
+        return self.context.options
 
     def __repr__(self):
         return f"{self.__class__.__name__}(no_explicit_cast={self.no_explicit_cast}, no_data_loss={self.no_data_loss})"
@@ -231,7 +236,7 @@ class TypeTransformer:
     #     return t(data)
 
     @register_transformer(type(None), allow_subclasses=False)
-    def to_null(self, data, t=type(None)):
+    def to_null(self, data, t=type(None)) -> None:
         if data is None:
             return None
         if self.no_explicit_cast:
@@ -265,7 +270,7 @@ class TypeTransformer:
         return value
 
     @register_transformer(str)
-    def to_str(self, data, t: Type[str] = str):
+    def to_str(self, data, t: Type[str] = str) -> str:
         if isinstance(data, str):
             return t(data)
         data = self._from_byte_like(self._attempt_from(data))
@@ -475,7 +480,7 @@ class TypeTransformer:
         return t(str(data).strip())  # noqa
 
     @register_transformer(bool)  # after int
-    def to_bool(self, data, t=bool):
+    def to_bool(self, data, t=bool) -> bool:
         if isinstance(data, bool):
             return t(data)
         if data == 1:
@@ -602,7 +607,7 @@ class TypeTransformer:
         raise TypeError
 
     @register_transformer(UUID)
-    def to_uuid(self, data, t: Type[UUID] = UUID):
+    def to_uuid(self, data, t: Type[UUID] = UUID) -> UUID:
         if isinstance(data, t):
             return data
 
@@ -629,7 +634,7 @@ class TypeTransformer:
     # enum should be the last of current types
     # because Enum subclass may inherit other base
     @register_transformer(Enum)
-    def to_enum(self, data, t: Type[Enum]):
+    def to_enum(self, data, t: Type[Enum]) -> Enum:
         if isinstance(data, t):
             return data
         if self.no_explicit_cast:
@@ -653,7 +658,7 @@ class TypeTransformer:
             return t(data)
         return data
 
-    def apply(self, data, t, func=None):
+    def apply(self, data, t: Type[T], func=None) -> T:
         if not func:
             return self(data, t)
         if type(data) == t:
@@ -665,7 +670,7 @@ class TypeTransformer:
             t = t.__forward_value__
         return func(self, data, t)
 
-    def __call__(self, data, t):
+    def __call__(self, data, t: Type[T]) -> T:
         if isinstance(t, ForwardRef):
             if not t.__forward_evaluated__:
                 raise TypeError(f"ForwardRef: {t} not evaluated")
@@ -679,9 +684,9 @@ class TypeTransformer:
         return transformer(self, data, t)
 
 
-def type_transform(data, type, options=None):
+def type_transform(data, type: Type[T], options=None) -> T:
     if not options:
         from ..parser.options import Options
-        options = Options().make_runtime()
+        options = Options().make_context()
     cls = options.transformer_cls
     return cls(options)(data, type)

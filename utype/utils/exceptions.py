@@ -14,6 +14,8 @@ class FieldError(AttributeError, KeyError):
         self.field = field
         self.origin = origin_exc
 
+        super().__init__(msg)
+
 
 class UpdateError(FieldError):
     pass
@@ -34,6 +36,7 @@ class ParseError(TypeError, ValueError):
             int, str
         ] = None,  # like key in the object or index in seq to indentify value
         field=None,  # no field can means it's additional field
+        routes: list = None,
         origin_exc: Exception = None,
     ):
         if not msg and origin_exc:
@@ -44,6 +47,7 @@ class ParseError(TypeError, ValueError):
         self.type = type
         self.item = item
         self.field = field
+        self.routes = routes
         super().__init__(self.formatted_message)
 
     @property
@@ -81,7 +85,7 @@ class ConstraintError(ParseError):
             int, str
         ] = None,  # like key in the object or index in seq to indentify value
         constraint: str = None,  # failed constraint
-        constraint_value: Any = ...,  # failed constraint value
+        constraint_value: Any = None,  # failed constraint value
         origin_exc: Exception = None,
     ):
         self.constraint = constraint
@@ -167,7 +171,7 @@ class ParamsLackError(ParseError):
 class AbsenceError(ParseError):
     @property
     def formatted_message(self):
-        msg = f"Required item: {repr(self.item)} is absence"
+        msg = f"required item: {repr(self.item)} is absence"
         if self.msg:
             msg += f": {self.msg}"
         return msg
@@ -177,8 +181,15 @@ class DependenciesAbsenceError(AbsenceError):
     def __init__(
         self, msg: str = None, absence_dependencies: Set[str] = None, **kwargs
     ):
-        super().__init__(msg, **kwargs)
         self.absence_dependencies = absence_dependencies
+        super().__init__(msg, **kwargs)
+
+    @property
+    def formatted_message(self):
+        msg = f"required dependencies: {self.absence_dependencies} is absence"
+        if self.msg:
+            msg += f": {self.msg}"
+        return msg
 
 
 class RecursionExceeded(ParseError, RecursionError):

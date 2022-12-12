@@ -1,14 +1,17 @@
+import warnings
 from typing import Optional, Callable, Type, Dict, Set, List, Union, Tuple
 from .field import ParserField
 
-from .options import Options, RuntimeOptions
+from .options import Options, RuntimeContext
 from ..utils.compat import *
+from ..utils.datastructures import unprovided
 from ..utils import exceptions as exc
 from .rule import resolve_forward_type
 from functools import cached_property
 import inspect
 import sys
 
+LOCALS_NAME = "<locals>"
 __parsers__ = {}
 
 
@@ -49,7 +52,7 @@ class BaseParser:
 
     def __init__(self, obj, options: Options = None):
         self.obj = obj
-        self.options: Options = options or self.options_cls()
+        self.options: Options = self.options_cls.generate_from(options)
         self.forward_refs: Dict[
             str, Tuple[ForwardRef, dict]
         ] = {}  # store unresolved ref
@@ -62,8 +65,15 @@ class BaseParser:
         self.error_hooks: Dict[Type[Exception], Callable] = {}
         self.data_first_search = None
         self.addition_type = None
-
+        self.name = self.get_name()
         self.setup()
+
+    def get_name(self) -> str:
+        name = getattr(self.obj, "__qualname__", getattr(self.obj, '__name__', None)) or str(self.obj)
+        while LOCALS_NAME in name:
+            lhs, rhs = name.split(LOCALS_NAME)
+            name = str(rhs).strip('.')
+        return name
 
     def setup(self):
         self.generate_fields()
@@ -94,13 +104,14 @@ class BaseParser:
         return fields
 
     def validate_fields(self):
-        if self.options.allowed_runtime_options:
-            if "__options__" in self.fields:
-                raise ValueError(
-                    f"{self.obj} did not specify no_runtime_options=True, "
-                    f'so name "__options__" is used to passing runtime options, which is conflicted'
-                    f' with field {self.fields["__options__"]}'
-                )
+        pass
+        # if self.options.allowed_runtime_options:
+        #     if "__options__" in self.fields:
+        #         raise ValueError(
+        #             f"{self.obj} did not specify no_runtime_options=True, "
+        #             f'so name "__options__" is used to passing runtime options, which is conflicted'
+        #             f' with field {self.fields["__options__"]}'
+        #         )
 
     def _get_field_from(self, fields: dict, key: str) -> Optional[ParserField]:
         if key in fields:
@@ -291,33 +302,35 @@ class BaseParser:
     def cls(self):
         return self.obj if inspect.isclass(self.obj) else None
 
-    def __call__(self, data: dict, options: RuntimeOptions = None) -> dict:
+    def __call__(self, data: dict, context: RuntimeContext = None) -> dict:
         if not isinstance(data, dict):
             data = dict(data)
         self.resolve_forward_refs(ignore_errors=False)
-        options = options or self.options.make_runtime(self.cls, options=options)
-        result = self.parse_data(data, options=options)
-        options.raise_error()
+        if not context:
+            context = self.options.make_context(self.cls)
+        result = self.parse_data(data, context=context)
+        context.raise_error()
         # raise error if collected
         return result
 
     def parse_data(
         self,
         data: dict,
-        options: RuntimeOptions,
+        context: RuntimeContext,
         as_attname: bool = None,
         excluded_keys: List[str] = None,
     ):
+        options = context.options
         if options.max_params:
             if len(data) > options.max_params:
-                options.handle_error(
+                context.handle_error(
                     exc.ParamsExceedError(
                         max_params=options.max_params, properties_num=len(data)
                     )
                 )
         if options.min_params:
             if len(data) < options.min_params:
-                options.handle_error(
+                context.handle_error(
                     exc.ParamsLackError(
                         min_params=options.min_params, properties_num=len(data)
                     )
@@ -329,32 +342,32 @@ class BaseParser:
         )
         if dfs:
             result = self.data_first_parse(
-                data, options, excluded_keys=excluded_keys, as_attname=as_attname
+                data, context, excluded_keys=excluded_keys, as_attname=as_attname
             )
         else:
             result = self.field_first_parse(
-                data, options, excluded_keys=excluded_keys, as_attname=as_attname
+                data, context, excluded_keys=excluded_keys, as_attname=as_attname
             )
         return result
 
-    def parse_addition(self, key: str, value, options: RuntimeOptions):
+    def parse_addition(self, key: str, value, context: RuntimeContext):
         if key in self.exclude_vars:
             # excluded vars cannot be carry in addition even if allowed
-            return ...
-        if options.addition is False:
-            options.handle_error(exc.ExceedError(item=key, value=value))
-            return ...
-        if not options.addition:
+            return unprovided
+        if context.options.addition is False:
+            context.handle_error(exc.ExceedError(item=key, value=value))
+            return unprovided
+        if not context.options.addition:
             # None
-            return ...
+            return unprovided
         # addition_type = options.addition if isinstance(options.addition, type) else self.addition_type
         addition_type = self.addition_type
         # we should just ignore the runtime addition type
         if addition_type:
             try:
-                value = options.transformer(value, addition_type)
+                value = context.transformer(value, addition_type)
             except Exception as e:
-                options.handle_error(
+                context.handle_error(
                     exc.ParseError(
                         item=key, value=value, type=addition_type, origin_exc=e
                     )
@@ -364,20 +377,22 @@ class BaseParser:
     def data_first_parse(
         self,
         data: dict,
-        options: RuntimeOptions,
+        context: RuntimeContext,
         as_attname: bool = False,
         excluded_keys: List[str] = None,
     ):
         addition = {}
         result = {}
         dependencies = set()
+        unprovided_fields = set()
+        options = context.options
 
         for key, value in data.items():
             key = str(key)
             field = self.get_field(key)
             if not field:
-                add_value = self.parse_addition(key, value, options=options)
-                if add_value is not ...:
+                add_value = self.parse_addition(key, value, context=context)
+                if not unprovided(add_value):
                     addition[key] = add_value
                 continue
 
@@ -387,18 +402,18 @@ class BaseParser:
                 # no input field does not take input from __init__
                 # but can still apply default
                 default = field.get_default(options, defer=False)
-                if default is not ...:
+                if not unprovided(default):
                     result[name] = default
                 continue
 
             if (name in result) or (excluded_keys and name in excluded_keys):
                 if options.ignore_alias_conflicts:
                     continue
-                options.handle_error(exc.AliasConflictError(item=name, value=value))
+                context.handle_error(exc.AliasConflictError(item=name, value=value))
                 continue
 
-            parsed = field.parse_value(value, options=options)
-            if parsed is ...:
+            parsed = field.parse_value(value, context=context)
+            if unprovided(parsed):
                 continue
 
             result[name] = parsed
@@ -416,11 +431,12 @@ class BaseParser:
                     continue
                 if excluded_keys and name in excluded_keys:
                     continue
+                unprovided_fields.add(name)
                 if field.is_required(options=options):
-                    options.handle_error(exc.AbsenceError(item=name))
+                    context.handle_error(exc.AbsenceError(item=name))
                     continue
                 default = field.get_default(options, defer=False)
-                if default is not ...:
+                if not unprovided(default):
                     result[name] = default
 
         if dependencies:
@@ -429,10 +445,12 @@ class BaseParser:
                 dependant.update(excluded_keys)
 
             diff = dependencies.difference(dependant)
-            if diff:
+            lack = dependencies.intersection(unprovided_fields)
+            lack.update(diff)
+            if lack:
                 # some dependencies not provided
-                options.handle_error(
-                    exc.DependenciesAbsenceError(absence_dependencies=diff)
+                context.handle_error(
+                    exc.DependenciesAbsenceError(absence_dependencies=lack)
                 )
 
         # check dependencies before addition
@@ -445,7 +463,7 @@ class BaseParser:
     def field_first_parse(
         self,
         data: dict,
-        options: RuntimeOptions,
+        context: RuntimeContext,
         as_attname: bool = False,
         excluded_keys: List[str] = None,
     ):
@@ -460,9 +478,11 @@ class BaseParser:
             data = _data
 
         result = {}
-        unprovided = object()
         used_alias = set()
         dependencies = set()
+        unprovided_fields = set()
+        options = context.options
+
         for key, field in self.fields.items():
             if excluded_keys and key in excluded_keys:
                 continue
@@ -477,21 +497,22 @@ class BaseParser:
             else:
                 for alias in field.all_aliases:
                     if alias in data:
-                        if value is unprovided:
+                        if unprovided(value):
                             value = data[alias]
                         else:
-                            options.handle_error(exc.AliasConflictError(item=name))
+                            context.handle_error(exc.AliasConflictError(item=name))
                             break
 
-            if value is unprovided:
+            if unprovided(value):
+                unprovided_fields.add(name)
                 if field.is_required(options=options):
-                    options.handle_error(exc.AbsenceError(item=name))
+                    context.handle_error(exc.AbsenceError(item=name))
                     continue
                 default = field.get_default(options, defer=False)
                 # we don't catch this error for now
                 # because default function is "server" function
                 # if the default goes wrong, it should directly raise to the user
-                if default is not ...:
+                if not unprovided(default):
                     result[name] = default
                 continue
 
@@ -501,12 +522,12 @@ class BaseParser:
                 # no input field does not take input from __init__
                 # but can still apply default
                 default = field.get_default(options, defer=False)
-                if default is not ...:
+                if not unprovided(default):
                     result[name] = default
                 continue
 
-            parsed = field.parse_value(value, options=options)
-            if parsed is ...:
+            parsed = field.parse_value(value, context=context)
+            if unprovided(parsed):
                 continue
 
             result[name] = parsed
@@ -521,10 +542,12 @@ class BaseParser:
                 dependant.update(excluded_keys)
 
             diff = dependencies.difference(dependant)
-            if diff:
+            lack = dependencies.intersection(unprovided_fields)
+            lack.update(diff)
+            if lack:
                 # some dependencies not provided
-                options.handle_error(
-                    exc.DependenciesAbsenceError(absence_dependencies=diff)
+                context.handle_error(
+                    exc.DependenciesAbsenceError(absence_dependencies=lack)
                 )
 
         # check dependencies before addition
@@ -535,8 +558,8 @@ class BaseParser:
             for k, v in data.items():
                 if k in used_alias:
                     continue
-                add_value = self.parse_addition(k, v, options=options)
-                if add_value is not ...:
+                add_value = self.parse_addition(k, v, context=context)
+                if not unprovided(add_value):
                     addition[k] = add_value
             result.update(addition)
 

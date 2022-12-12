@@ -1,6 +1,7 @@
 from typing import Tuple, List
-from .options import Options, RuntimeOptions
+from .options import Options, RuntimeContext
 from ..utils.functional import pop
+from ..utils.datastructures import unprovided
 from ..utils.compat import is_final, is_classvar
 from ..utils import exceptions as exc
 from .rule import resolve_forward_type, Rule
@@ -165,13 +166,24 @@ class FunctionParser(BaseParser):
         self.pos_only_keys = pos_only_keys
         self.common_arg_names = common_arg_names
 
-        opt_list = [options]
-        if self.kw_annotation:
-            opt_list.append(self.options_cls(addition=self.kw_annotation))
-        elif self.kw_var:
-            opt_list.append(self.options_cls(addition=True))
+        if self.kw_var:
+            opt_list = [options]
+            if self.kw_annotation:
+                opt_list.append(self.options_cls(addition=self.kw_annotation))
+            elif self.kw_var:
+                opt_list.append(self.options_cls(addition=True))
+            options = self.options_cls.generate_from(*opt_list)
 
-        super().__init__(func, options=self.options_cls.generate_from(*opt_list))
+        super().__init__(func, options=options)
+
+        if not self.kw_var and self.options.addition:
+            raise TypeError(f'FunctionParser: {func}, specify addition: {options.addition} '
+                            f'without declaring the **kwargs variable')
+
+        if self.options.mode and not self.options.override:
+            warnings.warn(f'FunctionParser: {self.obj} with options'
+                          f' with mode ({repr(self.options.mode)}) should turn on override=True, '
+                          f'elsewhere there will be no effect')
 
         self.position_type = None
         self.return_type = None
@@ -289,7 +301,7 @@ class FunctionParser(BaseParser):
             fields.append(self.schema_field_cls.generate(
                 attname=name,
                 annotation=annotation,
-                default=param.default if param.default is not param.empty else ...,
+                default=param.default if param.default is not param.empty else unprovided,
                 global_vars=self.globals,
                 forward_refs=self.forward_refs,
                 options=self.options,
@@ -365,10 +377,10 @@ class FunctionParser(BaseParser):
         parse_result: bool = None,
     ):
 
-        options = self.options.make_runtime(options=options)
+        context = (options or self.options).make_context()
         if self.is_async_generator:
             f = wraps(self.obj)(self.get_async_generator(
-                options=options,
+                context=context,
                 first_reserve=first_reserve,
                 parse_params=parse_params,
                 parse_result=parse_result,
@@ -381,7 +393,7 @@ class FunctionParser(BaseParser):
                 return await self.async_call(
                     args,
                     kwargs,
-                    options=options,
+                    context=context,
                     first_reserve=first_reserve,
                     parse_params=parse_params,
                     parse_result=parse_result,
@@ -394,7 +406,7 @@ class FunctionParser(BaseParser):
                 return self.sync_call(
                     args,
                     kwargs,
-                    options=options,
+                    context=context,
                     first_reserve=first_reserve,
                     parse_params=parse_params,
                     parse_result=parse_result,
@@ -403,28 +415,29 @@ class FunctionParser(BaseParser):
         f.__parser__ = self
         return f
 
-    def parse_pos_type(self, index: int, value, options: RuntimeOptions):
+    def parse_pos_type(self, index: int, value, context: RuntimeContext):
+        options = context.options
         pos_type = self.position_type
         # we should just ignore the runtime addition type
         if pos_type:
             try:
-                value = options.transformer(value, pos_type)
+                value = context.transformer(value, pos_type)
             except Exception as e:
                 error = exc.ParseError(
                     item=index, value=value, type=pos_type, origin_exc=e
                 )
                 if options.invalid_items == options.PRESERVE:
-                    options.collect_waring(error.formatted_message)
+                    context.collect_waring(error.formatted_message)
                     return value
                 elif options.invalid_items == options.EXCLUDE:
-                    options.collect_waring(error.formatted_message)
-                    return ...
+                    context.collect_waring(error.formatted_message)
+                    return unprovided
                 else:
-                    options.handle_error(error)
+                    context.handle_error(error)
         return value
 
     def parse_params(
-        self, args: tuple, kwargs: dict, options: RuntimeOptions
+        self, args: tuple, kwargs: dict, context: RuntimeContext
     ) -> Tuple[tuple, dict]:
         # def f(self, *args, arg1, arg2, **kwargs):
         # self.f(1, 2, 3)
@@ -438,45 +451,45 @@ class FunctionParser(BaseParser):
         for i, arg in enumerate(args):
             if self.pos_var and i >= self.pos_var_index:
                 # eg. f(a, b, *args): pos_var_index = 2
-                arg = self.parse_pos_type(index=i, value=arg, options=options)
-                if arg is ...:
+                arg = self.parse_pos_type(index=i, value=arg, context=context)
+                if unprovided(arg):
                     continue
             else:
                 field = self.positional_fields.get(i)
                 # if field not exists, maybe it's a excluded var
                 if field:
                     parsed_keys.append(field.attname)
-                    arg = field.parse_value(arg, options=options)
-                    if arg is ...:
+                    arg = field.parse_value(arg, context=context)
+                    if unprovided(arg):
                         # on_error=excluded, or error collected
-                        pass
+                        continue
             parsed_args.append(arg)
 
         # 2. check if unprovided args has default give, and the unprovided required args
         for index, field in self.positional_only_fields:
             if field.attname in parsed_keys:
                 continue
-            if field.is_required(options=options):
-                options.handle_error(exc.AbsenceError(item=field.attname))
+            if field.is_required(options=context.options):
+                context.handle_error(exc.AbsenceError(item=field.attname))
                 continue
-            default = field.get_default(options)
-            if default is not ...:
+            default = field.get_default(context.options)
+            if not unprovided(default):
                 # this position is definitely after parsed_args
                 # because required args is always (we enforce check) ahead of default args
                 parsed_args.append(default)
                 parsed_keys.append(field.attname)  # need to append parsed as well
 
         parsed_kwargs = self.parse_data(
-            kwargs, options=options, excluded_keys=parsed_keys, as_attname=True
+            kwargs, context=context, excluded_keys=parsed_keys, as_attname=True
         )
-        options.raise_error()   # raise the parse error before calling the function
+        context.raise_error()   # raise the parse error before calling the function
         return tuple(parsed_args), parsed_kwargs
 
     def get_params(
         self,
         args: tuple,
         kwargs: dict,
-        options: RuntimeOptions,
+        context: RuntimeContext,
         first_reserve=None,
         parse_params: bool = None,
     ):
@@ -496,41 +509,23 @@ class FunctionParser(BaseParser):
             if args and not _:
                 _, *args = args
         if parse_params:
-            args, kwargs = self.parse_params(args, kwargs, options=options)
+            args, kwargs = self.parse_params(args, kwargs, context=context)
         if first_reserve:
             args = (_, *args)
-
-        # if fill_omitted:
-        #     # in function, omit param need to be filled (with ...) or TypeError will be raised
-        #     # but in request and other scenarios maybe it's not required
-        #     for omit_key in self.omitted_keys:
-        #         key = self.attr_alias(omit_key)
-        #         ind = self.arg_index.get(key)
-        #         if key in self.pos_only_keys:
-        #             if ind is None:
-        #                 continue
-        #             while ind >= len(parsed_args):
-        #                 parsed_args.append(...)
-        #         else:
-        #             # index is None also means key maybe kw-only
-        #             if ind is None or ind >= len(parsed_args):
-        #                 # not filled in args
-        #                 parsed_kwargs.setdefault(omit_key, ...)
-
         return args, kwargs
 
-    def parse_result(self, result, options: RuntimeOptions):
+    def parse_result(self, result, context: RuntimeContext):
         if self.return_type:
             try:
-                result = options.transformer(result, self.return_type)
+                result = context.transformer(result, self.return_type)
             except Exception as e:
                 error = exc.ParseError(
                     item="<return>", value=result, type=self.return_type, origin_exc=e
                 )
-                options.handle_error(error, force_raise=True)
+                context.handle_error(error, force_raise=True)
         return result
 
-    def sync_generator(self, generator: Generator, options: RuntimeOptions):
+    def sync_generator(self, generator: Generator, context: RuntimeContext):
         i = 0
         while True:
             try:
@@ -541,7 +536,7 @@ class FunctionParser(BaseParser):
                     # raise the same StopIteration
                     raise
                 try:
-                    result = options.transformer(result, self.generator_return_type)
+                    result = context.transformer(result, self.generator_return_type)
                 except Exception as e:
                     error = exc.ParseError(
                         item=f"<generator.return>",
@@ -549,12 +544,12 @@ class FunctionParser(BaseParser):
                         type=self.generator_return_type,
                         origin_exc=e,
                     )
-                    options.handle_error(error, force_raise=True)
+                    context.handle_error(error, force_raise=True)
                 return result
             else:
                 if self.generator_yield_type:
                     try:
-                        item = options.transformer(item, self.generator_yield_type)
+                        item = context.transformer(item, self.generator_yield_type)
                     except Exception as e:
                         error = exc.ParseError(
                             item=f"<generator.yield[{i}]>",
@@ -562,14 +557,14 @@ class FunctionParser(BaseParser):
                             type=self.generator_yield_type,
                             origin_exc=e,
                         )
-                        options.handle_error(error, force_raise=True)
+                        context.handle_error(error, force_raise=True)
 
                 sent = yield item
 
                 if sent is not None:
                     if self.generator_send_type:
                         try:
-                            sent = options.transformer(sent, self.generator_send_type)
+                            sent = context.transformer(sent, self.generator_send_type)
                         except Exception as e:
                             error = exc.ParseError(
                                 item=f"<generator.send[{i}]>",
@@ -577,13 +572,13 @@ class FunctionParser(BaseParser):
                                 type=self.generator_send_type,
                                 origin_exc=e,
                             )
-                            options.handle_error(error, force_raise=True)
+                            context.handle_error(error, force_raise=True)
                     generator.send(sent)
                 i += 1
 
     def get_async_generator(
         self,
-        options: RuntimeOptions,
+        context: RuntimeContext,
         first_reserve: bool = None,
         parse_params: bool = None,
         parse_result: bool = None,
@@ -593,7 +588,7 @@ class FunctionParser(BaseParser):
             args, kwargs = self.get_params(
                 args,
                 kwargs,
-                options=options,
+                context=context,
                 first_reserve=first_reserve,
                 parse_params=parse_params,
             )
@@ -603,7 +598,7 @@ class FunctionParser(BaseParser):
             async for item in generator:
                 if parse_result and self.generator_yield_type:
                     try:
-                        item = options.transformer(item, self.generator_yield_type)
+                        item = context.transformer(item, self.generator_yield_type)
                     except Exception as e:
                         error = exc.ParseError(
                             item=f"<asyncgenerator.yield[{i}]>",
@@ -611,14 +606,14 @@ class FunctionParser(BaseParser):
                             type=self.generator_yield_type,
                             origin_exc=e,
                         )
-                        options.handle_error(error, force_raise=True)
+                        context.handle_error(error, force_raise=True)
 
                 sent = yield item
 
                 if sent is not None:
                     if parse_result and self.generator_send_type:
                         try:
-                            sent = options.transformer(sent, self.generator_send_type)
+                            sent = context.transformer(sent, self.generator_send_type)
                         except Exception as e:
                             error = exc.ParseError(
                                 item=f"<asyncgenerator.send[{i}]>",
@@ -626,7 +621,7 @@ class FunctionParser(BaseParser):
                                 type=self.generator_send_type,
                                 origin_exc=e,
                             )
-                            options.handle_error(error, force_raise=True)
+                            context.handle_error(error, force_raise=True)
                     await generator.asend(sent)
                 i += 1
 
@@ -636,7 +631,7 @@ class FunctionParser(BaseParser):
         self,
         args: tuple,
         kwargs: dict,
-        options: RuntimeOptions,
+        context: RuntimeContext,
         first_reserve=None,
         parse_params: bool = None,
         parse_result: bool = None,
@@ -644,7 +639,7 @@ class FunctionParser(BaseParser):
         args, kwargs = self.get_params(
             args,
             kwargs,
-            options=options,
+            context=context,
             first_reserve=first_reserve,
             parse_params=parse_params,
         )
@@ -652,15 +647,15 @@ class FunctionParser(BaseParser):
         result = func(*args, **kwargs)
         if parse_result:
             if self.do_parse_generator:
-                return self.sync_generator(result, options=options)
-            result = self.parse_result(result, options=options)
+                return self.sync_generator(result, context=context)
+            result = self.parse_result(result, context=context)
         return result
 
     async def async_call(
         self,
         args: tuple,
         kwargs: dict,
-        options: RuntimeOptions,
+        context: RuntimeContext,
         first_reserve=None,
         parse_params: bool = None,
         parse_result: bool = None,
@@ -668,7 +663,7 @@ class FunctionParser(BaseParser):
         args, kwargs = self.get_params(
             args,
             kwargs,
-            options=options,
+            context=context,
             first_reserve=first_reserve,
             parse_params=parse_params,
         )
@@ -679,7 +674,7 @@ class FunctionParser(BaseParser):
             # we leave to user to await it to avoid changing the actual logic of the function
             # while inspect.iscoroutine(result):
             #     result = await result
-            result = self.parse_result(result, options=options)
+            result = self.parse_result(result, context=context)
         return result
 
     # def __call__(self, *args, **kwargs):

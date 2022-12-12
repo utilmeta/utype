@@ -506,7 +506,7 @@ print(dict(article))
 
 ## 模式配置
 
-我们有时会需要某个字段拥有 “只读的” 或者 “只写的” 性质，这其实是我们需要支持 "读模式" 和 “写模式”，并让字段在不同模式中表现出不同的行为，
+utype 支持一种更高级的 ”模式配置“ 特性，能够让数据类的同一个字段在不同的 ”模式“ 下具有不同的表现，比如我们需要某个字段是 ”只读的“，那么实际上只需要它仅支持 ”读模式“ 的下的输入输出
 
 我们来看一个例子
 ```python
@@ -521,113 +521,281 @@ class UserSchema(Schema):
 
 在例子中我们声明了一个 UserSchema 数据类，其中
 
-* `username`：没有模式声明，可以用于读写
-* `password` ：声明了 `writeonly=True`，也就是说它只用于写模式，不能用于读取
-* `signup_time` ：声明了 `readonly=True`，也就是说它只用于读模式，不能用于更新
+	`username`：没有模式声明，可以用于任意模式
+	`password` ：声明了 `writeonly=True`，也就是说它只用于 **写** 模式，不能用于读取
+	`signup_time` ：声明了 `readonly=True`，也就是说它只用于 **读** 模式，不能用于更新
 
+utype 提供的这种机制，使得你只需要声明一个数据类，就能够在不同的模式中有着不同的表现， Field 提供了几个参数用于指定的字段支持的模式
 
-你声明出的数据类可能需要支持多种场景的，而字段可能在不同的场景有着不同的行为，如
-
-* 读取模式：将数据表中的数据通过 SQL 读取出来并转化为 Schema 实例进行返回
-* 更新模式：将 HTTP 请求体中的数据转化为 Schema 实例并对目标资源进行更新
-
-
-utype 提供了这种机制，使得你只需要声明一个数据类，就能够在不同的模式中有着不同的表现， Field 提供了几个参数用于指定的字段支持的模式
-
-* `mode`
+* `mode`：指定一个模式字符串，其中每个字符都表示一种支持的模式，比如 `mode='rw'`，默认为空，即字段支持所有模式
 * `readonly`：是 `mode='r'` 的一个常用简化表示
 * `writeonly`：是 `mode='w'` 的一个常用简化表示
 
-readonly, writeonly 与 mode 间只能指定一个参数
+!!! warning
+	由于 `readonly`，`writeonly` 都是对 `mode` 的简化处理，所以 `readonly`, `writeonly` 与 `mode` 间只能指定一个参数
 
+一般常用的模式名称和对应的含义如下
+
+1. `'r'`：读取模式，进行不影响系统状态的信息获取操作，比如将数据表中的数据通过 SQL 读取出来并转化为 Schema 实例进行返回
+2. `'w'`：写入/更新模式，往往是对当前系统的资源进行更新，比如将 HTTP 请求体中的数据转化为 Schema 实例并对目标资源进行更新
+3. `'a'`：追加/创建模式，向当前系统新增一个资源，比如将 HTTP 请求体中的数据转化为 Schema 实例并在系统中新建一个对应的资源
+
+!!! note "区分 `readonly` / `immutable`"
+	Field 所提供的 `readonly` 参数是一个**模式标记**，实际上是 `mode='r'` 的另一种写法，表示仅支持在 `'r'` 模式下进行输入输出，并不控制字段在数据类实例中是否是 ”不可变的“，这样的性质是通过 `immutable=True` 来控制的，它与所在的模式无关
+
+### 模式的使用方式
+
+虽然我们约定了惯用的模式名称与场景，实际上模式的指定和使用都是由你来决定的，我们可以来看几个例子来了解模式的使用方法
+
+在这几个例子中，我们使用的都是 `'r'`/`'w'`/`'a'` 的模式，来示例一个典型的用户类的数据读取/更新/创建的场景
+
+1. **继承并指定不同模式的解析选项**
+
+在 [Options 解析选项](/zh/references/options) 中支持配置 `mode` 模式参数，来指定当前数据类或函数使用的模式，所以你可以通过继承数据类，指定不同的解析选项来提供不同模式下的数据子类，如
 ```python
+from utype import Schema, Field
+from datetime import datetime
+
+class UserSchema(Schema):
+	username: str
+	password: str = Field(mode='wa')
+	followers_num: int = Field(readonly=True)  # or mode='r'
+	signup_time: datetime = Field(
+		mode='ra', 
+		default_factory=datetime.now
+	)
+
 class UserRead(UserSchema):
 	__options__ = Options(mode='r')
 
-class UserWrite(UserSchema):
+class UserUpdate(UserSchema):
 	__options__ = Options(mode='w')
+
+class UserCreate(UserSchema):
+	__options__ = Options(mode='a')
 ```
 
+在我们编写了 UserSchema 数据类中指定了以下字段
 
-除此之外，你也可以在函数参数解析的装饰器 `@utype.parse` 中定义解析模式，如
+* `username`：没有指定模式，表示任意模式下都可以输入输出
+* `password`：指定了 `mode='wa'`，表示仅在 `'w'` 模式和 `'a'` 模式下进行输入输出
+* `followers_num`：用户的关注者数量字段，指定了 `readonly=True`，表示仅支持读取，不支持创建或更新
+* `signup_time`：用户的注册时间字段，指定了 `mode='ra'`，表示在仅支持读取与创建模式，并且指定了 `no_input='a'`，也就是在创建模式下不接受输入，直接使用 `default_factory` 中的函数计算出当前时间作为新用户的注册时间
+
+我们来看一下模式配置是如何在数据解析中体现的
 ```python
-import utype
+user_updated_data = {  
+    'username': 'new-username',  
+    'password': 'new-password',  
+    'followers_num': '3',  
+    'signup_time': '2022-03-04 10:11:12',  
+}  
+updated_user = UserUpdate(**user_updated_data)
+print(updated_user)
+# > UserUpdate(username='new-username', password='new-password')
 
-@utype.parse(options=Options(mode='w'))
-def update_user(user: UserSchema):
-	pass
-
+updated_user.followers_num = 3  # will not work
+print(updated_user)
+# > UserUpdate(username='new-username', password='new-password')
 ```
 
-这样将会按照 `'w'`（写模式）对参数进行解析，在例子的函数中即使对 `user` 参数传入了 `signup_time` 字段也不会被接收（因为声明了 `readonly=True`）
+在例子中我们可以看到，当使用了指定模式为 `'w'` 的 UserUpdate 数据类初始化数据时，`'w'` 模式中不支持的数据不会被输入，并且即使你试图去赋值，也不会生效，最后得到的输出数据就是 `'w'` 模式中支持的数据字段
+
+2. **使用运行时解析选项指定模式**
+
+你还可以使用数据类的 `__from__` 方法进行初始化，其中第一个参数传入数据，并且支持 `options` 参数指定一个运行时解析选项，可以用于模式的动态指定，如
+```python
+from utype import Schema, Field
+from datetime import datetime
+
+class UserSchema(Schema):
+	username: str
+	password: str = Field(mode='wa')
+	followers_num: int = Field(readonly=True)  # or mode='r'
+	signup_time: datetime = Field(
+		mode='ra', 
+		default_factory=datetime.now
+	)
+
+new_user_form = 'username=new-user&password=123456'
+new_user = UserSchema.__from__(new_user_form, options=Options(mode='a'))
+print(new_user)
+# > UserSchema(username='new-user', password='123456', signup_time=datetime(...))
+
+user_query_result = {  
+    'username': 'current-user',  
+    'followers_num': '3',  
+    'signup_time': '2022-03-04 10:11:12',  
+}  
+queried_user = UserSchema.__from__(user_query_result, options=Options(mode='r'))
+print(queries_user)
+# > UserSchema(username='new-user', followers_num=3, signup_time=datetime(...)))
+```
+
+3. **在函数解析选项中指定模式**
+
+你还可以利用函数的解析选项来指定函数中所有数据类参数的解析模式，如
+```python
+from utype import Schema, Field, parse
+from datetime import datetime
+
+class UserSchema(Schema):
+	username: str
+	password: str = Field(mode='wa')
+	followers_num: int = Field(readonly=True)  # or mode='r'
+	signup_time: datetime = Field(
+		mode='ra', 
+		default_factory=datetime.now
+	)
+
+@parse(options=Options(mode='a', override=True))
+def create_user(user: UserSchema):
+	return dict(user)
+	
+new_user_form = 'username=new-user&password=123456'
+
+print(create_user(new_user_form))
+# {
+# 'username': 'new-user', 
+# 'password': '123456', 
+# 'signup_time': datetime.datetime(...)
+# }
+```
+
+!!! note
+	在解析函数中声明能够影响内部参数的解析选项（如例子中影响了 user 参数的解析模式）需要指定 `override=True`，否则数据类参数将会按照其自身的选项进行对应解析
 
 !!! warning
-	在函数的参数字段中无法声明模式字段，函数模式是对所有的数据类参数作用的
+	在函数的参数字段中无法声明模式字段，函数中指定的模式只对其中的数据类参数起作用
 
-### 模式的扩展
-
-在 mode 参数中你可以声明自定义的模式，一般来说模式使用一个英文小写字母来表示
-
-然后只需要在 
+**模式的扩展**
+utype 并没有限制模式的语义和范围，所以可以在字段的 `mode` 参数中自由声明自定义的模式，一般来说模式使用一个英文小写字母来表示
 
 utype 支持按照不同的模式输出 json-schema 文档，所以你可以只用一个数据类得到它在读取，更新，创建等多种模式场景下的输入和输出模板
 
-一般建议使用的模式名称有
-* `'r'`：读取，进行不影响系统状态的信息获取操作
-* `'w'`：写入/更新，往往是对当前系统的资源进行更新
-* `'a'`：追加/创建，向当前系统新增一个资源
-
-由于具体模式的赋值与使用场景都是由你决定，所以 utype 并不会
-
 ### 模式与输入输出
 
-指定一个字段为某个模式，实际上就是指定字段在其他模式中禁用输入与输出，比如字段的模式为 `'r'`，而当前的解析模式为 `'w'`，那么此时这个字段就不会用于输入，自然也不会进行输出
+指定一个字段为某个模式，实际上就是指定字段在其他模式中禁用输入与输出，比如字段的模式为 `'r'`，而当前的解析模式为 `'w'`，那么此时这个字段就是无效的，既不会用于输入，也不会进行输出
 
-事实上输入输出参数也可以配置为一个模式字符串
+事实上输入输出参数也可以配置为一个模式字符串，例如
 
 ```python
+from utype import Schema, Field
+from datetime import datetime
 
 class Article(Schema):
 	slug: str = Field(no_input='wa')
+	title: str
+	created_at: datetime = Field(
+		mode='ra', 
+		no_input='a',
+		default_factory=datetime.now
+	)
+	
+	def __validate__(self):
+		if 'slug' not in self:
+			self.slug = '-'.join([''.join(filter(str.isalnum, v))  
+	                               for v in self.title.split()]).lower()
+
+new_article_json = b'{"title": "My Awesome Article", "created_at": "ignored"}'  
+new_article = Article.__from__(new_article_json, options=Options(mode='a'))
+
+print(new_article)
+# > Article(title='My Awesome Article', created_at=datetime(...), slug='my-awesome-article')
 ```
 
-* 在更新与创建时禁用输入，但不禁用输出（也就是如果被赋值了，可以作为结果中的字段进行输出）
-* 没有限制读取时的输入输出，所以可以从数据源中读入，并且输出给请求的客户端
+在例子中的数据类 Article 声明的模式字段有
+* `slug`：在更新（`'w'`）与创建（`'a'`）时禁用输入，但不禁用输出（也就是如果被赋值了，可以作为结果中的字段进行输出），并且没有限制其他模式（如读取）的输入输出
+* `created_at`：指定了模式为读取（`'r'`）与创建（`'a'`），并禁用了在创建（`'a'`）模式下的输入，在创建模式解析时会忽略输入，填入默认值，也就是当前的时间，符合字段的语义，而在读取时正常支持输入与输出
 
+所以可以看到，当我们使用创建模式（`'a'`）对文章数据进行初始化时，数据中的 `'"created_at"'` 会直接忽略输入，`slug` 字段也不会接受输入，在数据初始化后调用的 `__validate__` 函数时定义了 `slug` 字段在缺省时的赋值逻辑，所以最后得到的结果包含了传入的 `title`，赋值的 `slug`，以及填充了默认值的 `created_at`
 
 ## 属性配置
 
+Field 还可以支持为数据类的属性配置一些特性，如
+
 * `immutable`：该属性是否是不可变的，默认为 False，如果开启，则你无法对数据类实例的对应属性进行赋值或删除操作
+
+```python
+from utype import Schema, Field, exc
+from datetime import datetime
+
+class UserSchema(Schema):
+	username: str = Field(immutable=True)
+	signup_time: datetime = Field(
+		no_input=True,
+		immutable=True,
+		default_factory=datetime.now
+	)
+	
+new_user = UserSchema(username='new-user')
+
+print(new_user)
+# > UserSchema(username='new-user', signup_time=datetime(...))
+
+try:
+	new_user.username = 'changed-user'
+except exc.UpdateError as e:
+	print(e)
+	"""
+	UserSchema: Attempt to set immutable attribute: ['username']
+	"""
+
+try:
+	del new_user.username
+except exc.DeleteError as e:
+	print(e)
+	"""
+	UserSchema: Attempt to delete immutable attribute: ['username']
+	"""
+
+try:
+	new_user.pop('signup_time')
+except exc.DeleteError as e:
+	print(e)
+	"""
+	UserSchema: Attempt to pop immutable item: ['signup_time']
+	"""
+```
+
+可以看到，对于 `immutable=True` 的字段，无论你使用属性赋值或删除，还是使用 Schema 的字典方法对字典进行更新或删除，都会抛出错误（更新时抛出 `exc.UpdateError`，删除时抛出 `exc.DeleteError`）
 
 !!! note
 	严格意义上，在 Python 中，你无法让实例的属性彻底无法变更，如果开发者执意要做，可以通过操作 `__dict__` 等方法来变更属性，`immutable` 参数实际上也承担着一种标记和提示的作用，提醒开发者这个字段是不应该被变更的
 
+* `repr`：可以指定一个布尔变量，字符串或者函数，来调控字段显示行为，即在  `__repr__` 与 `__str__` 函数中的显示值，它们分别表示
 
-* `secret`：是否是一个隐秘字段（如密码，密钥等），如果是，则数据类在打印或日志中相应的属性将会以 `'******'` 来表示，防止了密钥通过输出信息泄漏
+1. bool：是否进行显示，默认为 True，如果指定为 False，则该字段即使提供在数据中，也不会进行展示
+2. str：指定一个固定的显示值，往往用于隐藏这些字段的信息
+3. Callable：提供一个函数，接受字段对应的数据值作为输入，输出一个表示函数
+
+```python
+from utype import Schema, Field
+from datetime import datetime
+
+class AccessInfo(Schema):
+	access_key: str = Field(repr=lambda v: repr(v[:3] + '*' * (len(v) - 3)))
+	secret_key: str = Field(repr='<secret key>')
+	last_activity: datetime = Field(default_factory=datetime.now, repr=False)
+
+access = AccessInfo(access_key='ABCDEFG', secret_key='qwertyu')
+print(access)
+# > AccessInfo(access_key='ABC****', secret_key=<secret key>)
+
+print('last_activity' in access)
+# > True
+
+print(dict(access))
+# > {'access_key': 'ABCDEFG', 'secret_key': 'qwertyu', 'last_activity': datetime(...)}
+```
+
+在例子中，我们为 `access_key` 自动指定了一个显示函数，只截取其前几位进行显示，对于 `secret_key`，我们指定了一个固定的字符串用于显示，而对 `last_activity` 字段，我们直接禁用了它的显示
 
 !!! warning
-	`secret` 参数并不影响数据的类型或者字段的输出，也就是说如果你直接将对应的字段打印出来，如果你需要参数以任意方式输出都是 `'******'` ，请使用 `SecretStr`
-
-在 Options 选项中有一个 `secret_names` 选项，默认将一些常用的密钥和密码字段名称
-
-* `'password'`
-* `'secret'`
-* `'dsn'`
-* `'private_key'
-* `'session_key'
-* `'pwd'
-* `'passphrase'
-
+	只有使用 `print()`，`str()` 或 `repr()` 函数输出整个数据类实例时才会应用 `repr` 参数指定的显示配置，如果你单独打印某个属性，比如 `print(access.secret_key)`，则不会使用它的显示配置
 
 !!! warning
-	属性配置仅在数据类中使用，在函数参数中声明没有意义
-
-以数据类为例，如果把它的声明周期分为
-
-那么字段配置的作用分别为
-* 数据输入 `no_input`：此字段不参与数据输入
-* 实例操作 `immutable`：无法在实例中操作此字段（无法被赋值或删除）
-* 数据输出 `no_output`：此字段不参与数据输出
+	属性配置（`immutable`，`repr`）仅在数据类中使用，在函数参数中声明没有意义
 
 
 ## 错误处理
@@ -679,7 +847,72 @@ print(dict(inst))
 
 ## 字段依赖
 
+Field 支持为字段指定一系列依赖字段，也就是当输入数据提供该字段时，也必须提供其依赖的字段，参数如下
 
-* `dependencies`
+* `dependencies`：指定一个字符串列表，其中每个字符串都表示一个依赖字段的名称，依赖字段必须在当前数据类中定义
 
-使用属性声明依赖
+```python
+from utype import Schema, Field
+
+class Account(Schema):  
+    name: str  
+    billing_address: str = Field(default=None)  
+    credit_card: str = Field(required=False, dependencies=['billing_address'])
+```
+
+在我们声明的 Account 数据类中，`credit_card` 字段指定了依赖为 `['billing_address']`，也就表示着
+
+* 如果提供了 `credit_card` 字段，则必须提供 `billing_address`
+* 如果没有提供 `credit_card` 字段，则  `billing_address` 沿用其自身配置
+
+我们来看一下具体的用法
+```python
+bill = Account(name='bill')  
+bob = Account(name='bill', billing_address='my house')  
+
+alice = Account(name='alice', billing_address='somewhere', credit_card=123456)  
+assert alice.credit_card == '123456'  
+
+from utype import exc
+try:
+    Account(name='alice', credit_card=123456)
+except exc.DependenciesAbsenceError as e:
+	print(e)
+	"""
+	required dependencies: {'billing_address'} is absence
+	"""
+```
+
+可以看到，当 `credit_card` 字段没有提供时，无论是否传入 `billing_address` 字段都可以通过解析，因为 `billing_address` 是一个可选字段，但是当数据提供了 `credit_card` 字段时，必须提供  `billing_address` 字段，否则会抛出  `exc.DependenciesAbsenceError` 错误
+
+
+### 属性依赖
+
+字段依赖还可以作用在属性字段（`@property`）上，如
+```python
+from utype import Schema, Field
+from datetime import datetime
+
+class UserSchema(Schema):
+	username: str
+	signup_time: datetime = Field(required=False)
+	
+	@property
+	@Field(dependencies=['signup_time'])
+	def signup_days(self) -> int:  
+	    return (datetime.now() - self.signup_time).total_seconds() / (3600 * 24)
+
+new_user = UserSchema(username='test')
+print('signup_days' in new_user)
+# False
+
+signup_user = UserSchema(username='test', signup_time='2021-10-11 11:22:33')
+print('signup_days' in signup_user)
+# True
+
+assert isinstance(signup_user.signup_days, int)  # True 
+```
+
+在例子声明的数据类 UserSchema 中，计算 `signup_days` 需要提供 `signup_time`，所以把它声明为整个属性的依赖
+
+可以看到，属性依赖与字段依赖的区别是：当属性依赖没有提供时，属性不会进行计算或输出，但也不会报错

@@ -336,6 +336,12 @@ except exc.ParseError as e:
 !!! note "行业实践"
 	例子中的行为其实也是一般博客网站的做法，直接使用文章标题来生成 URL 路径字符串
 
+字段配置在数据类声明周期的各个环节的作用分别为
+
+* 数据输入 `no_input`：此字段不参与数据输入
+* 实例操作 `immutable`：无法在实例中操作此字段（无法被赋值或删除）
+* 数据输出 `no_output`：此字段不参与数据输出
+
 ### 字段准入规则
 
 并不是所有在 Schema 上声明的属性都会被转化为可以解析校验的字段，utype 的数据类字段有着一定的准入规则
@@ -720,22 +726,23 @@ class Schema(utype.Schema):
 class LoginForm(Schema): 
 	username: str = utype.Field(regex='[0-9a-zA-Z]{3,20}')  
 	password: str = utype.Field(min_length=6, max_length=20)
+
+print(LoginForm.__options__)
+# > Options(collect_errors=True, case_insensitive=True)
 ```
 
-如果你在基类和当前数据类中都声明了解析选项，则它们会进行整合
+可以看到，如果子类没有额外声明解析选项，就会直接沿用父类的。这个例子的另一种声明方式是
 
 ```python
 import utype
 
-class Schema(utype.Schema):
-	__options__ = utype.Options(
-		 case_insensitive=True,
-	)
-
-class LoginForm(Schema): 
-	__options__ = utype.Options(
-		 collect_errors=True,
-	)
+class Options(utype.Options):
+	 case_insensitive = True
+	 collect_errors = True
+	 
+class LoginForm(utype.Schema): 
+	class __options__(Options): pass
+	
 	username: str = utype.Field(regex='[0-9a-zA-Z]{3,20}')  
 	password: str = utype.Field(min_length=6, max_length=20)
 
@@ -743,25 +750,8 @@ print(LoginForm.__options__)
 # > Options(collect_errors=True, case_insensitive=True)
 ```
 
-如果你希望当前解析选项的参数完全覆盖基类中的选项，可以额外声明 `override=True`
-```python
-import utype
+例子中自定义了一个解析选项基类，你可以自由地继承，组合与复用
 
-class Schema(utype.Schema):
-	__options__ = utype.Options(
-		 case_insensitive=True,
-	)
-
-class LoginForm(Schema): 
-	__options__ = utype.Options(
-		 collect_errors=True,
-		 override=True
-	)
-	username: str = utype.Field(regex='[0-9a-zA-Z]{3,20}')  
-	password: str = utype.Field(min_length=6, max_length=20)
-
-assert not LoginForm.__options__.case_insensitive
-```
 
 ### 自定义 `__init__` 函数
 任何预定义好的解析选项有时也无法代替自定义的函数逻辑带来的灵活度，所以 utype 支持在数据类中自定义初始化  `__init__` 函数，来实现更加定制化的解析逻辑，比如
@@ -833,23 +823,24 @@ class RequestSchema(Schema):
 在 utype 中，所有类型都可以注册转化器函数，来定义从输入数据到调用类型的初始化函数间的转化逻辑，数据类作为一种类型也不例外
 
 默认的数据类转化函数如下
+
 ```python
-@register_transformer(  
-    attr="__parser__",  
-    detector=lambda cls: isinstance(getattr(cls, "__parser__", None), ClassParser),  
-)  
-def transform(transformer, data, cls):  
-    if not isinstance(data, Mapping):  
+@register_transformer(
+    attr="__parser__",
+    detector=lambda cls: isinstance(getattr(cls, "__parser__", None), ClassParser),
+)
+def transform(transformer, data, cls):
+    if not isinstance(data, Mapping):
         # {} dict instance is a instance of Mapping too  
-        if transformer.no_explicit_cast:  
-            raise TypeError(f"invalid input type for {cls}, should be dict or Mapping")  
-        else:  
-            data = transformer(data, dict)  
-    if not transformer.options.vacuum:  
-	    parser: ClassParser = cls.__parser__  
-        if parser.options.allowed_runtime_options:  
-            # pass the runtime options  
-            data.update(__options__=transformer.options)  
+        if transformer.no_explicit_cast:
+            raise TypeError(f"invalid input type for {cls}, should be dict or Mapping")
+        else:
+            data = transformer(data, dict)
+    if not transformer.context.vacuum:
+        parser: ClassParser = cls.__parser__
+    if parser.context.allowed_runtime_options:
+        # pass the runtime options  
+        data.update(__options__=transformer.context)
     return cls(**data)
 ```
 

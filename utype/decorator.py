@@ -4,7 +4,7 @@ from .parser.func import FunctionParser
 from .parser.cls import ClassParser
 from .parser.options import Options
 from .parser.rule import Rule, Lax
-# from .utils.transform import register_transformer
+from .utils.datastructures import unprovided, Unprovided
 
 FUNC = TypeVar('FUNC')
 CLS = TypeVar('CLS')
@@ -92,7 +92,7 @@ def apply(
     *,
     # init: bool = False,     # whether to override init
     # -- constraints:
-    const: Any = ...,
+    const: Any = unprovided,
     enum: Iterable = None,
     gt=None,
     ge=None,
@@ -146,7 +146,7 @@ def apply(
         if v is not None
     }
 
-    if const is not ...:
+    if not isinstance(const, Unprovided):
         constraints.update(const=const)
 
     def decorator(_type):
