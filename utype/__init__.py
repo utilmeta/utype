@@ -5,7 +5,7 @@ from .parser.field import Field
 from .parser.options import Options
 from .schema import Schema, DataClass, LogicalMeta
 from .utils import exceptions as exc
-from .decorator import parse, handle, apply, dataclass
+from .decorator import parse, handle, apply, dataclass, raw
 
 
 VERSION = (0, 2, 0, None)

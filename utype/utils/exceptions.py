@@ -2,6 +2,14 @@
 from typing import Union, Any, List, Set
 
 
+class ConfigError(SyntaxError):
+    def __init__(self, msg='', obj=None, params: dict = None, field: str = None):
+        super().__init__(msg)
+        self.obj = obj
+        self.params = params
+        self.field = field
+
+
 class FieldError(AttributeError, KeyError):
     def __init__(
         self,
@@ -62,6 +70,15 @@ class TypeMismatchError(ParseError):
     @property
     def formatted_message(self):
         msg = f"type: {self.type} is unrecognized and forbid to auto-init"
+        if self.msg:
+            msg += f": {self.msg}"
+        return msg
+
+
+class InvalidInstance(TypeMismatchError):
+    @property
+    def formatted_message(self):
+        msg = f"invalid class instance: {self.value} for {self.type}"
         if self.msg:
             msg += f": {self.msg}"
         return msg

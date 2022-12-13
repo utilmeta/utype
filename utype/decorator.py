@@ -1,3 +1,4 @@
+import inspect
 from typing import Any, Iterable, Callable, Type, TypeVar, Union
 import warnings
 from .parser.func import FunctionParser
@@ -5,31 +6,54 @@ from .parser.cls import ClassParser
 from .parser.options import Options
 from .parser.rule import Rule, Lax
 from .utils.datastructures import unprovided, Unprovided
+from .utils import exceptions as exc
 
+T = TypeVar('T')
 FUNC = TypeVar('FUNC')
 CLS = TypeVar('CLS')
 
 
+def raw(f: FUNC):
+    parser = getattr(f, '__parser__', None)
+    if isinstance(parser, FunctionParser):
+        return parser.obj
+    return f
+
+
 def parse(
-    f: FUNC = None,
-    *,
+    f: T = None,
+    /, *,
     parser_cls: Type[FunctionParser] = FunctionParser,
     options: Union[Options, Type[Options]] = None,
     no_cache: bool = False,
+    # static: bool = False,
     ignore_params: bool = False,
     ignore_result: bool = False,
-) -> Union[FUNC, Callable[[FUNC], FUNC]]:
+) -> Union[T, Callable[[T], T]]:
     if ignore_params and ignore_result:
         warnings.warn(
-            f"you turn off both params and result parse in @parse decorator,"
+            f"@utype.parse: you turn off both params and result parse in @parse decorator,"
             f" which is basically meaningless..."
         )
 
-    def decorator(func: FUNC) -> FUNC:
-        parser = parser_cls.apply_for(func, options=options, no_cache=no_cache)
-        return parser.wrap(
-            parse_params=not ignore_params, parse_result=not ignore_result
-        )
+    def decorator(func: T) -> T:
+        if inspect.isclass(func):
+            # class
+            parser_cls.apply_class(
+                func,
+                options=options,
+                no_cache=no_cache,
+                ignore_result=ignore_result,
+                ignore_params=ignore_params
+            )
+            return func
+        else:
+            parser = parser_cls.apply_for(func, options=options, no_cache=no_cache)
+            return parser.wrap(
+                parse_params=not ignore_params,
+                parse_result=not ignore_result,
+                # first_reserve=not static
+            )
 
     if f:
         return decorator(f)
@@ -38,7 +62,7 @@ def parse(
 
 def dataclass(
     obj: CLS = None,
-    *,
+    /, *,
     parser_cls: Type[ClassParser] = ClassParser,
     options: Union[Options, Type[Options]] = None,
     no_cache: bool = False,
@@ -118,8 +142,8 @@ def apply(
 
     if round:
         if decimal_places and decimal_places not in (round, Lax(round)):
-            raise ValueError(f'@apply round: {round} is a shortcut for decimal_places=Lax({round}), '
-                             f'but you specified a different decimal_places: {repr(decimal_places)}')
+            raise exc.ConfigError(f'@apply round: {round} is a shortcut for decimal_places=Lax({round}), '
+                                  f'but you specified a different decimal_places: {repr(decimal_places)}')
 
         decimal_places = Lax(round)
 

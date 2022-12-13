@@ -1,7 +1,9 @@
 import utype
 import typing
-from utype import Field, exc
+from utype import Field, exc, Options
 import pytest
+from datetime import datetime
+from typing import Iterable, Iterator, AsyncIterator, AsyncIterable, Awaitable, Generator
 
 
 class TestFunc:
@@ -41,6 +43,52 @@ class TestFunc:
             f2: str = Field(no_input=True, default_factory=list),
         ):
             return f1, f2
+
+        with pytest.raises(exc.ConfigError):
+            @utype.parse
+            def func(
+                f1: str = Field(no_input=True),
+                f2: str = Field(no_input=True, default_factory=list),
+            ):
+                return f1, f2
+
+        with pytest.raises(exc.ConfigError):
+            @utype.parse
+            def func(
+                f1: str = Field(default=None, defer_default=True),
+                f2: str = Field(no_input=True, default_factory=list),
+            ):
+                return f1, f2
+
+    def test_mode(self):
+        @utype.parse(options=Options(mode='w'))
+        def func(
+            fr: str = Field(readonly=True, default=None),
+            fw: list = Field(writeonly=True, default_factory=list),
+        ):
+            return fr, fw
+
+        assert func(fr='1', fw=[1]) == (None, [1])
+
+        with pytest.raises(exc.ConfigError):
+            @utype.parse
+            def func(
+                f1: str = Field(readonly=True),     # specify mode with no default
+            ):
+                return f1
+
+        @utype.parse(options=Options(mode='r'))
+        def feed_user(
+            username: str,
+            password: str = Field(mode='wa', default=None),
+            followers_num: int = Field(readonly=True, default=None),  # or mode='r'
+            signup_time: datetime = Field(
+                mode='ra',
+                default_factory=datetime.now
+            ),
+            __options__: Options = Options(mode='w')
+        ):
+            return username
 
     def test_invalids(self):
         from typing import Final, ClassVar
@@ -102,6 +150,25 @@ class TestFunc:
         ):
             return locals()
 
+        def example(
+            # positional only
+            pos_only: int,
+            /,
+            # positional or keyword
+            pos_or_kw: int = Field(default=0),
+            # positional var
+            *args: int,
+            # keyword only
+            kw_only_1: int = Field(default=0),
+            kw_only_2: int = Field(required=True),
+            # keyword var
+            **kwargs: int
+        ):
+            return pos_only, pos_or_kw, args, kw_only_1, kw_only_2, kwargs
+
+        r = example(0, 1, 2, pos_or_kw=1)
+        r = example('0', '1', '2', pos_or_kw='1')
+
         # with pytest.warns(match='alias'):
         #     # positional only args's alias is meaningless
         #     @utype.parse
@@ -131,8 +198,43 @@ class TestFunc:
         #     ):
         #         pass
 
+    def test_excluded_vars(self):
+        @utype.parse
+        def excluded(a: int, _excluded0: int, *, _excluded1: int = 0):
+            return a, _excluded0, _excluded1
+
     def test_generator(self):
-        pass
+
+        @utype.parse
+        def fib(n: int = Field(ge=0), _current: int = 0, _next: int = 1) -> Iterator[int]:
+            if not n:
+                yield _current
+            else:
+                yield fib(n - 1, _next, _current + _next)
+
+        assert next(fib('100')) == 354224848179261915075
+
+        # but with larger num like 1000, it will raise RecursiveError
+
+        @utype.parse
+        def o_fib(n: int = Field(ge=0), _current: int = 0, _next: int = 1) -> Iterator[int]:
+            if not n:
+                yield _current
+            else:
+                yield utype.raw(o_fib)(n - 1, _next, _current + _next)
+
+        f10 = next(o_fib(10))
+        assert next(o_fib(2000)) % 100007 == 57937
+
+        @utype.parse
+        def fib_yield(n: int = Field(ge=0)) -> int:
+            a, b = 0, 1
+            _n = 1
+            while _n < n:  # First iteration:
+                # yield a  # yield 0 to start with and then
+                a, b = b, a + b  # a will now be 1, and b will also be 1, (0 + 1)
+                _n += 1
+            return b
 
     @pytest.mark.asyncio
     async def test_async(self):
@@ -211,11 +313,83 @@ class TestFunc:
             result = num ** exp
             return locals()
 
-    def test_classmethod(self):
-        pass
+        v = get_power_locals(num=3)
+
+    def test_class_methods(self):
+
+        class Class:
+            @classmethod
+            @utype.parse
+            def operation(cls):
+                return cls.generate2(param='3')
+
+            @staticmethod
+            @utype.parse
+            def bad(param, value: int = 0):
+                return param
+
+            @staticmethod
+            @utype.parse
+            def generate(param: int = Field(ge=0)):
+                return param
+
+            @utype.parse
+            @staticmethod
+            def generate1(param: int = Field(ge=0)):
+                return param
+
+            @staticmethod
+            @utype.parse
+            def generate2(*, param: int = Field(ge=0)):
+                return param
+
+            @staticmethod
+            @utype.parse
+            def generate3(param: int = Field(ge=0)):
+                return param
+
+            @utype.parse
+            def __call__(self, *args, **kwargs):
+                return self, args, kwargs
+
+        @utype.parse()
+        class Auto:
+            @classmethod
+            def operation(cls):
+                return cls.generate(param='3')
+
+            @staticmethod
+            def generate(param: int = Field(ge=0)):
+                return param
+
+            def method(self, key: int = Field(le=10)):
+                return self.generate(key)
+
+            @utype.parse
+            def __call__(self, *args, **kwargs):
+                return self, args, kwargs
+
+        with pytest.raises(exc.InvalidInstance):
+            Auto.method(1, 2)
+
+        @utype.parse
+        @utype.dataclass
+        class Data:
+            @classmethod
+            def operation(cls):
+                return cls.generate(param='3')
+
+            @staticmethod
+            def generate(param: int = Field(ge=0)):
+                return param
+
+            @utype.parse
+            def __call__(self, *args: int, **kwargs: str):
+                return self, args, kwargs
 
     def test_staticmethod(self):
         pass
 
     def test_property(self):
         pass
+

@@ -1,4 +1,3 @@
-import warnings
 from typing import Optional, Callable, Type, Dict, Set, List, Union, Tuple
 from .field import ParserField
 
@@ -19,7 +18,7 @@ class BaseParser:
     options_cls = Options
     schema_field_cls = ParserField
 
-    DEFAULT_EXCLUDE_VARS = {"__options__", "__class__"}
+    # DEFAULT_EXCLUDE_VARS = {"__options__", "__class__"}
 
     @classmethod
     def resolve_parser(cls, obj):
@@ -33,7 +32,7 @@ class BaseParser:
 
     @classmethod
     def apply_for(
-        cls, obj, no_cache: bool = False, options: Options = None
+        cls, obj, no_cache: bool = False, **kwargs
     ) -> "BaseParser":
         if isinstance(obj, cls):
             return obj
@@ -43,21 +42,22 @@ class BaseParser:
         if not no_cache and key in __parsers__:
             cached: "BaseParser" = __parsers__[key]
             # if options is not identical, make a new one
-            if not options or options == cached.options:
+            if not kwargs or kwargs == cached.init_kwargs:
                 return cached
-        inst = cls(obj, options=options)
+        inst = cls(obj, **kwargs)
         if not no_cache:
             __parsers__[key] = inst
         return inst
 
     def __init__(self, obj, options: Options = None):
         self.obj = obj
+        self.init_kwargs = {'options': options}
         self.options: Options = self.options_cls.generate_from(options)
         self.forward_refs: Dict[
             str, Tuple[ForwardRef, dict]
         ] = {}  # store unresolved ref
         self.fields: Dict[str, ParserField] = {}
-        self.exclude_vars: Set[str] = set(self.DEFAULT_EXCLUDE_VARS)
+        self.exclude_vars: Set[str] = set()
         # these data structures are designed to speed up the parsing
         self.case_insensitive_names: Set[str] = set()
         self.field_alias_map: Dict[str, str] = {}
@@ -251,9 +251,11 @@ class BaseParser:
                 for alias in field.aliases:
                     if key != alias:
                         if alias in alias_map:
-                            raise ValueError(
+                            raise exc.ConfigError(
                                 f"{self.obj}: alias: [{repr(alias)}] "
-                                f"conflict with field: [{repr(alias_map[alias])}]"
+                                f"conflict with field: [{repr(alias_map[alias])}]",
+                                obj=self.obj,
+                                field=field.name
                             )
                         alias_map[alias] = key
                     # if field.attname != alias:
@@ -275,9 +277,11 @@ class BaseParser:
                     )
                     inter = case_insensitive_names.intersection(lower_keys)
                     if inter:
-                        raise ValueError(
+                        raise exc.ConfigError(
                             f"{self.obj}: case sensitive field: [{repr(key)}] "
-                            f"conflict with case insensitive field in {inter}"
+                            f"conflict with case insensitive field in {inter}",
+                            obj=self.obj,
+                            field=field.name
                         )
 
         # a: str = Field(alias_from=['a1', 'a2'], case_insensitive=True)

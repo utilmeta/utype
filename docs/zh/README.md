@@ -41,8 +41,8 @@ def login(
 	# 你可以直接开始编写逻辑了
 	return username, password
 
-print(login(b'abc', 123456))
-('abc', '123456')
+print(login('alice', 123456))
+('alice', '123456')
 
 try:
 	login('@invalid', 123456)

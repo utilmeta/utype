@@ -149,19 +149,19 @@ class Options:
         if multi(alias_from_generator):
             for g in alias_from_generator:
                 if not callable(g):
-                    raise TypeError(
+                    raise exc.ConfigError(
                         f"Options.alias_from_generator must be a callable or a list of callable"
                     )
 
         elif alias_from_generator:
             if not callable(alias_from_generator):
-                raise TypeError(
+                raise exc.ConfigError(
                     f"Options.alias_from_generator must be a callable or a list of callable"
                 )
 
         if not unprovided(force_default):
             if no_default:
-                raise ValueError(
+                raise exc.ConfigError(
                     "Options force_default and no_default can not both specify"
                 )
 

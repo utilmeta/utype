@@ -473,10 +473,10 @@ class Constraints:
         min_length = bounds.get("min_length")
         if length is not None:
             if not (isinstance(length, int) and length >= 0):
-                raise ValueError(f"Rule length: {length} must be a int >= 0")
+                raise exc.ConfigError(f"Rule length: {length} must be a int >= 0")
             if min_length is not None:
                 if min_length > length:
-                    raise ValueError(
+                    raise exc.ConfigError(
                         f"Rule length: {length} and min_length: {min_length} both specified"
                     )
                 else:
@@ -484,7 +484,7 @@ class Constraints:
                     min_length = None
             if max_length is not None:
                 if max_length < length:
-                    raise ValueError(
+                    raise exc.ConfigError(
                         f"Rule length: {length} and max_length: {max_length} both specified"
                     )
                 else:
@@ -493,7 +493,7 @@ class Constraints:
         else:
             if min_length is not None:
                 if not (isinstance(min_length, int) and min_length >= 0):
-                    raise ValueError(
+                    raise exc.ConfigError(
                         f"Rule min_length: {min_length} must be a int >= 0"
                     )
 
@@ -503,10 +503,10 @@ class Constraints:
 
             if max_length is not None:
                 if not (isinstance(max_length, int) and max_length > 0):
-                    raise ValueError(f"Rule max_length: {max_length} must be a int > 0")
+                    raise exc.ConfigError(f"Rule max_length: {max_length} must be a int > 0")
                 if min_length is not None:
                     if max_length < min_length:
-                        raise ValueError(
+                        raise exc.ConfigError(
                             f"Rule max_length: {max_length} must >= min_length: {min_length}"
                         )
 
@@ -545,20 +545,20 @@ class Constraints:
                 _min_t = type(gt)
                 _min = gt
             if t and not hasattr(t, "__le__"):
-                raise TypeError(
+                raise exc.ConfigError(
                     f"Rule: type {t} does not support <gt> constraint for not providing __le__ method"
                 )
 
         if ge is not None:
             if _min is not None:
-                raise ValueError("Rule gt/ge cannot assign together")
+                raise exc.ConfigError("Rule gt/ge cannot assign together")
 
             if not callable(ge):
                 _min_t = type(ge)
                 _min = ge
 
             if t and not hasattr(t, "__lt__"):
-                raise TypeError(
+                raise exc.ConfigError(
                     f"Rule: type {t} does not support <ge> constraint for not providing __lt__ method"
                 )
 
@@ -568,26 +568,26 @@ class Constraints:
                 _max = lt
 
             if t and not hasattr(t, "__ge__"):
-                raise TypeError(
+                raise exc.ConfigError(
                     f"Rule: type {t} does not support <lt> constraint for not providing __ge__ method"
                 )
 
         if le is not None:
             if _max is not None:
-                raise ValueError("Rule lt/le cannot assign together")
+                raise exc.ConfigError("Rule lt/le cannot assign together")
 
             if not callable(le):
                 _max_t = type(le)
                 _max = le
 
             if t and not hasattr(t, "__gt__"):
-                raise TypeError(
+                raise exc.ConfigError(
                     f"Rule: type {t} does not support <le> constraint for not providing __gt__ method"
                 )
 
         if _min_t and _max_t:
             if _min_t != _max_t:
-                raise ValueError(
+                raise exc.ConfigError(
                     f"Rule gt/ge type {_min_t} must equal to lt/le type {_max_t}"
                 )
 
@@ -607,7 +607,7 @@ class Constraints:
                             resolved = True
                             break
                     if not resolved:
-                        raise TypeError(
+                        raise exc.ConfigError(
                             f"Rule range type {_t} not resolved in type: {self.origin_type}"
                         )
 
@@ -616,7 +616,7 @@ class Constraints:
                         if {self.origin_type, _t} in TYPE_EXACT_TOLERANCE:
                             pass
                         else:
-                            raise TypeError(
+                            raise exc.ConfigError(
                                 f"Rule range type {_t} must equal to value type {self.origin_type}"
                             )
             else:
@@ -624,13 +624,13 @@ class Constraints:
 
             if _min is not None and _max is not None:
                 if _min >= _max:
-                    raise ValueError(
+                    raise exc.ConfigError(
                         f"Rule lt/le ({repr(_max)}) must > gt/ge ({repr(_min)})"
                     )
                 if isinstance(_max, int) and isinstance(_min, int):
                     if gt and lt:
                         if _max - _min < 2:
-                            raise ValueError(
+                            raise exc.ConfigError(
                                 f"Rule int lt: {_max} - gt: {_min} must greater or equal than 2"
                             )
 
@@ -639,7 +639,7 @@ class Constraints:
             value_types = self.CONSTRAINT_TYPES.get(key)
             origin_types = self.TYPE_SPEC_CONSTRAINTS.get(key)
             if value_types and not isinstance(val, value_types):
-                raise TypeError(
+                raise exc.ConfigError(
                     f"Constraint: {repr(key)} should be {value_types} object, got {val}"
                 )
             if origin_types:
@@ -652,18 +652,18 @@ class Constraints:
                             issubclass(tp, origin_types)
                             for tp in self.origin_type.__args__
                         ):
-                            raise TypeError(
+                            raise exc.ConfigError(
                                 f"Constraint: {repr(key)} is only for type: "
                                 f"{origin_types}, got {self.origin_type.__args__}"
                             )
                     else:
                         if origin_types == NUM_TYPES and self.origin_type == bool:
                             # bool is subclass of int
-                            raise TypeError(
+                            raise exc.ConfigError(
                                 f"Constraint: {repr(key)} is only for type: {origin_types}, got bool"
                             )
                         if not issubclass(self.origin_type, origin_types):
-                            raise TypeError(
+                            raise exc.ConfigError(
                                 f"Constraint: {repr(key)} is only for type: "
                                 f"{origin_types}, got {self.origin_type}"
                             )
@@ -676,14 +676,14 @@ class Constraints:
             const = constraints["const"]
             if self.origin_type:
                 if isinstance(self.origin_type, LogicalType):
-                    raise TypeError(
+                    raise exc.ConfigError(
                         f"Rule const: {repr(const)} cannot apply to LogicalType"
                     )
                 if not isinstance(const, self.origin_type):
                     if {type(const), self.origin_type} in TYPE_EXACT_TOLERANCE:
                         pass
                     else:
-                        raise TypeError(
+                        raise exc.ConfigError(
                             f"Rule const: {repr(const)} not instance of type: {self.origin_type}"
                         )
             # else:
@@ -701,7 +701,7 @@ class Constraints:
                 if member_type:
                     if self.origin_type:
                         if not issubclass(member_type, self.origin_type):
-                            raise TypeError(
+                            raise exc.ConfigError(
                                 f"Rule enum member type: {member_type} is "
                                 f"conflict with origin type: {self.origin_type}"
                             )
@@ -710,7 +710,7 @@ class Constraints:
             elif multi(enum):
                 enum = list(enum)
             else:
-                raise TypeError(
+                raise exc.ConfigError(
                     f"Invalid enum: {enum}, must be a Enum subclass of list/tuple/set"
                 )
             return {"enum": enum}  # ignore other constraints
@@ -727,7 +727,7 @@ class Constraints:
             if decimals and digits:
                 # 0.123
                 if digits < decimals:
-                    raise ValueError(f'Rule: constraint max_digits: {digits} must >= {decimals}')
+                    raise exc.ConfigError(f'Rule: constraint max_digits: {digits} must >= {decimals}')
 
         # other constraints other that const is considered not-null
         self.valid_types(constraints)
@@ -774,7 +774,7 @@ class Constraints:
                 name = key
             func = getattr(self.__class__, name, None)
             if not func:
-                raise ValueError(f'{self.__class__}: constraint {repr(name)} not discovered,'
+                raise exc.ConfigError(f'{self.__class__}: constraint {repr(name)} not discovered,'
                                  f' you can override this class and custom it')
             validators.append(
                 (key, val, func)
@@ -1107,7 +1107,7 @@ class Rule(metaclass=LogicalType):
         else:
             origin = item
         if args and cls.__args__:
-            raise ValueError(f'{cls}: args: {cls.__args__} already specified')
+            raise exc.ConfigError(f'{cls}: args: {cls.__args__} already specified')
         return cls.annotate(origin, *args)
 
     def __init_subclass__(cls, **kwargs):
@@ -1249,7 +1249,7 @@ class Rule(metaclass=LogicalType):
             elif len(args_) > 1:
                 constraints["enum"] = args_
             else:
-                raise ValueError(f"empty literal")
+                raise exc.ConfigError(f"empty literal")
             type_ = cls.__origin__ or type(args_[0])
         else:
             for arg in args_:
@@ -1266,7 +1266,7 @@ class Rule(metaclass=LogicalType):
 
                 if arg is ...:
                     if not issubclass(type_, tuple):
-                        raise ValueError(
+                        raise exc.ConfigError(
                             f"{cls} args: {args_} with ... only apply to tuple, got {type_}"
                         )
                     ellipsis_args = True
@@ -1498,13 +1498,13 @@ class Rule(metaclass=LogicalType):
 
         if max_contains or min_contains:
             if not contains:
-                raise ValueError(
+                raise exc.ConfigError(
                     f"Rule with max_contains/min_contains must set <contains> constraint"
                 )
 
             if max_contains is not None and min_contains is not None:
                 if max_contains < min_contains:
-                    raise ValueError(
+                    raise exc.ConfigError(
                         f"Rule with max_contains: {max_contains} is little than min_contains"
                     )
 
@@ -1513,7 +1513,7 @@ class Rule(metaclass=LogicalType):
 
         from collections.abc import Iterable
         if isinstance(cls.__origin__, type) and not issubclass(cls.__origin__, Iterable):
-            raise ValueError(f'Rule: constraint: contains is only for Iterable, got {cls.__origin__}')
+            raise exc.ConfigError(f'Rule: constraint: contains is only for Iterable, got {cls.__origin__}')
 
     @classmethod
     def _parse_contains(cls, value, context: RuntimeContext):

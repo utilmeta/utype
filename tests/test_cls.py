@@ -240,6 +240,18 @@ class TestClass:
             def static_method(param: str):
                 pass
 
+    def test_exclude_var(self, dfs):
+        class Exclude(Schema):
+            __options__ = Options(addition=True, data_first_search=dfs)
+
+            _exclude: int = 1
+            include: int = 0
+
+        e = Exclude(include='3', _exclude='2')
+        assert e._exclude == 1
+        assert e.include == 3
+        assert '_exclude' not in e
+
     def test_forward_ref(self, dfs):
         class T(Schema):
             __options__ = Options(ignore_required=True, data_first_search=dfs)

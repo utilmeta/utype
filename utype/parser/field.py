@@ -46,7 +46,7 @@ class Field:
         # api def: cannot be part of the response body
         # null: bool = False,
         # use null in type like Optional[int] / int | None
-        default=unprovided,
+        default: Any = unprovided,
         default_factory: Callable = None,
         defer_default: bool = False,
         deprecated: Union[bool, str] = False,
@@ -74,7 +74,7 @@ class Field:
         # --- ANNOTATES ---
         title: str = None,
         description: str = None,
-        example=unprovided,
+        example: Any = unprovided,
         # message: str = None,  # report this message if error occur
         # --- CONSTRAINTS ---
         const: Any = unprovided,
@@ -100,12 +100,17 @@ class Field:
     ):
         if mode:
             if readonly or writeonly:
-                raise ValueError(
-                    f"Field: mode: ({represent(mode)}) cannot set with readonly or writeonly"
+                raise exc.ConfigError(
+                    f"Field: mode: ({represent(mode)}) cannot set with readonly or writeonly",
+                    params={'mode': mode}
                 )
 
         if readonly and writeonly:
-            raise ValueError(f"Field: readonly and writeonly cannot be both specified")
+            raise exc.ConfigError(
+                f"Field: readonly and writeonly cannot be both specified",
+                params={'readonly': readonly, 'writeonly': writeonly}
+            )
+
         if readonly:
             mode = "r"
         if writeonly:
@@ -117,46 +122,72 @@ class Field:
         if not unprovided(default):
             required = False
             if default_factory:
-                raise ValueError(
-                    f"Field: default: {represent(default)} and default factory cannot set both"
+                raise exc.ConfigError(
+                    f"Field: default: {represent(default)} and default factory cannot set both",
+                    params={'default': default}
                 )
 
         if default_factory:
             required = False
             if not callable(default_factory):
-                raise ValueError(
-                    f"Field: default_factory: {represent(default_factory)} must be a callable"
+                raise exc.ConfigError(
+                    f"Field: default_factory: {represent(default_factory)} must be a callable",
+                    params={'default_factory': default_factory}
                 )
 
         if defer_default:
             if unprovided(default) and not default_factory:
-                raise ValueError(F'Field: specify defer_default=True without any default')
+                raise exc.ConfigError(
+                    F'Field: specify defer_default=True without any default',
+                    params={
+                        'defer_default': defer_default,
+                        'default': default,
+                        'default_factory': default_factory
+                    }
+                )
 
         if required is None:
             required = True
 
         if required:
             if on_error == 'exclude':
-                raise ValueError(f'Field: required field does not support on_error="exclude"')
+                raise exc.ConfigError(f'Field: required field does not support on_error="exclude"', params={
+                    'required': required,
+                    'on_error': on_error
+                })
 
         if isinstance(no_input, str):
             if mode:
                 if no_input not in mode:
-                    raise ValueError(
-                        f"Field no_input: {represent(no_input)} is not in mode: {represent(mode)}"
+                    raise exc.ConfigError(
+                        f"Field no_input: {represent(no_input)} is not in mode: {represent(mode)}",
+                        params={
+                            'no_input': no_input,
+                            'mode': mode
+                        }
                     )
 
         if isinstance(no_output, str):
             if mode:
                 if no_output not in mode:
-                    raise ValueError(
-                        f"Field no_output: {represent(no_output)} is not in mode: {represent(mode)}"
+                    raise exc.ConfigError(
+                        f"Field no_output: {represent(no_output)} is not in mode: {represent(mode)}",
+                        params={
+                            'no_output': no_output,
+                            'mode': mode
+                        }
                     )
 
         if round:
             if decimal_places and decimal_places not in (round, Lax(round)):
-                raise ValueError(f'Field round: {round} is a shortcut for decimal_places=Lax({round}), '
-                                 f'but you specified a different decimal_places: {represent(decimal_places)}')
+                raise exc.ConfigError(
+                    f'Field round: {round} is a shortcut for decimal_places=Lax({round}), '
+                    f'but you specified a different decimal_places: {represent(decimal_places)}',
+                    params={
+                        'round': round,
+                        'decimal_places': decimal_places
+                    }
+                )
 
             decimal_places = Lax(round)
 
@@ -187,13 +218,16 @@ class Field:
             for dep in dependencies:
                 dep = get_name(dep)
                 if not isinstance(dep, str):
-                    raise ValueError(f'Invalid dependency: {represent(dep)}, must be str or property')
+                    raise exc.ConfigError(f'Invalid dependency: {represent(dep)}, must be str or property')
                 deps.append(dep)
 
         if discriminator:
             discriminator = get_name(discriminator)
             if not isinstance(discriminator, str):
-                raise ValueError(f'Field.discriminator must be a str, got {represent(discriminator)}')
+                raise exc.ConfigError(
+                    f'Field.discriminator must be a str, got {represent(discriminator)}',
+                    params={'discriminator': discriminator}
+                )
 
         self.dependencies = deps
         self.discriminator = discriminator
@@ -476,38 +510,42 @@ class ParserField:
 
                     cls_parser = ClassParser.resolve_parser(arg)
                     if not cls_parser:
-                        raise ValueError(
+                        raise exc.ConfigError(
                             f"Field: {repr(self.attname)} specify a discriminator: "
                             f"{repr(self.field.discriminator)}, but got a type: {arg} "
                             f"that not support, must be a data class "
                             f"(like subclass of DataClass / Schema or "
-                            f"use @dataclass to decorate a class)"
+                            f"use @dataclass to decorate a class)",
+                            field=self.name
                         )
 
                     field = cls_parser.get_field(self.field.discriminator)
                     if not isinstance(field, ParserField):
-                        raise ValueError(
+                        raise exc.ConfigError(
                             f"Field: {repr(self.attname)} specify a discriminator: "
                             f"{repr(self.field.discriminator)}, but is was not find in type: "
                             f"{arg}, you should define {self.field.discriminator}: "
-                            f'Literal["some-value"] in that schema'
+                            f'Literal["some-value"] in that schema',
+                            field=self.name
                         )
 
                     const = field.const
                     if not isinstance(const, (int, str, bool)):
-                        raise ValueError(
+                        raise exc.ConfigError(
                             f"Field: {repr(self.attname)} specify a discriminator: "
                             f"{repr(self.field.discriminator)}, but in type {arg}, there is no"
                             f" common type const ({repr(const)}) set for this field, you should "
                             f"define {self.field.discriminator}: "
-                            f'Literal["some-value"] in that schema'
+                            f'Literal["some-value"] in that schema',
+                            field=self.name
                         )
 
                     if const in discriminator_map:
-                        raise ValueError(
+                        raise exc.ConfigError(
                             f"Field: {repr(self.attname)} with discriminator: "
                             f"{repr(self.field.discriminator)}, got a duplicate value:"
-                            f" {repr(const)} for {arg} and {discriminator_map[const]}"
+                            f" {repr(const)} for {arg} and {discriminator_map[const]}",
+                            field=self.name
                         )
 
                     discriminator_map[const] = arg
@@ -538,7 +576,7 @@ class ParserField:
         if self.aliases:
             inter = self.aliases.intersection(fields)
             if inter:
-                raise ValueError(
+                raise exc.ConfigError(
                     f"Field(name={repr(self.name)}) aliases: {inter} conflict with fields"
                 )
 
@@ -553,7 +591,7 @@ class ParserField:
                     # continue
                     # if dependencies is generated from unbound, it is considered inaccurate
                     if not self.property:
-                        raise ValueError(
+                        raise exc.ConfigError(
                             f"Field(name={repr(self.name)}) dependency: {repr(dep)} not exists"
                         )
                     continue
@@ -575,7 +613,7 @@ class ParserField:
             if to in alias_map:
                 to = alias_map[to]
             if to not in fields:
-                raise ValueError(
+                raise exc.ConfigError(
                     f"Field(name={repr(self.name)}) is deprecated,"
                     f" but prefer field : {repr(to)} not exists"
                 )
@@ -743,24 +781,55 @@ class ParserField:
 
     def check_function(self, func):
         if not self.always_provided:
-            raise TypeError(f'{func}: Field(name={repr(self.name)}) in function with required=False '
-                            f'must specify a default or default_factory')
+            raise exc.ConfigError(
+                f'{func}: Field(name={repr(self.name)}) in function with required=False '
+                f'must specify a default or default_factory',
+                obj=func,
+                field=self.name,
+                params={'required': self.field.required, 'default': self.field.default}
+            )
+
+        if self.field.defer_default:
+            # use defer_default=True will cause no default provided
+            raise exc.ConfigError(
+                f"{func}: Field(name={repr(self.name)}).defer_default has no meanings in function params,"
+                f" please consider move it",
+                obj=func,
+                field=self.name,
+                params={'defer_default': self.field.defer_default}
+            )
+
+        if self.field.no_default:
+            if self.field.no_input:
+                raise exc.ConfigError(
+                    f"{func}: Field(name={repr(self.name)}) with no_input ({self.field.no_input}) "
+                    f"must specify a default/default_factory value",
+                    obj=func,
+                    field=self.name,
+                    params={'no_input': self.field.no_input, 'default': self.field.default}
+                )
+
+            if self.field.mode:
+                raise exc.ConfigError(
+                    f"{func}: Field(name={repr(self.name)}) with mode ({self.field.mode}) "
+                    f"must specify a default/default_factory value",
+                    obj=func,
+                    field=self.name,
+                    params={'mode': self.field.mode, 'default': self.field.default}
+                )
 
         if self.field.no_output:
             warnings.warn(
                 f"{func}: Field(name={repr(self.name)}).no_output has no meanings in function params,"
                 f" please consider move it"
             )
+
         if self.field.immutable:
             warnings.warn(
                 f"{func}: Field(name={repr(self.name)}).immutable has no meanings in function params, "
                 f"please consider move it"
             )
-        if self.field.defer_default:
-            warnings.warn(
-                f"{func}: Field(name={repr(self.name)}).defer_default has no meanings in function params,"
-                f" please consider move it"
-            )
+
         if self.field.repr:
             warnings.warn(
                 f"{func}: Field(name={repr(self.name)}).repr has no meanings in function params,"
@@ -901,11 +970,11 @@ class ParserField:
 
                         # some invalid configures
                         if field.alias:
-                            raise ValueError
+                            raise exc.ConfigError(field=attname, params={'alias': field.alias})
                         if field.no_output:
-                            raise ValueError
+                            raise exc.ConfigError(field=attname, params={'no_output': field.no_output})
                         if field.dependencies:
-                            raise ValueError
+                            raise exc.ConfigError(field=attname, params={'dependencies': field.dependencies})
 
                     else:
                         default = param.default
@@ -935,11 +1004,11 @@ class ParserField:
 
                     # some invalid configures
                     if output_field.no_input:
-                        raise ValueError
+                        raise exc.ConfigError(field=attname, params={'no_input': field.no_input})
                     if output_field.alias_from:
-                        raise ValueError
+                        raise exc.ConfigError(field=attname, params={'alias_from': field.alias_from})
                     if not output_field.no_default:
-                        raise ValueError
+                        raise exc.ConfigError(field=attname, params={'default': field.default})
 
                 else:
                     output_field = None

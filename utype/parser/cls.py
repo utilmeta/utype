@@ -150,9 +150,11 @@ class ClassParser(BaseParser):
         field_map = {}
         for field in fields:
             if field.name in field_map:
-                raise ValueError(
+                raise exc.ConfigError(
                     f"{self.obj}: field name: {repr(field.name)} conflicted at "
-                    f"{field}, {field_map[field.name]}"
+                    f"{field}, {field_map[field.name]}",
+                    obj=self.obj,
+                    field=field.name
                 )
             field_map[field.name] = field
         self.fields.update(field_map)
@@ -415,11 +417,11 @@ class ClassParser(BaseParser):
             if not no_parse:
                 self.init_parser = self.function_parser_cls.apply_for(init_func)
                 if self.init_parser.pos_only_keys:
-                    raise ValueError(f'{self.obj}: positional only keys: {self.init_parser.pos_only_keys} '
-                                     f'is not allowed for dataclasses __init__')
+                    raise exc.ConfigError(f'{self.obj}: positional only keys: {self.init_parser.pos_only_keys} '
+                                          f'is not allowed for dataclasses __init__', obj=self.obj)
                 if self.init_parser.pos_var:
-                    raise ValueError(f'{self.obj}: positional var: {self.init_parser.pos_var} '
-                                     f'is not allowed for dataclasses __init__')
+                    raise exc.ConfigError(f'{self.obj}: positional var: {self.init_parser.pos_var} '
+                                          f'is not allowed for dataclasses __init__', obj=self.obj)
 
                 __init__ = self.init_parser.wrap(parse_params=True, parse_result=False)
                 __init__.__parser__ = self

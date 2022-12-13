@@ -16,6 +16,8 @@ from collections.abc import (
     AsyncIterator,
     Iterable,
     AsyncIterable,
+    Mapping,
+    Callable
 )
 import warnings
 
@@ -50,6 +52,37 @@ class FunctionParser(BaseParser):
         )
 
     @classmethod
+    def apply_class(cls, target: type,
+                    options: Options = None,
+                    no_cache: bool = False,
+                    ignore_params: bool = False,
+                    ignore_result: bool = False,
+                    ):
+        """
+        Patch all explicit methods in class (name not beginning with "_")
+        """
+        for key, val in target.__dict__.items():
+            if key.startswith('_'):
+                continue
+            if not cls.validate_function(val):
+                continue
+            current_parser = cls.resolve_parser(val)
+            if current_parser:
+                continue
+            parser = cls.apply_for(
+                val,
+                no_cache=no_cache,
+                options=options,
+                from_class=target
+            )
+            func = parser.wrap(
+                parse_params=not ignore_params,
+                parse_result=not ignore_result,
+            )
+            setattr(target, key, func)
+        return target
+
+    @classmethod
     def analyze_func(cls, f):
         first_reserve = None
         if isinstance(f, classmethod):
@@ -80,12 +113,13 @@ class FunctionParser(BaseParser):
             and not func.__qualname__.endswith(f"{LOCALS_NAME}." + func.__name__)
         )
 
-    def __init__(self, func, options: Options = None):
+    def __init__(self, func, options: Options = None, from_class: type = None):
         if not self.validate_function(func):
             raise TypeError(
                 f"{self.__class__}: invalid function or method: {func}, must be method or function"
             )
 
+        self.from_class = from_class
         self.instancemethod = False
         self.classmethod = isinstance(func, classmethod)
         self.staticmethod = isinstance(func, staticmethod)
@@ -102,11 +136,25 @@ class FunctionParser(BaseParser):
 
         parameters = inspect.signature(func).parameters.items()
 
-        if not self.first_reserve and not self.is_method and not self.is_lambda:
-            # guess instance method
-            if self.infer_instancemethod(func) and len(parameters) >= 1:
+        if self.from_class:
+            # within a class context, the instance method is easy to detect
+            # exclude the staticmethod/classmethod is enough
+            if not self.first_reserve and not self.staticmethod and not self.classmethod:
                 self.first_reserve = True
                 self.instancemethod = True
+        else:
+            if not self.first_reserve and not self.is_method and not self.is_lambda and not self.staticmethod:
+                # guess instance method
+                if len(parameters) >= 1:
+                    (fk, first_param), *_rest = parameters
+                    first_param: inspect.Parameter
+                    if first_param.kind in (first_param.POSITIONAL_ONLY, first_param.POSITIONAL_OR_KEYWORD)\
+                            and first_param.default is first_param.empty\
+                            and first_param.annotation is first_param.empty:
+
+                        if self.infer_instancemethod(func):
+                            self.first_reserve = True
+                            self.instancemethod = True
 
         self.reserve_name = None
         if self.first_reserve:
@@ -117,6 +165,7 @@ class FunctionParser(BaseParser):
         # defaults = {k: v.default for k, v in self.parameters if v.default is not v.empty}
         # if a param is not defaulted or annotated, it rule is Rule(require=True)
 
+        self.exclude_indexes = set()
         self.parameters: Iterable[Tuple[str, inspect.Parameter]] = parameters
         self.kw_var = None  # only for function, **kwargs
         self.pos_var_index = None
@@ -176,14 +225,15 @@ class FunctionParser(BaseParser):
 
         super().__init__(func, options=options)
 
+        self.init_kwargs = {'options': options, 'from_class': from_class}
         if not self.kw_var and self.options.addition:
             raise TypeError(f'FunctionParser: {func}, specify addition: {options.addition} '
                             f'without declaring the **kwargs variable')
 
-        if self.options.mode and not self.options.override:
-            warnings.warn(f'FunctionParser: {self.obj} with options'
-                          f' with mode ({repr(self.options.mode)}) should turn on override=True, '
-                          f'elsewhere there will be no effect')
+        # if self.options.mode and not self.options.override:
+        #     warnings.warn(f'FunctionParser: {self.obj} with options'
+        #                   f' with mode ({repr(self.options.mode)}) should turn on override=True, '
+        #                   f'elsewhere there will be no effect')
 
         self.position_type = None
         self.return_type = None
@@ -276,12 +326,15 @@ class FunctionParser(BaseParser):
         return f"<{self.__class__.__name__}: {self.obj.__qualname__}>"
 
     def generate_fields(self):
-        exclude_vars = self.exclude_vars
+        exclude_vars = set()
+        exclude_indexes = set()
         fields = []
 
-        for name, param in self.parameters:
+        for i, (name, param) in enumerate(self.parameters):
             if not self.validate_field_name(name):
                 exclude_vars.add(name)
+                if param.kind in (param.POSITIONAL_ONLY, param.POSITIONAL_OR_KEYWORD):
+                    exclude_indexes.add(i)
                 continue
             if param.kind in (param.VAR_KEYWORD, param.VAR_POSITIONAL):
                 continue
@@ -296,6 +349,8 @@ class FunctionParser(BaseParser):
                     if is_final(annotation) or is_classvar(annotation):
                         warnings.warn(f'{self.obj}: param: {repr(name)} invalid annotation: {annotation}, '
                                       f'this is only for class variables, please use the type directly')
+                        # args = get_args(annotation)
+                        # annotation = args[0] if args else None
                         continue
 
             fields.append(self.schema_field_cls.generate(
@@ -310,15 +365,20 @@ class FunctionParser(BaseParser):
         field_map = {}
         for field in fields:
             if field.name in field_map:
-                raise ValueError(
+                raise exc.ConfigError(
                     f"{self.obj}: field name: {repr(field.name)} conflicted at "
-                    f"{field}, {field_map[field.name]}"
+                    f"{field}, {field_map[field.name]}",
+                    obj=self.obj,
+                    field=field.name,
                 )
             if not self.is_passed:
                 # is function is :pass, we do not check for now
                 field.check_function(self.obj)      # check for function
             field_map[field.name] = field
+
         self.fields.update(field_map)
+        self.exclude_vars = exclude_vars
+        self.exclude_indexes = exclude_indexes
 
     def validate_fields(self):
         """
@@ -377,10 +437,10 @@ class FunctionParser(BaseParser):
         parse_result: bool = None,
     ):
 
-        context = (options or self.options).make_context()
+        # MAKE CONTEXT AT RUNTIME !
         if self.is_async_generator:
             f = wraps(self.obj)(self.get_async_generator(
-                context=context,
+                options=options,
                 first_reserve=first_reserve,
                 parse_params=parse_params,
                 parse_result=parse_result,
@@ -390,6 +450,7 @@ class FunctionParser(BaseParser):
 
             @wraps(self.obj)
             async def f(*args, **kwargs):
+                context = (options or self.options).make_context()
                 return await self.async_call(
                     args,
                     kwargs,
@@ -403,6 +464,7 @@ class FunctionParser(BaseParser):
 
             @wraps(self.obj)
             def f(*args, **kwargs):  # noqa
+                context = (options or self.options).make_context()
                 return self.sync_call(
                     args,
                     kwargs,
@@ -413,6 +475,10 @@ class FunctionParser(BaseParser):
                 )
 
         f.__parser__ = self
+        if self.classmethod:
+            return classmethod(f)
+        elif self.staticmethod:
+            return staticmethod(f)
         return f
 
     def parse_pos_type(self, index: int, value, context: RuntimeContext):
@@ -458,8 +524,11 @@ class FunctionParser(BaseParser):
                 field = self.positional_fields.get(i)
                 # if field not exists, maybe it's a excluded var
                 if field:
-                    parsed_keys.append(field.attname)
-                    arg = field.parse_value(arg, context=context)
+                    if field.no_input(arg, options=context.options):
+                        arg = field.get_default(options=context.options)
+                    else:
+                        parsed_keys.append(field.attname)
+                        arg = field.parse_value(arg, context=context)
                     if unprovided(arg):
                         # on_error=excluded, or error collected
                         continue
@@ -511,6 +580,9 @@ class FunctionParser(BaseParser):
         if parse_params:
             args, kwargs = self.parse_params(args, kwargs, context=context)
         if first_reserve:
+            if self.from_class:
+                if not isinstance(_, self.from_class):
+                    raise exc.InvalidInstance(type=self.from_class, value=_)
             args = (_, *args)
         return args, kwargs
 
@@ -547,6 +619,11 @@ class FunctionParser(BaseParser):
                     context.handle_error(error, force_raise=True)
                 return result
             else:
+                if inspect.isgenerator(item):
+                    generator = item
+                    continue
+                    # maybe a tail opt generator
+
                 if self.generator_yield_type:
                     try:
                         item = context.transformer(item, self.generator_yield_type)
@@ -578,13 +655,14 @@ class FunctionParser(BaseParser):
 
     def get_async_generator(
         self,
-        context: RuntimeContext,
+        options: Options = None,
         first_reserve: bool = None,
         parse_params: bool = None,
         parse_result: bool = None,
     ):
         @wraps(self.obj)
         async def async_generator(*args, **kwargs):
+            context = (options or self.options).make_context()
             args, kwargs = self.get_params(
                 args,
                 kwargs,
@@ -679,3 +757,35 @@ class FunctionParser(BaseParser):
 
     # def __call__(self, *args, **kwargs):
     #     return self.sync_call(args, kwargs)
+
+
+def call(func: Callable, args=None, data=None, options=None, context: RuntimeContext = None,
+         parser_cls=FunctionParser,
+         ignore_params: bool = False, ignore_result: bool = False):
+
+    parser = parser_cls.apply_for(func)     # use the __parser__ if already installed
+    options = options or parser.options
+    new_context: RuntimeContext = (options or parser.options).make_context(context=context)
+    transformer = new_context.transformer
+
+    args = args or ()
+    data = data or {}
+    if not isinstance(args, Iterable):
+        # {} dict instance is an instance of Mapping too
+        if transformer.no_explicit_cast:
+            raise TypeError(f"invalid input type for funtional args, should be dict or Mapping")
+        else:
+            args = transformer.to_array_types(args)
+    if not isinstance(data, Mapping):
+        # {} dict instance is an instance of Mapping too
+        if transformer.no_explicit_cast:
+            raise TypeError(f"invalid input type for functional data, should be dict or Mapping")
+        else:
+            data = transformer.to_dict(data)
+
+    f = parser.wrap(
+        options,
+        parse_params=not ignore_params,
+        parse_result=not ignore_result
+    )
+    return f(*args, **data)
