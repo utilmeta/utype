@@ -85,6 +85,7 @@ class Options:
     data_first_search: Optional[bool] = False
     mode: str = None
     allow_subclasses: bool = True
+    cast_keyword_str: bool = False
 
     # -- PARAMS
     case_insensitive: bool = None
@@ -132,6 +133,7 @@ class Options:
         alias_generator: Callable = unprovided,
         ignore_alias_conflict: bool = unprovided,
         allow_subclasses: bool = unprovided,
+        cast_keyword_str: bool = unprovided,
         # allowed_runtime_options: Union[str, None, List[str]] = "*",
         case_insensitive: bool = unprovided,
         data_first_search: Optional[bool] = unprovided
@@ -331,6 +333,7 @@ class RuntimeContext:
         self.context = context
         self.depth = (context.depth + 1) if context else 0
 
+        self.route = route
         self.routes = []
         if self.context:
             self.routes = list(self.context.routes)

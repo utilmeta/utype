@@ -35,8 +35,8 @@ import utype
 
 @utype.parse
 def login(
-	username: str = utype.Field(regex='[0-9a-zA-Z]{3,20}'),
-	password: str = utype.Field(min_length=6)
+	username: str = utype.Param(regex='[0-9a-zA-Z]{3,20}'),
+	password: str = utype.Param(min_length=6)
 ):
 	# 你可以直接开始编写逻辑了
 	return username, password
@@ -179,7 +179,7 @@ import asyncio
 from typing import AsyncGenerator  
 
 @utype.parse  
-async def waiter(rounds: int = utype.Field(gt=0)) -> AsyncGenerator[int, float]:  
+async def waiter(rounds: int = utype.Param(gt=0)) -> AsyncGenerator[int, float]:  
     assert isinstance(rounds, int)  
     i = rounds  
     while i:  

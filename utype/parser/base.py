@@ -367,15 +367,24 @@ class BaseParser:
         # addition_type = options.addition if isinstance(options.addition, type) else self.addition_type
         addition_type = self.addition_type
         # we should just ignore the runtime addition type
-        if addition_type:
+        if not addition_type:
+            return value
+
+        options = context.options
+        with context.enter(key) as new_context:
             try:
-                value = context.transformer(value, addition_type)
+                value = new_context.transformer(value, addition_type)
             except Exception as e:
-                context.handle_error(
-                    exc.ParseError(
-                        item=key, value=value, type=addition_type, origin_exc=e
-                    )
+                error = exc.ParseError(
+                    item=key, value=value, type=addition_type, origin_exc=e
                 )
+                if options.invalid_values == options.EXCLUDE:
+                    context.collect_waring(error.formatted_message)
+                    return unprovided
+                elif options.invalid_values == options.PRESERVE:
+                    context.collect_waring(error.formatted_message)
+                else:
+                    context.handle_error(error)
         return value
 
     def data_first_parse(

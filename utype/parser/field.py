@@ -326,6 +326,53 @@ class Field:
         return fn_or_cls
 
 
+class Param(Field):
+    def __init__(
+        self,
+        default=unprovided,
+        *,
+        default_factory: Callable = None,
+        alias: Union[str, Callable] = None,
+        alias_from: Union[str, List[str], Callable, List[Callable]] = None,
+        case_insensitive: bool = None,
+        mode: str = None,
+        deprecated: Union[bool, str] = False,
+        discriminator=None,  # discriminate the schema union by it's field
+        no_input: Union[bool, str, Callable] = False,
+        on_error: Literal["exclude", "preserve", "throw"] = None,  # follow the options
+        dependencies: Union[list, str, property] = None,
+        # --- ANNOTATES ---
+        title: str = None,
+        description: str = None,
+        example=unprovided,
+        # --- CONSTRAINTS ---
+        const=unprovided,
+        enum: Iterable = None,
+        gt=None,
+        ge=None,
+        lt=None,
+        le=None,
+        regex: str = None,
+        length: Union[int, ConstraintMode] = None,
+        max_length: Union[int, ConstraintMode] = None,
+        min_length: int = None,
+        # number
+        max_digits: Union[int, ConstraintMode] = None,
+        decimal_places: Union[int, ConstraintMode] = None,
+        round: int = None,
+        multiple_of: Union[int, ConstraintMode] = None,
+        # array
+        contains: type = None,
+        max_contains: int = None,
+        min_contains: int = None,
+        unique_items: Union[bool, ConstraintMode] = None,
+    ):
+        kwargs = dict(locals())
+        kwargs.pop('self')
+        kwargs.pop('__class__')
+        super().__init__(**kwargs)
+
+
 class ParserField:
     TYPE_PRIMITIVE = {
         str: "string",
@@ -917,6 +964,9 @@ class ParserField:
                         context.handle_error(error)
                     else:
                         context.collect_waring(error.formatted_message)
+                    # return default if provided
+                    # return unprovided if no default is set
+                    return self.get_default(options=context.options, defer=False)
                 elif error_option == context.options.PRESERVE:
                     context.collect_waring(error.formatted_message)
                     return value

@@ -1,7 +1,7 @@
 from .utils.transform import TypeTransformer, register_transformer, type_transform
 from .utils.encode import register_encoder
 from .parser.rule import Rule, Lax
-from .parser.field import Field
+from .parser.field import Field, Param
 from .parser.options import Options
 from .schema import Schema, DataClass, LogicalMeta
 from .utils import exceptions as exc

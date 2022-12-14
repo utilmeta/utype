@@ -1,5 +1,6 @@
 import utype
 from typing import Optional
+from datetime import datetime
 
 
 class PositiveInt(int, utype.Rule):
@@ -34,3 +35,25 @@ try:
     get_article(title='*' * 101)
 except utype.exc.ParseError as e:
     print(e)
+
+
+@utype.parse
+def create_user(
+    username: str = utype.Field(regex='[0-9a-zA-Z_-]{3,20}', example='alice-01'),
+    password: str = utype.Field(min_length=6, max_length=50),
+    avatar: Optional[str] = utype.Field(
+        description='the avatar url of user',
+        alias_from=['picture', 'headImg'],
+        default=None,
+    ),
+    signup_time: datetime = utype.Field(
+        no_input=True,
+        default_factory=datetime.now
+    )
+) -> dict:
+    return {
+        'username': username,
+        'password': password,
+        'avatar': avatar,
+        'signup_time': signup_time,
+    }

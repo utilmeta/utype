@@ -459,6 +459,14 @@ def init_dataclass(cls: Type[T], data, options: Options = None, context: Runtime
         else:
             data = transformer.to_dict(data)
 
+    if new_context.options.cast_keyword_str:
+        _data = {}
+        for key, val in data.items():
+            if not isinstance(key, str):
+                key = transformer.to_str(key)
+            _data[key] = val
+        data = _data
+
     inst = cls.__new__(cls)
     inst.__context__ = new_context
 
