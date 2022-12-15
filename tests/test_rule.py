@@ -57,7 +57,7 @@ class TestRule:
             null_or_const(False)
 
         with pytest.raises(exc.ParseError):
-            null_or_const(2, __options__=Options(no_explicit_cast=True))
+            null_or_const(2, context=Options(no_explicit_cast=True).make_context())
 
         int_or_list = types.NegativeInt | List[str]
         assert int_or_list(3) == ["3"]
@@ -231,24 +231,24 @@ class TestRule:
         with pytest.raises(exc.ConstraintError):
             DtB('2023-02-03')
 
-        with pytest.raises(ValueError):
+        with pytest.raises(exc.ConfigError):
             class IntV(Rule):
                 gt = 3
                 lt = 2
 
-        with pytest.raises(ValueError):
+        with pytest.raises(exc.ConfigError):
 
             class IntV(Rule):  # noqa
                 gt = 3
                 ge = 3
 
-        with pytest.raises(ValueError):
+        with pytest.raises(exc.ConfigError):
 
             class IntV(Rule):  # noqa
                 gt = 3
                 ge = 2
 
-        with pytest.raises(ValueError):
+        with pytest.raises(exc.ConfigError):
 
             class IntV(Rule):  # noqa
                 gt = 3
@@ -384,7 +384,7 @@ class TestRule:
         assert make_round(0)("1.245") == round(1.245, 0)  # noqa
         assert make_round(-1)("31.245") == round(31.245, -1)  # noqa
 
-        with pytest.raises(ValueError):
+        with pytest.raises(exc.ConfigError):
             class D1(decimal.Decimal, Rule):
                 decimal_places = 3
                 max_digits = 2
@@ -409,7 +409,7 @@ class TestRule:
 
         with pytest.raises(exc.ConstraintError):
             # NO EXPLICITLY POSITIVE INT
-            IntArray(["1", -3, b"2.3"], __options__=Options(no_explicit_cast=True))
+            IntArray(["1", -3, b"2.3"], context=Options(no_explicit_cast=True).make_context())
 
         int_array = IntArray[int]
         assert int_array(["1", -3, b"2.3"]) == [1, -3, 2]
@@ -594,7 +594,7 @@ class TestRule:
 
         with pytest.raises(exc.ParseError):
             # absence
-            tup_str([1, "-5", "-infinity", 1], __options__=Options(no_data_loss=True))
+            tup_str([1, "-5", "-infinity", 1], context=Options(no_data_loss=True).make_context())
 
         with pytest.raises(exc.ParseError):
             # absence

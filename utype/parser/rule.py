@@ -349,8 +349,8 @@ class LogicalType(type):  # noqa
             # 2. try to transform in strict mode
             # strict_transformer = options.get_transformer(no_explicit_cast=True, no_data_loss=True)
 
-            with context.enter(cls.combinator) as new_context:
-                for con in cls.args:
+            for con in cls.args:
+                with context.enter(cls.combinator) as new_context:
                     try:
                         # error isolation
                         value = new_context.transformer(value, con)
@@ -369,8 +369,8 @@ class LogicalType(type):  # noqa
 
             xor = None
 
-            with context.enter(cls.combinator) as new_context:
-                for con in cls.args:
+            for con in cls.args:
+                with context.enter(cls.combinator) as new_context:
                     try:
                         value = new_context.transformer(value, con)
                         if xor is None:
@@ -392,14 +392,15 @@ class LogicalType(type):  # noqa
 
         elif cls.combinator == "~":
             for con in cls.args:
-                try:
-                    context.transformer(value, con)
-                    context.handle_error(
-                        exc.NegateViolatedError(f"Negate condition: {con} is violated")
-                    )
-                except Exception:  # noqa
-                    pass
-                    # value = cls._get_error_result(e, value, **kwargs)
+                with context.enter(cls.combinator) as new_context:
+                    try:
+                        new_context.transformer(value, con)
+                        context.handle_error(
+                            exc.NegateViolatedError(f"Negate condition: {con} is violated")
+                        )
+                    except Exception:  # noqa
+                        break
+                        # value = cls._get_error_result(e, value, **kwargs)
 
         context.raise_error()  # raise error if collected
         return value
@@ -1099,7 +1100,7 @@ class Rule(metaclass=LogicalType):
 
     def __class_getitem__(cls, item):
         args = ()
-        origin = None
+        origin = cls.__origin__
         if isinstance(item, tuple):
             args = item
         elif cls.__origin__:
@@ -1113,7 +1114,7 @@ class Rule(metaclass=LogicalType):
     def __init_subclass__(cls, **kwargs):
         # if not cls.__origin__:
         origin = None
-        class_getitem = None
+        class_getitem = cls.__dict__.get("__class_getitem__")
         for base in cls.__bases__:
             if issubclass(base, Rule):
                 if not class_getitem:
@@ -1208,7 +1209,7 @@ class Rule(metaclass=LogicalType):
                     f"you should inherit resolve_args_parser and specify yourself"
                 )
         else:
-            if class_getitem and not hasattr(cls, ".__class_getitem__"):
+            if class_getitem and not cls.__dict__.get("__class_getitem__"):
                 # we should do a little hack here
                 # because according to MRO
                 # class UniqueTuple(tuple, Array):
@@ -1265,7 +1266,7 @@ class Rule(metaclass=LogicalType):
                     continue
 
                 if arg is ...:
-                    if not issubclass(type_, tuple):
+                    if isinstance(type_, type) and not issubclass(type_, tuple):
                         raise exc.ConfigError(
                             f"{cls} args: {args_} with ... only apply to tuple, got {type_}"
                         )

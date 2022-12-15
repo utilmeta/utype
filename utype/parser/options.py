@@ -177,8 +177,8 @@ class Options:
             if unprovided(val):
                 continue
             if hasattr(self, key):
-                if getattr(self, key) == val:
-                    continue
+                # if getattr(self, key) == val:
+                #     continue
                 self.__dict__[key] = val
                 options[key] = val
         self._options = options
@@ -196,10 +196,7 @@ class Options:
 
     @classmethod
     def initialize(cls):
-        options = {}
-        for name in cls._option_names:
-            if hasattr(cls, name):
-                options[name] = getattr(cls, name)
+        options = {k: v for k, v in cls.__dict__.items() if k in cls._option_names}
         return cls(**options)
 
     @property
@@ -331,14 +328,17 @@ class RuntimeContext:
     ):
 
         self.context = context
-        self.depth = (context.depth + 1) if context else 0
+        self.depth = context.depth if context else 0
 
         self.route = route
         self.routes = []
         if self.context:
             self.routes = list(self.context.routes)
+
         if route:
             self.routes.append(route)
+        else:
+            self.depth += 1
 
         self.errors = []
         self.tmp_errors = []
@@ -453,8 +453,11 @@ class RuntimeContext:
         if force_raise or not self.options.collect_errors:
             raise e
 
-        if self.options.max_errors is not None and len(self.errors) > self.options.max_errors:
-            raise e
+        if self.options.max_errors is not None and len(self.errors) >= self.options.max_errors:
+            errors = list(self.errors)
+            if self.tmp_errors:
+                errors.extend(self.tmp_errors)
+            raise exc.CollectedParseError(errors=errors)
 
     def collect_waring(self, warning, category=None):
         warnings.warn(warning, category=category)

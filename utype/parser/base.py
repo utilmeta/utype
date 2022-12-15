@@ -36,6 +36,11 @@ class BaseParser:
     ) -> "BaseParser":
         if isinstance(obj, cls):
             return obj
+        parser = getattr(obj, "__dict__", {}).get('__parser__')
+        # do not use getattr(obj, '__parser__')
+        # since it may get to the base class
+        if isinstance(parser, cls):
+            return parser
         global __parsers__
         # key = (cls, obj)
         key = obj
@@ -53,6 +58,7 @@ class BaseParser:
         self.obj = obj
         self.init_kwargs = {'options': options}
         self.options: Options = self.options_cls.generate_from(options)
+
         self.forward_refs: Dict[
             str, Tuple[ForwardRef, dict]
         ] = {}  # store unresolved ref
@@ -263,7 +269,7 @@ class BaseParser:
                     # include equal
 
             if field.is_case_insensitive(self.options):
-                case_insensitive_names.update({*field.aliases, key})
+                case_insensitive_names.update(field.all_aliases)
 
         # for key, field in self.fields.items():
         #     if key in alias_map:
@@ -329,14 +335,14 @@ class BaseParser:
             if len(data) > options.max_params:
                 context.handle_error(
                     exc.ParamsExceedError(
-                        max_params=options.max_params, properties_num=len(data)
+                        max_params=options.max_params, params_num=len(data)
                     )
                 )
         if options.min_params:
             if len(data) < options.min_params:
                 context.handle_error(
                     exc.ParamsLackError(
-                        min_params=options.min_params, properties_num=len(data)
+                        min_params=options.min_params, params_num=len(data)
                     )
                 )
         dfs = (
@@ -497,10 +503,11 @@ class BaseParser:
         options = context.options
 
         for key, field in self.fields.items():
-            if excluded_keys and key in excluded_keys:
-                continue
             value = unprovided
             name = field.attname if as_attname else field.name
+
+            if excluded_keys and name in excluded_keys:
+                continue
 
             if options.ignore_alias_conflicts:
                 for alias in field.all_aliases:

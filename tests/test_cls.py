@@ -5,18 +5,8 @@ from utype import types
 from typing import List, Dict, Tuple, Union, Set, Optional, Type, Any
 from datetime import datetime, date, timedelta, time, timezone
 from uuid import UUID
-from decimal import Decimal
-from enum import Enum
-from collections.abc import Mapping
 import json
 import pytest  # noqa
-
-
-# must be module-level, otherwise cannot resolve by globals
-class Self(Schema):
-    name: str
-    to_self: "Self" = Field(required=False)
-    self_lst: List["Self"] = Field(default_factory=list)
 
 
 @pytest.fixture(params=(False, True))
@@ -47,6 +37,13 @@ class TestClass:
         assert dict(ArticleSchema(slug=b"My Awesome Article!")) == {
             "slug": "my-awesome-article"
         }
+
+        # test 1, pos
+        assert ArticleSchema(
+            dict(slug=b"My Awesome Article!")
+        ) == ArticleSchema(
+            **dict(slug=b"My Awesome Article!")
+        )
 
         class PowerSchema(Schema):
             __options__ = Options(data_first_search=dfs)
@@ -88,7 +85,7 @@ class TestClass:
 
         dt = DT.__from__(b'{"name": 1, "age": "2"}')
         assert dt.name == '1'
-        assert dt.age == '1'
+        assert dt.age == 2
 
         with pytest.raises(exc.ParseError):
             DT.__from__(b'{"name": 1, "age": "2"}', options=Options(no_explicit_cast=True))
@@ -131,15 +128,16 @@ class TestClass:
         v = DataProp(name=1, age='2', other='3')
         assert v.name == '1'
         assert 'age' in v
-        assert 'other' in v
+        assert 'other' not in v
+
         assert v == DataProp(name=1, age='2')
         assert repr(v) == "DataProp(name='1', age=2)"
 
         with pytest.raises(exc.ParseError):
-            dt.name = '*' * 20
+            v.name = '*' * 20
 
         with pytest.raises(exc.ParseError):
-            dt.age = 'abc'
+            v.age = 'abc'
 
         # test no parse
         @utype.dataclass(
@@ -184,7 +182,7 @@ class TestClass:
             custom_val: CustomType
 
             dt_val: datetime = Field(default_factory=datetime.now)
-            null_val: Optional[str] = Field(length=6, on_error="exclude")
+            null_val: Optional[str] = Field(length=6, required=False, on_error="exclude")
             d_val: date = Field(required=False)
             # test nest types
             list_val: List[str] = Field(default_factory=list)  # test callable default
@@ -303,6 +301,12 @@ class TestClass:
             T(forward_in_args=[1, 2, 3, 4])
         with pytest.raises(exc.ParseError):
             T(forward_in_dict={1: [2], 2: [1]})
+
+        # test not-module-level self ref
+        class Self(Schema):
+            name: str
+            to_self: "Self" = Field(required=False)
+            self_lst: List["Self"] = Field(default_factory=list)
 
         sf = Self(name=1, to_self=b'{"name":"test"}')
         assert sf.to_self.name == "test"
@@ -442,7 +446,6 @@ class TestClass:
             def __init__(
                 self,
                 alias_n0: int = 0,
-                /,
                 alias_n1: int = Field(
                     alias_from=["n1", "_n1"], default_factory=lambda: 1
                 ),
@@ -818,10 +821,14 @@ class TestClass:
         assert MemberSchema.__from__(bob) == group.members[1]
 
         class UserSchema(Schema):
+            __options__ = Options(data_first_search=dfs)
+
             name: str
             level: int = 0
 
             class KeyInfo(Schema):
+                __options__ = Options(data_first_search=dfs)
+
                 access_key: str
                 last_activity: datetime = None
 
@@ -839,7 +846,7 @@ class TestClass:
             password: str = Field(min_length=6, max_length=20)
 
         class LoginSchema(UsernameMixin, PasswordMixin):
-            pass
+            __options__ = Options(data_first_search=dfs)
 
         log = LoginSchema(username=123456, password=123456)
         assert log.username == log.password == '123456'
@@ -850,6 +857,7 @@ class TestClass:
             username: str = Field(regex='[0-9a-zA-Z]{3,20}')
 
         class LoginForm(UserInfo):
+            __options__ = Options(data_first_search=dfs)
             password: str = Field(min_length=6, max_length=20)
 
         password_dict = {"alice": "123456"}
@@ -866,10 +874,10 @@ class TestClass:
         with pytest.raises(exc.ParseError):
             login(b'{"username": "alice", "password": 123}')
 
-        assert login(b'{"username": "alice", "password": "wrong"}') is None
+        assert login(b'{"username": "alice", "password": "wrong-pwd"}') is None
 
     def test_logical(self, dfs):
-        @utype.dataclass(eq=True)       # make eq so that instance can be compared
+        @utype.dataclass(eq=True, contains=True)       # make eq so that instance can be compared
         class LogicalDataClass(metaclass=utype.LogicalMeta):
             __options__ = Options(data_first_search=dfs)
             name: str = Field(max_length=10)
@@ -877,14 +885,17 @@ class TestClass:
 
         one_of_type = LogicalDataClass ^ Tuple[str, int]
 
-        assert one_of_type({'name': 'test', 'age': '1'}) == LogicalDataClass(name='test', age=1)
+        ld = one_of_type({'name': 'test', 'age': '1'})
+        assert ld == LogicalDataClass(name='test', age=1)
+        assert 'age' in ld
+
         assert one_of_type([b'test', '1']) == ('test', 1)
 
         class LogicalUser(DataClass):
             name: str = Field(max_length=10)
             age: int
 
-        one_of_type = LogicalUser ^ Tuple[str, int]
+        one_of_user = LogicalUser ^ Tuple[str, int]
 
-        assert one_of_type({'name': 'test', 'age': '1'}) == LogicalDataClass(name='test', age=1)
-        assert one_of_type([b'test', '1']) == ('test', 1)
+        assert one_of_user({'name': 'test', 'age': '1'}) == LogicalUser(name='test', age=1)
+        assert one_of_user([b'test', '1']) == ('test', 1)

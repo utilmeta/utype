@@ -82,6 +82,7 @@ class DataClass(metaclass=LogicalMeta):
             # coerce_property=False,
             post_init=cls.__post_init__,
         )
+        parser.make_eq()
         parser.make_repr(ignore_str=False)
         parser.make_contains(output_only=True)
         parser.assign_properties(
@@ -264,7 +265,7 @@ class Schema(dict, metaclass=LogicalMeta):
     def __contains__(self, item: str):
         field = self.__parser__.get_field(item)
         if not field:
-            return False
+            return super().__contains__(item)
         return super().__contains__(field.name)
 
     def __field_getter__(self, field: ParserField, getter: Callable = None):
@@ -294,8 +295,8 @@ class Schema(dict, metaclass=LogicalMeta):
     def __getitem__(self, item):
         # stay the same behaviour as the __contains__
         field = self.__parser__.get_field(item)
-        if not field:
-            raise KeyError(f"{self.__name__}: {repr(field.name)} not provided in schema instance")
+        if field:
+            return super().__getitem__(field.name)
         return super().__getitem__(item)
 
     def __field_setter__(self, value, field: ParserField, setter: Callable = None):
@@ -416,7 +417,7 @@ class Schema(dict, metaclass=LogicalMeta):
 
     def update(self, __m=None, **kwargs):
         if self.__options__.immutable:
-            raise AttributeError(
+            raise exc.UpdateError(
                 f"{self.__name__}: Attempt to update in immutable schema"
             )
         data = dict(__m) if __m else kwargs

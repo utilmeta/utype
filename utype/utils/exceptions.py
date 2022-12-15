@@ -84,6 +84,15 @@ class InvalidInstance(TypeMismatchError):
         return msg
 
 
+class InvalidSubclass(TypeMismatchError):
+    @property
+    def formatted_message(self):
+        msg = f"invalid subclass: {self.value} for {self.type}"
+        if self.msg:
+            msg += f": {self.msg}"
+        return msg
+
+
 class DiscriminatorMismatchError(ParseError):
     def __init__(self, discriminator: str, discriminator_value=None, **kwargs):
         self.discriminator = discriminator
@@ -158,6 +167,13 @@ class DepthExceedError(ParseError):
         self.max_depth = max_depth
         super().__init__(msg, **kwargs)
 
+    @property
+    def formatted_message(self):
+        msg = f"max_depth: {self.max_depth} exceed: {self.depth}"
+        if self.msg:
+            msg += f": {self.msg}"
+        return msg
+
 
 class ParamsExceedError(ParseError):
     def __init__(
@@ -171,6 +187,13 @@ class ParamsExceedError(ParseError):
         self.max_params = max_params
         super().__init__(msg, **kwargs)
 
+    @property
+    def formatted_message(self):
+        msg = f"max params num: {self.max_params} exceed: {self.params_num}"
+        if self.msg:
+            msg += f": {self.msg}"
+        return msg
+
 
 class ParamsLackError(ParseError):
     def __init__(
@@ -183,6 +206,13 @@ class ParamsLackError(ParseError):
         self.params_num = params_num
         self.min_params = min_params
         super().__init__(msg, **kwargs)
+
+    @property
+    def formatted_message(self):
+        msg = f"min params num: {self.min_params} lacked: {self.params_num}"
+        if self.msg:
+            msg += f": {self.msg}"
+        return msg
 
 
 class AbsenceError(ParseError):

@@ -149,6 +149,7 @@ class TestType:
                 (timedelta(hours=1), 3600, False, True),
                 ([10], 10, False, True),
                 ([10, 11], 10, False, False),
+                ((-1.3 + 0j), -1, False, False),
                 (en_z, 0, True, True),  # this enum instance is an instance of int
             ],
             SubInt: [
@@ -178,12 +179,21 @@ class TestType:
                 ("INF", float("inf"), False, True),
                 ("-inf", float("-inf"), False, True),
                 ("-Infinity", float("-inf"), False, True),
+                ((-1.3+0j), -1.3, False, False),
                 # ('nan', float('nan')),    cannot asset equal
                 # ('NaN', float('nan')),
                 # ('-NAN', float('nan')),
                 (Decimal("0.14"), 0.14, True, True),
                 (timedelta(hours=1, milliseconds=200), 3600.2, False, True),
                 (en_a, 1.0, True, True),
+            ],
+            complex: [
+                (1, (1+0j), True, True),
+                (1.1, (1.1+0j), True, True),
+                (Decimal('1.1'), (1.1+0j), True, True),
+                ('1+3j', (1+3j), True, True),
+                (b'-1.1+3j', (-1.1+3j), True, True),
+                ((3, 4), (3+4j), False, True),
             ],
             SubFloat: [
                 (10.1, SubFloat(10.1), True, True),
@@ -486,6 +496,32 @@ class TestType:
 
     def test_encode(self):
         pass
+
+    # def test_vendor(self):
+    #     from utype import register_transformer
+    #     from collections.abc import Mapping
+    #     from pydantic import BaseModel
+    #
+    #     @register_transformer(BaseModel)
+    #     def transform_attrs(transformer: TypeTransformer, data, cls):
+    #         if not transformer.no_explicit_cast and not isinstance(data, Mapping):
+    #             data = transformer.to_dict(data)
+    #         return cls(**data)
+    #
+    #     @register_transformer(attr='__attrs_attrs__')
+    #     def transform_attrs(transformer: TypeTransformer, data, cls):
+    #         if not transformer.no_explicit_cast and not isinstance(data, Mapping):
+    #             data = transformer.to_dict(data)
+    #         names = [v.name for v in cls.__attrs_attrs__]
+    #         data = {k: v for k, v in data.items() if k in names}
+    #         return cls(**data)
+    #
+    #     @register_transformer(attr='__dataclass_fields__')
+    #     def transform_attrs(transformer: TypeTransformer, data, cls):
+    #         if not transformer.no_explicit_cast and not isinstance(data, Mapping):
+    #             data = transformer.to_dict(data)
+    #         data = {k: v for k, v in data.items() if k in cls.__dataclass_fields__}
+    #         return cls(**data)
 
     def test_apply(self):
         @utype.apply(gt=0, le=12)

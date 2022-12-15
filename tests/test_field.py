@@ -112,8 +112,18 @@ class TestField:
         t = T(soMe_FiEld=1)
         assert t.some_field == "1"
 
-        with pytest.raises(Exception):
+        class CAP(Schema):
+            __options__ = Options(data_first_search=dfs)
+            FIELD: str = Field(case_insensitive=True)
 
+        cap = CAP(field=1)
+        assert 'FielD' in cap
+        assert 'field' in cap
+        assert dict(cap) == {'FIELD': '1'}
+        cap['field'] = 4
+        assert dict(cap) == {'FIELD': '4'}
+
+        with pytest.raises(Exception):
             class T(Schema):  # noqa
                 some_field: str = Field(case_insensitive=True)
                 soMe_Field: int

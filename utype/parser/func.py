@@ -57,6 +57,7 @@ class FunctionParser(BaseParser):
                     no_cache: bool = False,
                     ignore_params: bool = False,
                     ignore_result: bool = False,
+                    eager: bool = False
                     ):
         """
         Patch all explicit methods in class (name not beginning with "_")
@@ -78,6 +79,7 @@ class FunctionParser(BaseParser):
             func = parser.wrap(
                 parse_params=not ignore_params,
                 parse_result=not ignore_result,
+                eager_parse=eager
             )
             setattr(target, key, func)
         return target
@@ -227,13 +229,22 @@ class FunctionParser(BaseParser):
 
         self.init_kwargs = {'options': options, 'from_class': from_class}
         if not self.kw_var and self.options.addition:
-            raise TypeError(f'FunctionParser: {func}, specify addition: {options.addition} '
-                            f'without declaring the **kwargs variable')
+            raise exc.ConfigError(f'FunctionParser: {func}, specify addition: {options.addition} '
+                                  f'without declaring the **kwargs variable')
+        if self.kw_var and not self.options.addition:
+            warnings.warn(f'FunctionParser: {func}, specified **{self.kw_var}'
+                          f' but set addition=False, {self.kw_var} will always be empty')
 
-        # if self.options.mode and not self.options.override:
-        #     warnings.warn(f'FunctionParser: {self.obj} with options'
-        #                   f' with mode ({repr(self.options.mode)}) should turn on override=True, '
-        #                   f'elsewhere there will be no effect')
+        if self.options.no_default:
+            raise exc.ConfigError(f'FunctionParser: {func}.options cannot specify no_default=True')
+
+        if self.options.defer_default:
+            raise exc.ConfigError(f'FunctionParser: {func}.options cannot specify defer_default=True')
+
+        if self.options.immutable:
+            warnings.warn(f'FunctionParser: {func}, specified immutable=True in Options, which is useless')
+        if self.options.secret_names:
+            warnings.warn(f'FunctionParser: {func}, specified secret_names in Options, which is useless')
 
         self.position_type = None
         self.return_type = None
@@ -328,6 +339,7 @@ class FunctionParser(BaseParser):
     def generate_fields(self):
         exclude_vars = set()
         exclude_indexes = set()
+        global_vars = self.globals
         fields = []
 
         for i, (name, param) in enumerate(self.parameters):
@@ -357,24 +369,30 @@ class FunctionParser(BaseParser):
                 attname=name,
                 annotation=annotation,
                 default=param.default if param.default is not param.empty else unprovided,
-                global_vars=self.globals,
+                global_vars=global_vars,
                 forward_refs=self.forward_refs,
                 options=self.options,
+                positional_only=param.kind == param.POSITIONAL_ONLY
             ))
 
         field_map = {}
         for field in fields:
-            if field.name in field_map:
+            name = field.name
+
+            if field.is_case_insensitive(self.options):
+                name = name.lower()
+
+            if name in field_map:
                 raise exc.ConfigError(
-                    f"{self.obj}: field name: {repr(field.name)} conflicted at "
-                    f"{field}, {field_map[field.name]}",
+                    f"{self.obj}: field name: {repr(name)} conflicted at "
+                    f"{field}, {field_map[name]}",
                     obj=self.obj,
-                    field=field.name,
+                    field=name,
                 )
             if not self.is_passed:
                 # is function is :pass, we do not check for now
                 field.check_function(self.obj)      # check for function
-            field_map[field.name] = field
+            field_map[name] = field
 
         self.fields.update(field_map)
         self.exclude_vars = exclude_vars
@@ -435,41 +453,40 @@ class FunctionParser(BaseParser):
         first_reserve: bool = None,
         parse_params: bool = None,
         parse_result: bool = None,
+        eager_parse: bool = False,
     ):
 
-        # MAKE CONTEXT AT RUNTIME !
         if self.is_async_generator:
             f = self.get_async_generator(
                 options=options,
                 first_reserve=first_reserve,
                 parse_params=parse_params,
                 parse_result=parse_result,
+                eager=eager_parse
             )
-
         elif self.is_coroutine:
-            @wraps(self.obj)
-            async def f(*args, **kwargs):
-                context = (options or self.options).make_context()
-                return await self.async_call(
-                    args,
-                    kwargs,
-                    context=context,
-                    first_reserve=first_reserve,
-                    parse_params=parse_params,
-                    parse_result=parse_result,
-                )
-
+            f = self.get_async_call(
+                options=options,
+                first_reserve=first_reserve,
+                parse_params=parse_params,
+                parse_result=parse_result,
+                eager=eager_parse
+            )
         elif self.is_generator:
             f = self.get_sync_generator(
                 options=options,
                 first_reserve=first_reserve,
                 parse_params=parse_params,
                 parse_result=parse_result,
+                eager=eager_parse
             )
-
         else:
+            # if eager_parse:
+            #     warnings.warn(f'{self.obj} is a sync function')
+
             @wraps(self.obj)
             def f(*args, **kwargs):  # noqa
+                # MAKE CONTEXT AT RUNTIME !
                 context = (options or self.options).make_context()
                 return self.sync_call(
                     args,
@@ -598,8 +615,12 @@ class FunctionParser(BaseParser):
             args, kwargs = self.parse_params(args, kwargs, context=context)
         if first_reserve:
             if self.from_class:
-                if not isinstance(_, self.from_class):
-                    raise exc.InvalidInstance(type=self.from_class, value=_)
+                if self.classmethod:
+                    if not isinstance(_, type) or not issubclass(_, self.from_class):
+                        raise exc.InvalidSubclass(type=self.from_class, value=_)
+                else:
+                    if not isinstance(_, self.from_class):
+                        raise exc.InvalidInstance(type=self.from_class, value=_)
             args = (_, *args)
         return args, kwargs
 
@@ -614,15 +635,77 @@ class FunctionParser(BaseParser):
                 context.handle_error(error, force_raise=True)
         return result
 
+    def sync_from_generator(self, generator: Generator,
+                            context: RuntimeContext):
+        i = 0
+        sent = None
+        while True:
+            try:
+                if sent is not None:
+                    item = generator.send(sent)
+                else:
+                    item = next(generator)
+            except StopIteration as err:
+                result = err.value
+                if result is None or not self.generator_return_type:
+                    # raise the same StopIteration
+                    return result
+                try:
+                    result = context.transformer(result, self.generator_return_type)
+                except Exception as e:
+                    error = exc.ParseError(
+                        item=f"<generator.return>",
+                        value=result,
+                        type=self.generator_return_type,
+                        origin_exc=e,
+                    )
+                    context.handle_error(error, force_raise=True)
+                return result
+            else:
+                if inspect.isgenerator(item):
+                    generator = item
+                    continue
+                    # maybe a tail opt generator
+
+                if self.generator_yield_type:
+                    try:
+                        item = context.transformer(item, self.generator_yield_type)
+                    except Exception as e:
+                        error = exc.ParseError(
+                            item=f"<generator.yield[{i}]>",
+                            value=item,
+                            type=self.generator_yield_type,
+                            origin_exc=e,
+                        )
+                        context.handle_error(error, force_raise=True)
+
+                sent = yield item
+
+                if sent is not None:
+                    if self.generator_send_type:
+                        try:
+                            sent = context.transformer(sent, self.generator_send_type)
+                        except Exception as e:
+                            error = exc.ParseError(
+                                item=f"<generator.send[{i}]>",
+                                value=sent,
+                                type=self.generator_send_type,
+                                origin_exc=e,
+                            )
+                            context.handle_error(error, force_raise=True)
+                i += 1
+
     def get_sync_generator(
         self,
         options: Options = None,
         first_reserve: bool = None,
         parse_params: bool = None,
         parse_result: bool = None,
+        eager: bool = False,
     ):
+
         @wraps(self.obj)
-        def sync_generator(*args, **kwargs):
+        def eager_generator(*args, **kwargs) -> Generator:
             context = (options or self.options).make_context()
             args, kwargs = self.get_params(
                 args,
@@ -633,131 +716,68 @@ class FunctionParser(BaseParser):
             )
             func = self.obj
             generator: Generator = func(*args, **kwargs)
+            if parse_result:
+                return self.sync_from_generator(generator, context)
+            return generator
 
-            # if not parse_result:
-            #     yield from generator
+        if eager:
+            return eager_generator
 
-            i = 0
+        @wraps(self.obj)
+        def sync_generator(*args, **kwargs):
+            gen = eager_generator(*args, **kwargs)
             sent = None
             while True:
                 try:
                     if sent is not None:
-                        item = generator.send(sent)
+                        item = gen.send(sent)
                     else:
-                        item = next(generator)
+                        item = next(gen)
                 except StopIteration as err:
-                    result = err.value
-                    if not parse_result or result is None or not self.generator_return_type:
-                        # raise the same StopIteration
-                        return result
+                    return err.value
+                else:
+                    sent = yield item
+        return sync_generator
+
+    async def async_from_generator(self, generator: AsyncGenerator, context: RuntimeContext):
+        i = 0
+        async for item in generator:
+            if inspect.isasyncgen(item):
+                generator = item
+                continue
+
+            if self.generator_yield_type:
+                try:
+                    item = context.transformer(item, self.generator_yield_type)
+                except Exception as e:
+                    error = exc.ParseError(
+                        item=f"<asyncgenerator.yield[{i}]>",
+                        value=item,
+                        type=self.generator_yield_type,
+                        origin_exc=e,
+                    )
+                    context.handle_error(error, force_raise=True)
+
+            sent = yield item
+
+            if sent is not None:
+                if self.generator_send_type:
                     try:
-                        result = context.transformer(result, self.generator_return_type)
+                        sent = context.transformer(sent, self.generator_send_type)
                     except Exception as e:
                         error = exc.ParseError(
-                            item=f"<generator.return>",
-                            value=result,
-                            type=self.generator_return_type,
+                            item=f"<asyncgenerator.send[{i}]>",
+                            value=sent,
+                            type=self.generator_send_type,
                             origin_exc=e,
                         )
                         context.handle_error(error, force_raise=True)
-                    return result
-                else:
-                    if parse_result and inspect.isgenerator(item):
-                        generator = item
-                        continue
-                        # maybe a tail opt generator
-
-                    if parse_result and self.generator_yield_type:
-                        try:
-                            item = context.transformer(item, self.generator_yield_type)
-                        except Exception as e:
-                            error = exc.ParseError(
-                                item=f"<generator.yield[{i}]>",
-                                value=item,
-                                type=self.generator_yield_type,
-                                origin_exc=e,
-                            )
-                            context.handle_error(error, force_raise=True)
-
-                    print('yield:', item)
-                    sent = yield item
-                    print('item:', item, sent)
-
-                    if sent is not None:
-                        if parse_result and self.generator_send_type:
-                            try:
-                                sent = context.transformer(sent, self.generator_send_type)
-                            except Exception as e:
-                                error = exc.ParseError(
-                                    item=f"<generator.send[{i}]>",
-                                    value=sent,
-                                    type=self.generator_send_type,
-                                    origin_exc=e,
-                                )
-                                context.handle_error(error, force_raise=True)
-                        print('send g:', repr(sent), self.generator_send_type)
-                        # generator.send(sent)
-
-                    i += 1
-
-            # for item in generator:
-            #     if parse_result and inspect.isgenerator(item):
-            #         generator = item
-            #         continue
-            #         # maybe a tail opt generator
-            #
-            #     if parse_result and self.generator_yield_type:
-            #         try:
-            #             item = context.transformer(item, self.generator_yield_type)
-            #         except Exception as e:
-            #             error = exc.ParseError(
-            #                 item=f"<generator.yield[{i}]>",
-            #                 value=item,
-            #                 type=self.generator_yield_type,
-            #                 origin_exc=e,
-            #             )
-            #             context.handle_error(error, force_raise=True)
-            #
-            #     print('yield:', item)
-            #     sent = yield item
-            #     print('item:', item, sent)
-            #
-            #     if sent is not None:
-            #         if parse_result and self.generator_send_type:
-            #             try:
-            #                 sent = context.transformer(sent, self.generator_send_type)
-            #             except Exception as e:
-            #                 error = exc.ParseError(
-            #                     item=f"<generator.send[{i}]>",
-            #                     value=sent,
-            #                     type=self.generator_send_type,
-            #                     origin_exc=e,
-            #                 )
-            #                 context.handle_error(error, force_raise=True)
-            #         print('send g:', repr(sent), self.generator_send_type)
-            #         generator.send(sent)
-            #     i += 1
-
-            # try:
-            #     next(generator)
-            # except StopIteration as err:
-            #     result = err.value
-            #     if not parse_result or result is None or not self.generator_return_type:
-            #         # raise the same StopIteration
-            #         return result
-            #     try:
-            #         result = context.transformer(result, self.generator_return_type)
-            #     except Exception as e:
-            #         error = exc.ParseError(
-            #             item=f"<generator.return>",
-            #             value=result,
-            #             type=self.generator_return_type,
-            #             origin_exc=e,
-            #         )
-            #         context.handle_error(error, force_raise=True)
-            #     return result
-
-        return sync_generator
+                # await generator.asend(sent)
+                try:
+                    await generator.asend(sent)
+                except StopAsyncIteration:
+                    return
+            i += 1
 
     def get_async_generator(
         self,
@@ -765,9 +785,11 @@ class FunctionParser(BaseParser):
         first_reserve: bool = None,
         parse_params: bool = None,
         parse_result: bool = None,
+        eager: bool = False,
     ):
+
         @wraps(self.obj)
-        async def async_generator(*args, **kwargs):
+        def eager_generator(*args, **kwargs) -> AsyncGenerator:
             context = (options or self.options).make_context()
             args, kwargs = self.get_params(
                 args,
@@ -777,44 +799,58 @@ class FunctionParser(BaseParser):
                 parse_params=parse_params,
             )
             func = self.obj
-            generator = func(*args, **kwargs)
-            i = 0
-            async for item in generator:
+            generator: AsyncGenerator = func(*args, **kwargs)
+            if parse_result:
+                return self.async_from_generator(generator, context)
+            return generator
 
-                if parse_result and inspect.isasyncgen(item):
-                    generator = item
-                    continue
+        if eager:
+            return eager_generator
 
-                if parse_result and self.generator_yield_type:
-                    try:
-                        item = context.transformer(item, self.generator_yield_type)
-                    except Exception as e:
-                        error = exc.ParseError(
-                            item=f"<asyncgenerator.yield[{i}]>",
-                            value=item,
-                            type=self.generator_yield_type,
-                            origin_exc=e,
-                        )
-                        context.handle_error(error, force_raise=True)
-
+        @wraps(self.obj)
+        async def async_generator(*args, **kwargs):
+            async_gen = eager_generator(*args, **kwargs)
+            async for item in async_gen:
                 sent = yield item
-
                 if sent is not None:
-                    if parse_result and self.generator_send_type:
-                        try:
-                            sent = context.transformer(sent, self.generator_send_type)
-                        except Exception as e:
-                            error = exc.ParseError(
-                                item=f"<asyncgenerator.send[{i}]>",
-                                value=sent,
-                                type=self.generator_send_type,
-                                origin_exc=e,
-                            )
-                            context.handle_error(error, force_raise=True)
-                    await generator.asend(sent)
-                i += 1
+                    try:
+                        await async_gen.asend(sent)
+                    except StopAsyncIteration:
+                        return
 
         return async_generator
+
+    def get_async_call(
+        self,
+        options: Options = None,
+        first_reserve: bool = None,
+        parse_params: bool = None,
+        parse_result: bool = None,
+        eager: bool = False,
+    ):
+
+        @wraps(self.obj)
+        def eager_call(*args, **kwargs):
+            context = (options or self.options).make_context()
+            args, kwargs = self.get_params(
+                args,
+                kwargs,
+                context=context,
+                first_reserve=first_reserve,
+                parse_params=parse_params,
+            )
+            if parse_result:
+                return self.get_async_result(args, kwargs, context=context)
+            return self.obj(*args, **kwargs)
+
+        if eager:
+            return eager_call
+
+        @wraps(self.obj)
+        async def async_call(*args, **kwargs):
+            return await eager_call(*args, **kwargs)
+
+        return async_call
 
     def sync_call(
         self,
@@ -838,34 +874,16 @@ class FunctionParser(BaseParser):
             result = self.parse_result(result, context=context)
         return result
 
-    async def async_call(
-        self,
-        args: tuple,
-        kwargs: dict,
-        context: RuntimeContext,
-        first_reserve=None,
-        parse_params: bool = None,
-        parse_result: bool = None,
-    ):
-        args, kwargs = self.get_params(
-            args,
-            kwargs,
-            context=context,
-            first_reserve=first_reserve,
-            parse_params=parse_params,
+    async def get_async_result(self, args: tuple, kwargs: dict,
+                               context: RuntimeContext):
+        # we may not want to change the result form even if it's another coroutine
+        # we leave to user to await it to avoid changing the actual logic of the function
+        # while inspect.iscoroutine(result):
+        #     result = await result
+        return self.parse_result(
+            await self.obj(*args, **kwargs),
+            context=context
         )
-        func = self.obj
-        result = await func(*args, **kwargs)
-        if parse_result:
-            # we may not want to change the result form even if it's another coroutine
-            # we leave to user to await it to avoid changing the actual logic of the function
-            # while inspect.iscoroutine(result):
-            #     result = await result
-            result = self.parse_result(result, context=context)
-        return result
-
-    # def __call__(self, *args, **kwargs):
-    #     return self.sync_call(args, kwargs)
 
 
 def call(func: Callable, args=None, data=None, options=None, context: RuntimeContext = None,

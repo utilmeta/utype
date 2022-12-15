@@ -29,6 +29,7 @@ def parse(
     # static: bool = False,
     ignore_params: bool = False,
     ignore_result: bool = False,
+    eager: bool = False,
 ) -> Union[T, Callable[[T], T]]:
     if ignore_params and ignore_result:
         warnings.warn(
@@ -44,7 +45,8 @@ def parse(
                 options=options,
                 no_cache=no_cache,
                 ignore_result=ignore_result,
-                ignore_params=ignore_params
+                ignore_params=ignore_params,
+                eager=eager
             )
             return func
         else:
@@ -52,6 +54,7 @@ def parse(
             return parser.wrap(
                 parse_params=not ignore_params,
                 parse_result=not ignore_result,
+                eager_parse=eager
                 # first_reserve=not static
             )
 

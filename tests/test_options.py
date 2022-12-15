@@ -2,8 +2,13 @@ import utype
 from utype import Schema, Options, exc, Field
 from utype.utils.style import AliasGenerator
 import pytest
-from typing import List, Dict
+from typing import List, Dict, Tuple
 from datetime import date, timedelta, datetime
+
+
+@pytest.fixture(params=(False, True))
+def dfs(request):
+    return request.param
 
 
 @pytest.fixture(params=('throw', 'exclude', 'preserve'))
@@ -11,8 +16,24 @@ def on_error(request):
     return request.param
 
 
+@pytest.fixture(params=('throw', 'init', 'ignore'))
+def unresolved(request):
+    return request.param
+
+
 class TestOptions:
-    def test_schema_options(self):
+    def test_parsing(self):
+        # test class options
+        class UserIgnore(Schema):
+            class __options__(Options):
+                ignore_required = True
+
+            name: str
+            level: int = 0
+
+        u1 = UserIgnore()
+        assert dict(u1) == {"level": 0}
+
         class UserSchemaIgnore(Schema):
             __options__ = Options(ignore_required=True)
             name: str
@@ -23,21 +44,6 @@ class TestOptions:
         with pytest.raises(AttributeError):
             user.name  # noqa
 
-        class UserSchemaDisallowType(Schema):
-            __options__ = Options(no_explicit_cast=True)
-            name: str
-            level: int = 0
-
-        with pytest.raises(exc.ParseError):
-            UserSchemaDisallowType(name=107, level="3")
-
-        class NoLossSchema(Schema):
-            __options__ = Options(no_data_loss=True)
-            dt: date
-
-        with pytest.raises(exc.ParseError):
-            NoLossSchema(dt=datetime(2022, 1, 1, 12, 12, 12))
-
         class TypeOnlySchema(Schema):
             __options__ = Options(ignore_constraints=True)
             attr: str = Field(const='xxxx')
@@ -45,28 +51,31 @@ class TestOptions:
 
         assert dict(TypeOnlySchema(attr=3, lst='1,2,3,4')) == {'attr': '3', 'lst': [1, 2, 3, 4]}   # ignore other rules
 
+    def test_immutable(self):
         class ImmutableSchema(Schema):
             __options__ = Options(immutable=True)
             attr: str = ''
 
         sc = ImmutableSchema(attr='x')
-        with pytest.raises(AttributeError):
+        with pytest.raises(exc.UpdateError):
             sc.attr = 'y'
-        with pytest.raises(AttributeError):
+        with pytest.raises(exc.DeleteError):
             del sc.attr
-        with pytest.raises(AttributeError):
+        with pytest.raises(exc.UpdateError):
             sc['attr'] = 'y'
-        with pytest.raises(AttributeError):
+        with pytest.raises(exc.UpdateError):
             sc.update(attr='y')
-        with pytest.raises(AttributeError):
+        with pytest.raises(exc.DeleteError):
             sc.pop('attr')
-        with pytest.raises(TypeError):
+        with pytest.raises(exc.DeleteError):
             sc.popitem()
-        with pytest.raises(TypeError):
+        with pytest.raises(exc.DeleteError):
             sc.clear()
 
-    def test_alias(self):
+    # def test_secret_names(self):
+    #     pass
 
+    def test_alias(self):
         # case styles
         class AllowCaseSchema(Schema):
             __options__ = Options(
@@ -83,13 +92,37 @@ class TestOptions:
 
         attr_name_vars = ['attr_name', '@attr_name', 'attr-name', 'attrName', 'ATTR-NAME']
         cap_attr_name_vars = ['CAP_ATTR_NAME', '@CAP_ATTR_NAME', 'cap-attr-name', 'capAttrName', 'CAP-ATTR-NAME']
-        fix_name_vars = ['fix1', 'fix2']    # override the Options config
+        fix_name_vars = ['fix1', 'fix2', '@fix']    # override the Options config
 
         for a1 in attr_name_vars:
             for a2 in cap_attr_name_vars:
                 for f3 in fix_name_vars:
                     assert dict(AllowCaseSchema({a1: 'a1', a2: 'a2', f3: 'a3'})) \
                            == {'ATTR-NAME': 'a1', 'CAP-ATTR-NAME': 'a2', '@fix': 'a3'}
+
+        class AllowCaseSchemaIn(Schema):
+            __options__ = Options(
+                case_insensitive=True,
+                alias_from_generator=[
+                    AliasGenerator.camel,
+                    AliasGenerator.kebab,
+                    lambda x: "@" + x
+                ],
+            )
+            attr_name: str
+            CAP_ATTR_NAME: str
+            fixed_name: str = Field(alias_from=['fix1', 'fix2'], alias='@fix')
+
+        attr_name_vars = ['ATTR_name', '@attr_NAme', 'attr-Name', 'AttrName', 'ATTR-name']
+        cap_attr_name_vars = ['CAP_Attr_Name', '@Cap_attr_NAME', 'cap-Attr-Name',
+                              'capAttrName', 'CAP-ATTR-NAME', 'cap_attr_name']
+        fix_name_vars = ['fix1', 'fix2', 'FIX1', '@FIX']  # override the Options config
+
+        for a1 in attr_name_vars:
+            for a2 in cap_attr_name_vars:
+                for f3 in fix_name_vars:
+                    assert dict(AllowCaseSchemaIn({a1: 'a1', a2: 'a2', f3: 'a3'})) \
+                           == {'attr_name': 'a1', 'CAP_ATTR_NAME': 'a2', '@fix': 'a3'}
 
         class InsensitiveSchema(Schema):
             __options__ = Options(case_insensitive=True)
@@ -101,14 +134,14 @@ class TestOptions:
                {'VALUE': 3, 'attr': 'x', 'other_name': True}
         # attr ane key access of case_insensitive schema will also support case_insensitive access
 
-        with pytest.raises(AttributeError):
+        with pytest.raises(exc.ConfigError):
             class InsensitiveSchemaInvalid1(Schema):
                 __options__ = Options(case_insensitive=True)
                 VALUE: int = 0
                 value: int
                 # name is same
 
-        with pytest.raises(AttributeError):
+        with pytest.raises(exc.ConfigError):
             class InsensitiveSchemaInvalid2(Schema):
                 __options__ = Options(case_insensitive=True)
                 val1: int = Field(alias_from=['VALUE'])
@@ -139,7 +172,27 @@ class TestOptions:
 
         user = UserSchemaPreserve(name='alice', age=19, invite_code='XYZ')
         assert user['age'] == user.age == 19
+        assert 'invite_code' in user
         # test additional property access
+
+        class User(Schema):
+            name: str
+            level: int = 0
+
+        User.__from__({'name': 'test', 'code': 'XYZ'}, options=Options(addition=True))
+
+        with pytest.raises(exc.ParseError):
+            User.__from__({'name': 'test', 'code': 'XYZ'}, options=Options(addition=False))
+
+        with pytest.raises(exc.ConfigError):
+            @utype.parse(options=Options(addition=True))
+            def f():
+                pass
+
+        # with pytest.warns():
+        #     @utype.parse(options=Options(addition=False))
+        #     def f(**kwargs):
+        #         return kwargs
 
     def test_invalids(self, on_error):
         class BestEffortSchema(Schema):
@@ -206,43 +259,55 @@ class TestOptions:
             with pytest.raises(exc.ParseError):
                 DicSchema(dic={'3': '1', '2': 'x', 'x': '3'})
 
-    def test_runtime(self):
-        # test options in data
-        class v(Schema):
-            value: int
+        class IndexSchema(Schema):
+            __options__ = Options(
+                invalid_items='exclude',
+                invalid_keys='preserve',
+            )
 
-        data = {"__options__": Options(case_insensitive=True), "VALUE": '1'}
-        assert v(**data).value == 1
+            indexes: List[int]
+            info: Dict[Tuple[int, int], int]
 
-        class IgnoreDiscardSchema(Schema):
-            v1: str = Field(no_output=True)
-            v2: str = Field(no_output=True)
-            v3: str = "x"
+        data = {
+            'indexes': ['1', '-2', '*', 3],
+            'info': {
+                '2,3': 6,
+                '3,4': 12,
+                'a,b': '10'
+            }
+        }
 
-        assert dict(IgnoreDiscardSchema(v1='x', v2='y', v3='z')) == {'v3': 'z'}
+        with pytest.warns():
+            assert dict(IndexSchema(**data)) == {'indexes': [1, -2, 3], 'info': {(2, 3): 6, (3, 4): 12, 'a,b': 10}}
 
-        data = {"__options__": Options(ignore_no_output=True), "v1": 1, 'v2': 2}
-        assert dict(IgnoreDiscardSchema(**data)) == {'v1': '1', 'v2': '2', 'v3': 'x'}
+    def test_max_min_params(self, dfs):
+        class Info(Schema):
+            __options__ = Options(
+                data_first_search=dfs,
+                min_params=2,
+                max_params=5,
+                addition=True
+            )
+            version: str
 
-    def test_class_options(self):
-        class ClassOptionsSchema(Schema):
-            class __options__(Options):
-                unprovided_attribute = None
-                ignore_alias_conflicts = True
-                ignore_required = True
+        data = {
+            'version': 'v1',
+            'k1': 1,
+            'k2': 2,
+            'k3': 3
+        }
+        assert len(Info(**data)) == 4
 
-    def test_function(self):
-        pass
+        with pytest.raises(exc.ParamsLackError):
+            Info(version='v1')
 
-    def test_type_transform(self):
-        pass
-
-    def test_max_min_params(self):
-        pass
+        with pytest.raises(exc.ParamsExceedError):
+            Info(**data, k4=4, k5=5)
 
     def test_max_depth(self):
-
+        # test self reference
         class T(Schema):
+            __options__ = Options(max_depth=3)
             a: str = ''
             b: int = Field(ge=0)
             t: 'T' = None
@@ -251,32 +316,14 @@ class TestOptions:
             'a': b'3',
             'b': '4'
         }
-        data['t1'] = data       # recursive references (Circular reference)
+        data['t'] = data       # recursive references (Circular reference)
 
-        t = T(**data)
+        with pytest.raises(exc.ParseError) as err_info:
+            T(**data)
 
-    def test_nested(self):
-        pass
-
-        class T1(Schema):
-            a: str = ''
-            b: int = Field(ge=0)
-
-        class T2(T1):
-            t1: T1
-            t1_lst: List[T1]
-
-        data = {
-            # '__options__': Options(ignore_required=True),
-            'a': b'3',
-            'b': '4',
-            't1': {
-                # '__options__': Options(ignore_constraints=True),
-            }
-        }
+        assert 'max_depth' in str(err_info.value)
 
     def test_defaults(self):
-
         class NoDefaultSchema(Schema):
             __options__ = Options(no_default=True)
             default: str = "0"
@@ -287,36 +334,66 @@ class TestOptions:
             # 1. when parsing, default value will never be used to fill unprovided key
             # 2. when accessing missing attributes, it will throw AttributeError instead of give a default
 
+        class ForceDefault(Schema):
+            __options__ = Options(force_default=None)
+            default: str = 0
+
+        f = ForceDefault()
+        assert f.default is None
+        assert 'default' in f
+
+        class ForceDefaultSchema(Schema):
+            __options__ = Options(force_default=None, ignore_required=True)
+            default: str
+
+        f = ForceDefaultSchema()
+        assert f.default is None
+        assert 'default' in f
+
+        class DeferDefaultSchema(Schema):
+            __options__ = Options(force_default=None, ignore_required=True, defer_default=True)
+            default: str
+
+        d = DeferDefaultSchema()
+        assert d.default is None
+        assert 'default' not in d
+
     def test_errors(self):
         class LoginForm(Schema):
-            __options__ = Options(
-                addition=False,
-                collect_errors=True,
-                case_insensitive=True
-            )
-
             username: str = Field(regex='[0-9a-zA-Z]{3,20}')
             password: str = Field(min_length=6, max_length=20)
 
         form = {
-            'UserName': '@attacker',
-            'Password': '12345',
-            'Token': 'XXX'
+            'username': '@attacker',
+            'password': '12345',
+            'token': 'XXX'
         }
 
         with pytest.raises(exc.CollectedParseError) as collected:
-            LoginForm(**form)
+            LoginForm.__from__(form, options=Options(
+                addition=False,
+                collect_errors=True,
+            ))
 
         assert len(collected.value.errors) == 3
 
-        class LoginForm(Schema):
-            class __options__(Options):
-                addition = False
-                collect_errors = True
-                case_insensitive = True
+        with pytest.raises(exc.CollectedParseError) as collected:
+            LoginForm.__from__(form, options=Options(
+                addition=False,
+                collect_errors=True,
+                max_errors=2
+            ))
 
-            username: str = Field(regex='[0-9a-zA-Z]{3,20}')
-            password: str = Field(min_length=6, max_length=20)
+        assert len(collected.value.errors) == 2
+
+        # class LoginForm(Schema):
+        #     class __options__(Options):
+        #         addition = False
+        #         collect_errors = True
+        #         case_insensitive = True
+        #
+        #     username: str = Field(regex='[0-9a-zA-Z]{3,20}')
+        #     password: str = Field(min_length=6, max_length=20)
 
         @utype.parse(options=Options(
             addition=False,
@@ -327,36 +404,61 @@ class TestOptions:
             username: str = Field(regex='[0-9a-zA-Z]{3,20}'),
             password: str = Field(min_length=6, max_length=20)
         ):
-            pass
+            return username, password
 
         with pytest.raises(exc.CollectedParseError) as collected:
             login(**form)
 
         assert len(collected.value.errors) == 3
 
-    def test_inherit_override(self):
-        class BSchema(Schema):
+    def test_type_preferences(self):
+        from utype import type_transform
+
+        with pytest.raises(TypeError):
+            type_transform('[1,2,3]', list, options=Options(no_explicit_cast=True))
+
+        with pytest.raises(TypeError):
+            type_transform('{"value": true}', dict, options=Options(no_explicit_cast=True))
+
+        with pytest.raises(TypeError):
+            type_transform(3.1415, int, options=Options(no_data_loss=True))
+
+        with pytest.raises(ValueError):
+            type_transform('2022-03-04 10:11:12', date, options=Options(no_data_loss=True))
+
+        class UserSchemaDisallowType(Schema):
+            __options__ = Options(no_explicit_cast=True)
+            name: str
+            level: int = 0
+
+        with pytest.raises(exc.ParseError):
+            UserSchemaDisallowType(name=107, level="3")
+
+        class NoLossSchema(Schema):
+            __options__ = Options(no_data_loss=True)
+            dt: date
+
+        with pytest.raises(exc.ParseError):
+            NoLossSchema(dt=datetime(2022, 1, 1, 12, 12, 12))
+
+    def test_unresolved_types(self, unresolved):
+        class MyClass:
+            def __init__(self, value):
+                self.value = value
+
+        class MySchema(Schema):
             __options__ = Options(
-                case_insensitive=True,
-                collect_errors=True,
-                unresolved_types='ignore',
+                unresolved_types=unresolved
             )
 
-        class LoginForm(BSchema):
-            username: str = Field(regex='[0-9a-zA-Z]{3,20}')
-            password: str = Field(min_length=6, max_length=20)
+            cls: MyClass = None
 
-        class LoginFormB(BSchema):
-            __options__ = Options(
-                ignore_required=True
-            )
-            username: str = Field(regex='[0-9a-zA-Z]{3,20}')
-            password: str = Field(min_length=6, max_length=20)
-
-        class LoginFormC(BSchema):
-            __options__ = Options(
-                ignore_required=True,
-                override=True
-            )
-            username: str = Field(regex='[0-9a-zA-Z]{3,20}')
-            password: str = Field(min_length=6, max_length=20)
+        if unresolved == 'throw':
+            with pytest.raises(exc.ParseError):
+                MySchema(cls=3)
+        elif unresolved == 'init':
+            inst = MySchema(cls=3)
+            assert inst.cls.value == 3
+        elif unresolved == 'ignore':
+            inst = MySchema(cls=3)
+            assert inst.cls == 3

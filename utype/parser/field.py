@@ -304,7 +304,10 @@ class Field:
                 alias_from = self.alias_from
             # field alias_from will override generator
         elif generator:
-            alias_from.append(generator)
+            if multi(generator):
+                alias_from.extend(generator)
+            else:
+                alias_from.append(generator)
 
         for alias in alias_from:
             if callable(alias):
@@ -316,10 +319,10 @@ class Field:
 
         return aliases
 
-    def to_spec(self):
-        # convert to schema specification
-        # like https://json-schema.org/
-        pass
+    # def to_spec(self):
+    #     # convert to schema specification
+    #     # like https://json-schema.org/
+    #     pass
 
     def __call__(self, fn_or_cls, *args, **kwargs):
         setattr(fn_or_cls, "__field__", self)
@@ -433,6 +436,7 @@ class ParserField:
         output_field: Field = None,
         dependencies: Set[str] = None,
         final: bool = False,
+        positional_only: bool = False,
     ):
 
         self.attname = attname
@@ -440,15 +444,8 @@ class ParserField:
         self.output_type = output_type
         self.field = field
         self.output_field = output_field
-
         self.property = field_property
         self.final = final
-
-        if self.field.case_insensitive:
-            name = name.lower()
-            if aliases:
-                aliases = [a.lower() for a in aliases]
-
         self.name = name
         self.aliases = set(aliases or []).difference({self.name})
         self.all_aliases = self.aliases.union({self.name})
@@ -466,6 +463,7 @@ class ParserField:
         self.deprecated_to = None
         self.const = unprovided
         self.discriminator_map = {}
+        self.positional_only = positional_only
 
     @property
     def input_origins(self) -> List[type]:
@@ -492,6 +490,12 @@ class ParserField:
         return represent(value)
 
     def setup(self, options: Options):
+        if self.is_case_insensitive(options):
+            # do not lower name
+            # self.name = self.name.lower()
+            self.aliases = {a.lower() for a in self.aliases}
+            self.all_aliases = {a.lower() for a in self.all_aliases}
+
         if self.repr_func is None:
             if options.secret_names:
                 is_secret = False
@@ -865,6 +869,26 @@ class ParserField:
                     params={'mode': self.field.mode, 'default': self.field.default}
                 )
 
+        if self.positional_only:
+            if self.field.alias:
+                warnings.warn(
+                    f"{func}: Field(name={repr(self.name)}).alias ({repr(self.field.alias)}) "
+                    f"has no meanings in positional only params,"
+                    f" please consider move it"
+                )
+            if self.field.alias_from:
+                warnings.warn(
+                    f"{func}: Field(name={repr(self.name)}).alias_from ({repr(self.field.alias_from)}) "
+                    f"has no meanings in positional only params,"
+                    f" please consider move it"
+                )
+            if self.field.case_insensitive:
+                warnings.warn(
+                    f"{func}: Field(name={repr(self.name)}).case_insensitive "
+                    f"has no meanings in positional only params,"
+                    f" please consider move it"
+                )
+
         if self.field.no_output:
             warnings.warn(
                 f"{func}: Field(name={repr(self.name)}).no_output has no meanings in function params,"
@@ -981,6 +1005,7 @@ class ParserField:
         annotation: Any,
         default: Any,
         options: Options,
+        positional_only: bool = False,
         global_vars=None,
         forward_refs=None,
     ):
@@ -1107,6 +1132,7 @@ class ParserField:
             forward_refs=forward_refs,
             forward_key=attname,
         )
+
         parser_field = cls(
             attname=attname,
             name=(output_field or field).get_alias(
@@ -1125,6 +1151,7 @@ class ParserField:
             dependencies=dependencies,
             # options=options,
             final=final,
+            positional_only=positional_only
         )
         parser_field.setup(options=options)
         return parser_field

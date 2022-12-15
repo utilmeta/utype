@@ -60,8 +60,46 @@ print(add('3', 4.1))
 !!! note
 	进行函数解析需要你使用 Python 类型注解的语法为参数声明类型，如果你的参数没有声明类型，那它将能够传入任意类型的值
 
+你不仅可以在函数中使用基本类型，还可以使用 utype 中的约束类型，嵌套类型，逻辑类型，数据类等进行类型注解，utype 都能够正确识别并完成解析
 
-但是使用原生的函数语法仅支持声明参数的类型和默认值，如果你需要更多的参数配置，可以使用 utype 提供 Param 类对函数参数进行配置
+```python
+import utype  
+from typing import List, Dict
+
+class Slug(str, utype.Rule):  
+    regex = r"[a-z0-9]+(?:-[a-z0-9]+)*"  
+  
+class ArticleQuery(utype.Schema):  
+    id: int  
+    slug: Slug = utype.Param(max_length=30)  
+  
+class ArticleInfo(ArticleQuery):  
+    likes: Dict[str, int]  
+  
+@utype.parse  
+def get_article_info(  
+    query: ArticleQuery,  
+    body: List[Dict[str, int]] = None
+) -> ArticleInfo:  
+    likes = {}  
+    for item in body:  
+        likes.update(item)  
+    return {  
+        'id': query.id,  
+        'slug': query.slug,  
+        'likes': likes  
+    }
+
+article = get_article_info(
+	query='id=1&slug=my-article', 
+	body=b'[{"alice": 1}, {"bob": 2}]'
+)
+
+print(article)
+# > ArticleInfo(id=1, slug='my-article', info={'alice': 1, 'bob': 2})
+```
+
+但是使用原生的函数语仅支持声明参数的类型和默认值，如果你需要更多的参数配置，可以使用 utype 提供 Param 类对函数参数进行配置
 
 ### 配置 Param 参数
 Param 类可以为函数参数配置丰富的行为，包括默认值，说明，约束，别名，输入行为等，只需要将 Field 类的实例作为函数参数的默认值，就可以获得其中声明的字段配置
@@ -389,13 +427,13 @@ print(raw_get_info('1', None))
 ## 解析函数返回值
 utype 不仅可以对函数的参数进行解析，也能够将函数的返回值解析到声明的类型
 
-函数的返回值声明的语法都是 `def (...) -> <type>: pass`，其中 `<type>`  是你为返回值指定的类型，这个类型可以是任意的普通类型，嵌套类型，逻辑类型，数据类等
+函数的返回值声明的语法都是 `def (...) -> <type>:`，其中 `<type>`  是你为返回值指定的类型，这个类型可以是任意的普通类型，约束类型，嵌套类型，逻辑类型，数据类等
 
 但不同种类的函数对于返回值的声明方式可能有所不同，下面将分别讨论 Python 中的每种函数的返回值声明方式
 
 ### 普通函数
 
-为普通的函数声明返回值只需要使用对应的类型直接进行提示即可，如
+为普通的函数声明返回值只需要使用对应的类型直接进行注解即可，如
 ```python
 import utype
 from typing import Optional
@@ -418,7 +456,7 @@ def get_article(id: PositiveInt = None, title: str = '') -> ArticleSchema:
 	}
 ```
 
-在例子中我们使用 ArticleSchema 数据类作为函数 `get_article` 的返回类型提示，utype 会自动将函数的返回值转化为一个 ArticleSchema 的实例，用法如下
+在例子中我们使用 ArticleSchema 数据类作为函数 `get_article` 的返回类型提示，utype 会自动将函数的返回值转化为一个 ArticleSchema 的实例，比如
 
 ```python
 print(get_article('3', title=b'My Awesome Article!'))
@@ -501,6 +539,8 @@ if __name__ == "__main__":
 
 ### 生成器函数
 
+utype 同样支持使用 `yield` 的生成器函数，使用生成器能够暂存函数的执行状态，优化内存使用，并且实现很多普通函数无法实现的机制，如构造无限循环列表等，我们先来使用一个例子看一下生成器函数的返回值声明方式
+
 ```python
 import utype  
 from typing import Tuple, Generator
@@ -535,17 +575,51 @@ except StopIteration as e:
 	# total lines: 3
 ```
 
+在这个例子中我们读取了一个字符串格式的 csv 文件，按照行分割，并将 `split(',')` 后的结果迭代出来，我们知道字符串的 `split` 方法会返回一个字符串列表，但由于我们的返回类型声明，当使用 `next(csv_gen)` 进行迭代时会直接得到一个整数元组，这就是 utype 按照你的声明完成的转化
+
 一般的生成器使用 `Generator` 类型进行返回注解，其中需要传入三个顺序参数
-* `yield value` 中值 `value` 的类型，即迭代的元素类型
-* `generator.send(value)` 中值 `value` 的类型，即发送的数据类型，如果不支持数据发送，则传入 None
-* `return value`  中值 `value` 的类型，即返回的数据类型，如果没有返回值，则传入 None
+1. `yield value` 中值 `value` 的类型，即迭代的元素类型
+2. `generator.send(value)` 中值 `value` 的类型，即发送的数据类型，如果不支持数据发送，则传入 None
+3. `return value`  中值 `value` 的类型，即返回的数据类型，如果没有返回值，则传入 None
 
-但对于常用的生成器函数，可能只进行 `yield` ，这时可以
+对于生成器函数的 `return` 返回值，我们通过在生成器结束迭代后抛出 StopIteration 错误实例的 `value` 属性进行获取，因为 `read_csv` 函数会把读取的行数返回，所以上面的例子中我们使用 `int` 类型作为生成器函数的返回类型
 
-* `Iterator`
-* `Iterable`
 
-其中只需要传入一个参数，就是 `yield` 出的值的类型
+但对于常用的生成器函数，我们可能只需要 `yield` 出结果，并不需要支持外部发送或者返回值，此时可以使用以下类型作为返回提示
+
+* `Iterator[<type>]`
+* `Iterable[<type>]`
+
+其中只需要传入一个参数，就是 `yield` 出的值的类型，比如
+
+```python
+import utype
+from typing import Tuple, Iterator
+
+@utype.parse
+def split_iterator(*args: str) -> Iterator[Tuple[int, int]]:
+	for arg in args:
+		yield arg.split(',')
+
+params = ['1,2', '-1,3', 'a,b']
+
+iterator = split_iterator(*params)
+while True:
+	try:
+		print(next(iterator))
+		# > (1, 2)
+		# > (-1, 3)
+	except StopIteration:
+		break
+	except utype.exc.ParseError as e:
+		print(e)
+		"""
+		parse item: ['<generator.yield[2]>'] failed: 
+		could not convert string to float: 'a'
+		"""
+```
+
+在这个例子中，我们把一个字符串列表中的每个元素使用 `split(',')` 分割，并将结果 `yield` 出来，不需要返回值，所以我们使用了 `Iterator[Tuple[int, int]]` 的类型声明，表示  `yield`  出的值的类型是一个整数二元组，而当数据无法完成对应转化时，我们可以使用  `exc.ParseError` 来接收错误，其中会包含定位的信息，精确到生成器中的迭代索引
 
 #### 生成器发送值
 
@@ -587,16 +661,10 @@ except StopIteration as e:
 
 我们为 `send()` 发送值指定的类型为 `float`，所以发送的数据都会被转化为 float 类型，在函数中用于接收的 `sent` 变量得到的就是一个浮点数，可以直接进行后续操作
 
-我们通过在生成器结束迭代后抛出 StopIteration 错误实例的 value 属性接收生成器的返回值
 
 #### 尾递归优化
 
-生成器函数的另一种用法是帮助 Python 解决尾递归优化问题
-
-Python 普通函数并不支持 “尾递归” 的编写方式，所以当函数递归超过一定限制时（默认在 1000 次左右）就会抛出 `RecursiveError` 错误
-
-但 Python 的生成器函数能够完成这样的优化，比如
-
+生成器函数的另一种用法是帮助 Python 解决尾递归优化问题，比如
 ```python
 def fib(n: int = Field(ge=0), _current: int = 0, _next: int = 1):  
     if not n:  
@@ -612,7 +680,10 @@ print(res % 100007)
 # > 57937
 ```
 
-对于使用 `@utype.parse` 装饰的函数，当 utype 识别到迭代器 yield 出的仍然是一个生成器时，会继续迭代执行，直到得到结果，所以上面例子中的写法就可以简化为 
+!!! note
+	Python 普通函数并不支持 “尾递归” 的编写方式，所以当函数递归超过一定限制时（默认在 1000 次左右）就会抛出 `RecursiveError` 错误，但使用尾递归的生成器能够避免这个问题
+
+如果你的尾递归生成器使用 `@utype.parse` 装饰，可以通过声明最终的返回类型来对调用进行简化，当 utype 识别到迭代器 yield 出的仍然是一个生成器时，会继续迭代执行，直到得到结果，所以上面例子中的写法就可以简化为 
 
 ```python
 import utype
@@ -643,7 +714,7 @@ except Exception as e:
 	"""
 ```
 
-因为我们在递归调用的时候，用的是装饰后的 `fib` 函数，每次递归都会在 utype 中进行参数解析，所以仍然会发生爆栈。
+因为我们在递归调用的时候，用的是装饰后的 `fib` 函数，每次递归都会在 utype 中进行参数解析，所以仍然会发生爆栈
 但由于我们在首次调用完成解析后，已经能够保障调用的类型安全了，所以我们可以直接使用 `fib` 的原函数进行调用了，我们可以通过 `utype.raw` 方法获取解析函数的原函数，优化后的代码如下
 
 ```python
@@ -668,10 +739,9 @@ print(res % 100007)
 
 这样既保障了调用的类型安全，也可以获得与尾递归生成器的优化，还优化了多次调用的性能
 
-
 ### 异步生成器函数
 
-utype 不仅支持解析普通函数，还支持生成器函数，异步函数和异步生成器函数，它们的用法都是一致的，只需要正确地声明对应的类型注解
+utype 同样支持异步的生成器函数，这种函数一般使用 `AsyncGenerator` 进行返回类型注解，如
 ```python
 import utype  
 import asyncio  
@@ -723,205 +793,356 @@ if __name__ == '__main__':
 
 ## 配置函数解析
 
-你可以在 `@utype.parse` 装饰器的参数中转入一些参数来控制函数的解析
+你可以在 `@utype.parse` 装饰器的参数中转入一些参数来控制函数的解析，包括
 
 * `ignore_params`：是否忽略对函数参数的解析，默认为 False，如果开启，则 utype 不会对函数参数进行类型转化与约束校验
 * `ignore_result`：是否忽略对函数结果的解析，默认为 False，如果开启，则 utype 不会对函数结果进行类型转化与约束校验
 * `options`：传入一个解析选项来调控解析行为，具体用法可以参考 [Options 解析配置](../references/options)
-* `parser_cls`：传入你自定义的解析类，默认是 `utype.parser.FunctionParser`，你可以通过继承和扩展它来实现你自定义的函数解析功能
 
-## 在类中的应用
+下面示例一下解析配置的用法
+```python
+import utype
+from typing import Optional
+
+class PositiveInt(int, utype.Rule):  
+    gt = 0
+
+class ArticleSchema(utype.Schema):
+	id: Optional[PositiveInt]
+	title: str = Field(max_length=100)
+	slug: str = Field(regex=r"[a-z0-9]+(?:-[a-z0-9]+)*")
+
+@utype.parse(
+	options=Options(  
+	    addition=False,  
+	    case_insensitive=True  
+	),
+	ignore_result=True,
+)
+def get_article(id: PositiveInt = None, title: str = '') -> ArticleSchema:
+	return {
+		'id': id,
+		'title': title,
+		'slug': '-'.join([''.join(
+			filter(str.isalnum, v)) for v in title.split()]).lower()
+	}
+
+query = {'ID': '3', 'Title': 'Big shot'}
+article = get_article(**query)
+
+print(article)
+# > {'id': 3, 'title': 'Big shot', 'slug': 'big-shot'}
+
+try:
+	get_article(**query, addon='test')
+except utype.exc.ExceedError as e:
+	print(e)
+	"""
+	parse item: ['addon'] exceeded
+	"""
+```
+
+我们在 `get_article` 函数的 `@utype.parse` 装饰器中声明了解析配置，指定了一个解析选项 Options 实例，其中使用 `addition=False` 表示对于额外的参数会直接报错，`case_insensitive=True` 表示允许大小写不敏感地接受参数
+
+所以我们看到，使用大写参数名称的数据可以被正常地传入处理，由于指定了 `ignore_result=True` ，所以结果并没有进行转化，如果传入了额外的参数，则会直接抛出 `exc.ExceedError` 错误
+
+!!! note
+	默认情况下  `@utype.parse`  会忽略额外的参数，这样与数据类的行为保持一致，你可以通过声明 `**kwargs` 参数的方式表示接受额外参数，也可以使用 `Options(addition=False)` 来禁止额外参数
 
 
-## 使用场景
+* `eager`：对于生成器函数，异步函数和异步生成器函数，是否在调用函数时就直接对参数进行解析，而不是等到使用 `await`，`next()`，`for`，`async for` 等方法时才进行解析，默认为 False
 
-### 初始化数据类
+我们可以来看一下默认情况下异步函数对于异常输入的行为
+```python
+import asyncio  
+import utype
+
+@utype.parse
+async def sleep(seconds: float = utype.Param(ge=0)) -> float:  
+    if not seconds:  
+        return 0 
+    await asyncio.sleep(seconds)  
+    return seconds
+
+invalid_coro = sleep(-3)   # no error occured
+
+try:
+	await invalid_coro
+except utype.exc.ParseError as e:
+	print(e)
+	"""
+	parse item: ['seconds'] failed: Constraint: <ge>: 0 violated
+	"""
+```
+
+异常的输入在调用函数时并不会直接抛出错误，而是会等到使用 `await` 时才抛出。但在开启 `eager=True` 时，在传参时就会直接抛出错误，而不会等到调用 `await`，如
+
+```python
+import asyncio  
+import utype
+
+@utype.parse(eager=True)
+async def sleep(seconds: float = utype.Param(ge=0)) -> float:  
+    if not seconds:  
+        return 0 
+    await asyncio.sleep(seconds)  
+    return seconds
+
+try:
+	sleep(-3)
+except utype.exc.ParseError as e:
+	print(e)
+	"""
+	parse item: ['seconds'] failed: Constraint: <ge>: 0 violated
+	"""
+```
+
+对于生成器函数，在开启 `eager=True` 时，也会在调用时直接进行解析，如
 
 ```python
 import utype
-  
-class PowerSchema(utype.Schema):  
-    result: float  
-    num: float  
-    exp: float  
-  
-@utype.parse  
-def get_power(num: float, exp: float) -> PowerSchema:  
-    if num < 0:  
-        if 1 > exp > -1 and exp != 0:  
-            raise exc.ParseError(f'operation not supported, '  
-                                 f'complex result will be generated')  
-    return PowerSchema(  
-        num=num,  
-        exp=exp,  
-        result=num ** exp  
-    )  
-      
-power = get_power('3', 3)
-```
+from typing import Iterator
 
-这种方式比为数据类自定义 `__init__` 函数还要灵活，因为可以声明多种不同的初始化参数与逻辑
-
-在参数中使用嵌套类型
-
-```python
-import utype  
-from typing import List, Dict
-
-class Slug(str, utype.Rule):  
-    regex = r"[a-z0-9]+(?:-[a-z0-9]+)*"  
-  
-class ArticleQuery(utype.Schema):  
-    id: int  
-    slug: Slug = utype.Param(max_length=30)  
-  
-class ArticleInfo(ArticleQuery):  
-    likes: Dict[str, int]  
-  
-@utype.parse  
-def get_article_info(  
-    query: ArticleQuery,  
-    body: List[Dict[str, int]] = utype.Param(default_factory=list)  
-) -> ArticleInfo:  
-    likes = {}  
-    for item in body:  
-        likes.update(item)  
-    return {  
-        'id': query.id,  
-        'slug': query.slug,  
-        'likes': likes  
-    }
-
-article = get_article_info(
-	query='id=1&slug=my-article', 
-	body=b'[{"alice": 1}, {"bob": 2}]'
-)
-
-print(article)
-# > ArticleInfo(id=1, slug='my-article', info={'alice': 1, 'bob': 2})
-```
-
-
-### 运行时解析配置
-
-**模式参数**
-
-
-**在函数参数中使用模式配置**
-相较于在数据类中使用模式字段，在函数参数使用模式配置并不是很常见，
-
-```python
 @utype.parse
-def feed_user(  
-    username: str,  
-    password: str = Field(mode='wa', default=None),  
-    followers_num: int = Field(readonly=True, default=None),  # or mode='r'  
-    signup_time: datetime = Field(  
-        mode='ra',  
-        default_factory=datetime.now  
-    ),  
-    __options__: Options = Options(mode='w')
-):  
-    return locals()
+def fib(n: int = Param(ge=0), _current: int = 0, _next: int = 1) -> Iterator[int]:  
+    if not n:  
+        yield _current  
+    else:  
+        yield fib(n - 1, _next, _current + _next)
+
+invalid_gen = fib('abc')
+
+try:
+	next(invalid_gen)
+except utype.exc.ParseError as e:
+	print(e)
+	"""
+	parse item: ['n'] failed: could not convert string to float: 'abc'
+	"""
+
+@utype.parse(eager=True)
+def eager_fib(n: int = Param(ge=0), _current: int = 0, _next: int = 1) -> Iterator[int]:  
+    if not n:  
+        yield _current  
+    else:  
+        yield fib(n - 1, _next, _current + _next)
+
+try:
+	eager_fib('abc')
+except utype.exc.ParseError as e:
+	print(e)
+	"""
+	parse item: ['n'] failed: could not convert string to float: 'abc'
+	"""
 ```
 
+`eager=True` 的原理是将生成器函数，异步函数和异步生成器函数都转化为一个同步函数，在调用时就进行解析，然后返回对应的生成器对象 / 协程对象 / 异步生成器对象供用户进行操作
 
-* `readonly`
-* `writeonly`
-* `mode`
-因为在函数中指定任何模式参数都需要参数指定默认值（`default`  /  `default_factory`），指定了模式意味着函数参数在某些模式下无法输入
-
-
-### 装饰 `__init__` 函数
-
-在 utype 中，数据类默认拥有着解析初始化数据的能力，但即使你不将类声明为数据类，也可以单独使用 `@utype.parse` 装饰类的 `__init__` 函数，从而获得解析初始化参数的能力
-
-
-### `with` 与 `__enter__` 函数
-
-* `with`
-* `async with`
-
-### `@classmethod`
-TODO
+所以在开启了 `eager=True`  以后函数的性质其实发生了改变，但是对于使用者来说除了将参数解析行为提前外，感知不到区别
 
 !!! note
-	对于 `@classmethod` 函数， `@utype.parse` 与 `@classmethod` 的关系无关紧要，你可以将它放在  `@classmethod` 的上方或下方，utype 都能够处理好
-
-### `@staticmethod`
-TODO
+	 `eager=True` 对于普通的同步函数没有意义，因为普通同步函数就是在调用时直接完成解析的
 
 
-你需要避免在 `@staticmethod`
-
-```python
-class Object:
-	@staticmethod  
-	@utype.parse  
-	def bad_example(param, value: int = 0):  
-	    return param
-```
-
-这是因为， `@utype.parse` 收到的函数的特征与普通的实例方法函数的特征是相同的
-
-（实际上也不会造成影响，这个参数照样能传参，而且因为没有类型与默认值声明，所以丝毫不会影响解析
-
-### `@property`
-TODO
+* `parser_cls`：传入你自定义的解析类，默认是 `utype.parser.FunctionParser`，你可以通过继承和扩展它来实现你自定义的函数解析功能
 
 
-### 直接应用到类
+## 在类中的应用
 
-比起在类的函数中一个个添加 `@utype.parse`，它还可以直接左右到类中
+我们有很多函数都是声明在类中的方法，比如
 
- `@utype.parse` 装饰类的效果是：
-将类中的非保留函数（名称不以下划线开头的函数）全部变成解析函数
-
-**注意**：`@utype.parse`  和 `@utype.dataclass` 都可以作用于类，但是它们的作用是不同的， `@utype.parse`  会将类中的所有外部方法（不以下划线开头的函数）变成解析函数
-
-而  `@utype.dataclass` 的作用是生成类中关键的内部方法（如 `__init__`，`__repr__`，`__eq__` 等），以及为类的属性（包括普通属性和 `@property` 属性）提供类型解析能力
-
-所以 `@utype.parse`  和 `@utype.dataclass` 是相互独立的，也可以同时使用
+### 实例方法
+声明在类中的函数默认就是实例方法，其中第一个参数接受的是类的实例，`@utype.parse` 也支持对实例方法的解析，包括进行初始化的 `__init__` 方法，如
 
 ```python
-@utype.parse  
-@utype.dataclass  
-class Data:  
-    @classmethod  
-    def operation(cls):  
-        return cls.generate(param='3')  
-  
-    @staticmethod  
-    def generate(param: int = Field(ge=0)):  
-        return param  
+import utype
+
+class IntPower:  
+    @utype.parse  
+    def __init__(  
+        self,  
+        base: int = utype.Param(ge=0),  
+        exp: int = utype.Param(ge=0),  
+    ):  
+        self.base = base  
+        self.exp = exp  
   
     @utype.parse  
-    def __call__(self, *args, **kwargs):  
-        return self, args, kwargs
+    def power(self, mod: int = utype.Param(None, ge=0)) -> int:  
+        return pow(self.base, self.exp, mod=mod)  
+  
+p = IntPower('3', 3.1)
+print(p.base, p.exp)
+# > 3 3
+
+print(p.power())
+# > 27
+print(p.power('5'))
+# > 2
+
+try:
+	p.power(-5)
+except utype.exc.ParseError as e:
+	"""
+	parse item: ['mod'] failed: Constraint: <ge>: 0 violated
+	"""
+	print(e)
 ```
 
+### `@staticmethod` 
+在类中，使用  `@staticmethod` 装饰器的函数称为静态方法，其中不包含实例参数或类参数，utype 也支持解析静态访问，无论  `@utype.parse` 装饰器与 `@staticmethod` 的先后顺序如何，如
+
+```python
+import utype
+from typing import Union
+
+class Power:  
+    @staticmethod  
+	@utype.parse  
+	def int_power(  
+	    num: int = utype.Param(ge=0),  
+	    exp: int = utype.Param(ge=0),  
+	    mod: int = utype.Param(None, ge=0)
+	) -> int:  
+	    return pow(num, exp, mod)
+
+	@utype.parse
+	@staticmethod  
+	def float_power(num: float, exp: float) -> Union[float, complex]:  
+	    return pow(num, exp)
+
+print(Power.int_power('3', 3.1))
+# > 27
+
+print(Power.float_power('2.5', 3))
+# > 15.625
+```
+
+### `@classmethod`
+在类中，使用  `@classmethod` 装饰器的函数称为类方法，类方法的第一个参数是类本身，可以用于访问类属性，其他的类方法或静态方法等，同样也支持 utype 解析
+
+```python
+import utype
+
+class Power:  
+    MOD = 10007  
+    
+    @classmethod  
+    @utype.parse    
+    def cls_power(
+	    cls,
+	    num: int = utype.Param(ge=0),  
+	    exp: int = utype.Param(ge=0),  
+	) -> int:  
+        return pow(num, exp, mod=cls.MOD)
+
+print(Power.cls_power('123', '321'))
+# > 4402
+```
+
+### `@property`
+在类中，使用  `@property` 装饰器可以使用函数的方式定义属性的访问，赋值，删除等操作，utype 也支持对属性的访问和赋值函数进行解析
+
+```python
+import utype
+
+class Request:
+    def __init__(self, body: bytes):  
+        self.body = body  
+
+    @property  
+    @utype.parse    
+    def json_body(self) -> dict:  
+        return self.body  
+  
+    @json_body.setter  
+    @utype.parse    
+    def json_body(self, data: dict):  
+        import json  
+        self.body = json.dumps(data)  
+  
+req = Request(b'{"id": 11, "enabled": false}')
+
+print(req.json_body['enabled'])
+# > False
+
+req.json_body = '{"id": 11, "enabled": true}'
+print(req.json_body['enabled'])
+# > True
+
+try:
+	req.json_body = '@invalid-payload'
+except utype.exc.ParseError as e:
+	print(e)
+	"""
+	parse item: ['data'] failed: Expecting value: line 1 column 1 (char 0)
+	"""
+```
+
+可以看到，属性在访问时会按照属性函数的返回类型注解进行解析，在赋值时也会按照赋值函数的首个参数的类型进行解析，如果在赋值或取值时无法完成解析，则会抛出错误
 
 !!! note
-	虽然 `@utype.parse` 施加在类上时不会应用以下划线开头命名的内部方法，但你可以手动为以下划线开头命名的方法装饰
+	需要注意的是，`@utype.parse` 需要施加在 `@property` 装饰器和 `setter` 装饰器的下方
 
+### 应用到整个类
 
-对于类来说， `@utype.parse`  不会影响基类中的方法
+`@utype.parse` 除了可以单独地作用在类的函数中，它还可以直接对类进行装饰，实现的效果是：将该类中的非私有函数（名称不以下划线开头的函数，不包括 `@property`）全部变成解析函数，如
 
-**适用场景**
+```python
+import utype
+from typing import Iterator
 
-由于使用 `@utype.parse` ，
+@utype.parse  
+class PowerIterator:  
+    def _power(  
+        self,  
+        num: Union[int, float],  
+        exp: Union[int, float],  
+    ) -> Union[int, float, complex]:  
+        return pow(num, exp, self.mod)  
+  
+    def iter_int(self, *args: int, exp: int) -> Iterator[int]:  
+        for base in args:  
+            yield self._power(base, exp)  
+  
+    @utype.parse  
+    def __init__(self, mod: int = None):  
+        self.mod = mod
 
-既然 utype 完成了额外的解析转化工作，那么肯定会造成轻微的调用延时，对于单次调用这样的延时可以忽略，但如果你需要高频地调用一个内部函数，
+pow_iter = PowerIterator('3').iter_int('3', '4', '5', exp=5)
 
-所以 utype 函数更适合用于入口函数，即面向用户的 API 或函数，对于传参较为稳定，调用频繁的内部函数，则一般不需要使用 utype 的解析语法
+print(next(pow_iter))
+# > 0
+print(next(pow_iter))
+# > 1
+print(next(pow_iter))
+# > 2
+```
 
-并且 utype 页提供了一个 `utype.raw` 方法，可以用于获取原始函数，所以如果你能够保障
+在使用 `@utype.parse`  装饰的类中，所有名称不以 `_` 开头的函数都会被作用一样的解析配置，如例子中的 `iter_int` 生成器函数就获得了解析能力
 
-也就是说，使用 utype 的入口函数可以为你的类库或者 API 保守好类型安全的大门，但没有必要在内部的每个函数中
+!!! note
+	虽然 `@utype.parse` 施加在类上时不会应用以下划线开头命名的内部方法，但你可以手动为以下划线开头命名的方法装饰，比如例子中就主动为 `__init__` 方法进行了装饰
 
-如果你的内部函数调用来自 utype 入口函数，那么
+**utype 中的类装饰器**
 
+utype 提供的很多装饰器都可以作用到类中，但它们的作用各自不同
 
-所以如果你对整个类使用的话，那么类的内部函数建议使用下划线开头的命名，这样会跳过 `@utype.parse` 的应用
+* `@utype.apply`：为自定义类型施加约束
+* `@utype.parse` ：将类中的所有公开方法（不以下划线开头的函数，不包括 `@property` 属性）变成解析函数
+* `@utype.dataclass`：生成类中关键的内部方法（如 `__init__`，`__repr__`，`__eq__` 等），使得类获得初始化数据的解析能力，初始化的数据映射和赋值，以及为类的属性（包括普通属性和 `@property` 属性）提供类型解析能力
 
+由于这些装饰器各自的功能互相独立，所以你也可以根据你的需要自由组合使用它们
+
+### 适用场景
+
+相较于普通的函数，utype 在解析函数的调用中完成了额外的类型转化，约束校验和参数映射工作，所以肯定会造成轻微的调用延时，对于单次调用这样的延时可以忽略，但如果你需要高频地大量调用的话，解析产生的性能影响就是不可忽略的。所以 utype 的解析函数更适合作用于
+
+* 类库的入口函数
+* 网络编程的 API 接口函数
+* 集成第三方接口或类库的函数
+
+由于来自用户，网络或第三方的数据具有不确定性，所以你可以把 utype 作用在这一层，作为输入校验和类型安全的保障，而对于你系统或类库中传参较为稳定，调用较为频繁的内部函数来说，则一般不需要使用 utype 的解析语法
+
+`@utype.parse` 在装饰类时并没有将解析能力应用到全部的方法，而是只作用在公开方法的机制就是为了让开发者建立这样的心智模型，即建议公开的，提供给用户的方法使用 utype 提供的解析能力，而内部的方法则根据实际需要进行判断
 

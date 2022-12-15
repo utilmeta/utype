@@ -556,104 +556,111 @@ print(revert_type | xor_type2)
 Python 原生并没有提供任意类型值转化到其他任意类型的安全有效的方式，所有的类型转化逻辑都是由 utype 通过一个个转化函数提供的，但是由于每个开发者对类型的校验严格程度与转化方式都可能有着自己的偏好，所以 utype 的类型转化机制提供了多个可调整的偏好参数，并且支持对类型转化函数进行动态地注册，覆盖与扩展，这一节我们主要来介绍这部分内容
 
 
-### 类型转化器与转化函数
+### 注册类型转化函数
 
-utype 提供的类型转换器位于
+在 utype 中，每个类型都是通过类型转化函数来完成转化的，但是这些函数并非是固定的，而是可以进行灵活的注册，比如
 
-* `TypeTransformer`
-* `type_transform`：接受
-
-1. 如果输入值的类型完全匹配目标类型，则直接返回，无需转化
-2. 在
-
-### 转化偏好
-utype 已经内置了一些转化偏好选项，通过解析选项 Options 声明，其中包括
-
-#### `no_explicit_cast` - 无显式类型转化
-
-其实是尽量不发生预期之外的类型转化，实现上会将类型按照基本类型分组
-
-* `null`：None
-* `boolean`：0，1,  True, False
-* `number`：int/float/decimal 等数字
-* `string`：str/bytes/bytearray 等字符串与二进制字节
-* `array`：list/tuple/set
-* `object`：dict/mapping
-
-开启这个选项后，同组的类型之间可以互相转化，但是不同组的类型之间不能相互转化
-
-特例
-*  **Decimal**：Decimal 允许从 str 转化，因为从浮点数转化会出现失真
-* **日期与时间**：支持从日期字符串与时间戳转化，因为没有更原生的类型表达方式
-
-最明显的一个区别是，默认情况下，允许字符串到列表/字典的转化，前提是满足某些模式，比如
 ```python
-from utype import type_transform
+from utype import Rule, register_transformer
+from typing import Type
 
-print(type_transform('[1,2,3]', list))
-# > [1, 2, 3]
-print(type_transform('{"value": true}', dict))
-# > {'value': True}
+class Slug(str, Rule):  
+    regex = r"[a-z0-9]+(?:-[a-z0-9]+)*"
+
+@register_transformer(Slug)
+def to_slug(transformer, value, t: Type[Slug]):
+	str_value = transformer(value, str)
+	return t('-'.join([''.join(
+	filter(str.isalnum, v)) for v in str_value.split()]).lower())
+
+
+class ArticleSchema(Schema):
+	slug: Slug
+
+print(dict(ArticleSchema(slug=b'My Awesome Article!')))
+# > {'slug': 'my-awesome-article'}
 ```
 
-但是在开启 `no_explicit_cast` 参数后，不会允许这样的转化
+注册的转化函数并不会影响类的 `__init__` 方法的行为，因为转换器的转化发生在类的初始化 **之前**，在下面的场景中会调用转化函数
 
-#### `no_data_loss` - 无信息损耗
+* 解析约束类型的源类型时
+* 解析数据类的字段时
+* 解析函数的参数时
 
-在默认情况下为 False，也就是接受信息出现损耗的转化，比如
-
-* `bool`："Some Value" -> True
-* `int`：3.1415 -> 3
-* `date`： datetime.now()  -> datetime.now().date()
-* `dict`：`[{"a": 1}, {"b": 2}]`  -> `{"a": 1}`
-
-这些例子中，输入数据的信息都在进行类型转化时发生了不可逆的压缩或损耗，如果开启 `no_data_loss`，则表示只接受没有信息损耗的转化，如
-
-* bool：只接受 True, False, 0, 1, None，和一些明显表示布尔值的字符串，如 `'true'`，`'f'`，`'no'` 等
-* int:  "3"  ->  3
-* datetime: date(2000,1,1) -> datetime(2000,1,1)
-* list: "1,2,3" -> [1,2,3]
-* list：any iterable -> list(iter(iterable))
-* dict: "a=b&c=d" -> {"a": "b", "c“: "d"}
-* dict: [{"a": 1}]   -> {"a": 1}     (only 1 item)
-* str:  {'a': 1} -> "{"a": 1}"
+当解析到对应的字段/参数时，如果数据的类型与声明的类型完全吻合（`type(data) == t`），则直接跳过解析，否则会寻找转化函数进行调用
 
 !!! note
-	需要注意的是，这些偏好只是给转换器函数的 “**提示**”或者 flag，Python 本身没有什么机制能够强制保障这些条件，它们会在具体的类型转化函数中实施，如果你自己定义了类型转化函数，也需要自行判断这些 flag 并实施对应的转化策略
+	没有找到转化函数的类型称为未知类型，在 [Options 解析选项](/zh/references/options) 中的 `unresolved_types` 用于配置处理这样的类型
 
+注册装饰器 `@register_transformer` 的参数如下
 
-### 转化器的注册
-
-转换器的转化发生在类的初始化 **之前**，也就是说如果你直接调用类的初始化函数制造实例是不会调用到转换器函数的，除非你使用 `type_transform(data, t)`  函数，或者在函数，数据类中解析对应类型时
-
-* `*classes`
-* `metaclass`
-* `attr`
-* `detector`
-* `allow_subclasses`
-* `priority`
+* `*classes`：传入一系列的类，为这些类注册一个转换函数
+* `allow_subclasses`：是否接受子类，默认为 True，如果为 True，`*classes` 中的子类在没有注册时也会应用同一个转化函数
+* `metaclass`：传入一个元类，来为元类的所有实例类型指定转化函数
+* `attr`：传入一个属性名称字符，对所有具有该属性的类指定转化函数
+* `detector`：传入一个检测函数，对所有满足函数检测的类指定转化函数
+* `priority`：指定转化函数的优先级，越高越优先被使用，默认是越晚注册的越优先
 * `to`：可以指定转换器注册的 `TypeTransformer` 类，默认情况下你注册的转化器是全局的，指定一个  `TypeTransformer`  子类后仅对这个类生效，你可以在 Options 中声明类型的转化类
 
 默认情况下，越晚注册的转换器优先级越高，所以能够实现 “覆盖” 的效果
 
-
-**不要注册万用类型**
-按照这种语法，如果你声明一个 `object` 作为 `*classes` 或者 `type` 作为 `metaclass` 将会匹配到所有的类型，即所有的类型都会使用你的这个 ”万用类型“ 函数作为转化函数，但是 utype 并不建议这样的声明方式，你可以直接继承 TypeTransformer 类并覆盖其中的  `__call__` 函数达到处理所有类型的效果
-
-
-### 未知类型的处理
-如果一个类型无法在 utype 中找到匹配的转换器（包括由开发者自行注册的转换器）就会被称为未知类型，对于未知类型的转化处理（与输入数据不匹配），utype 在解析选项 Options 中提供了一个 `unresolved_types` 来指定其行为，它有几个取值
-
-* `'ignore'`：忽略，不再转化，而是直接使用输入值作为结果
-* `'init'`：尝试使用 `t(data)` 对未知类型进行初始化
-* `'throw'`：直接抛出错误，不再转化，这个选项是默认值
+!!! warning
+	你不能注册嵌套类型，如 `Union[int, str]` 或 `List[int]`
 
 ### 兼容其他类库
 
+有了类型转化的注册能力，我们就可以通过注册转化函数来兼容其他的类库了
+
 #### 兼容 `pydantic`
 
+pydantic 是一个数据解析与校验库，也具有着类型转化和约束校验的能力，其中 BaseModel 类似于 utype 中的数据类
+
+兼容 `pydantic` 的转化函数如下
+```python
+from utype import register_transformer  
+from collections.abc import Mapping  
+from pydantic import BaseModel  
+  
+@register_transformer(BaseModel)  
+def transform_attrs(transformer, data, cls):  
+    if not transformer.no_explicit_cast and not isinstance(data, Mapping):  
+        data = transformer(data, dict)  
+    return cls(**data)
+```
 
 #### 兼容 `attrs`
 
+attrs 是一个简化类声明的库，无需声明 `__init__` 函数就能够完成初始化参数到属性的映射，但并不具备类型解析和约束校验的能力
 
-#### 兼容 `dataclasses` 标准库
+兼容 `attrs` 的转化函数如下
+```python
+from utype import register_transformer  
+from collections.abc import Mapping  
+
+@register_transformer(attr='__attrs_attrs__')  
+def transform_attrs(transformer, data, cls):  
+    if not transformer.no_explicit_cast and not isinstance(data, Mapping):  
+        data = transformer(data, dict)
+    names = [v.name for v in cls.__attrs_attrs__]  
+    data = {k: v for k, v in data.items() if k in names}  
+    return cls(**data)
+```
+
+#### 兼容 `dataclasses` 
+
+dataclasses 是 Python 的一个标准库，与 attrs 近似，也用于提供方便的类初始化方法，但同样不具备类型解析的能力
+
+下面的函数能够注册使用 `@dataclasses.dataclass` 装饰的类的类型，也就完成了 dataclasses 库的兼容
+
+```python
+from utype import register_transformer  
+from collections.abc import Mapping  
+
+@register_transformer(attr='__dataclass_fields__')  
+def transform_attrs(transformer, data, cls):  
+    if not transformer.no_explicit_cast and not isinstance(data, Mapping):  
+        data = transformer(data, dict)
+    data = {k: v for k, v in data.items() if k in cls.__dataclass_fields__}  
+    return cls(**data)
+```
+

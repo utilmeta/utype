@@ -272,11 +272,12 @@ print(dict(ArticleSchema(slug=b'My Awesome Article!')))
 ## RoadMap 与贡献
 utype 还在成长中，目前规划了以下将在新版本中实现的特性
 
+* 支持生成 json-schema 格式的输入输出模板文档
 * 完善解析错误的处理机制，包括错误处理钩子函数等
+* 支持环境变量和配置文件的解析和管理
 * 支持命令行参数的声明与解析
 * 支持 Python 泛型，类型变量等更多类型注解语法
 * 开发 Pycharm / VS Code 插件，支持对约束，逻辑类型和嵌套类型的 IDE 检测与提示
-* 从 json-schema 生成 utype 数据类代码
 
 也欢迎你来贡献 feature 或者提交 issue ~
 

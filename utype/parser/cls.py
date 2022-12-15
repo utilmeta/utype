@@ -1,10 +1,11 @@
 from .base import BaseParser
 from .func import FunctionParser
-from ..utils.compat import is_classvar, is_final
 from .field import ParserField
 from typing import Callable, Dict, Type, TypeVar
 import inspect
 from ..utils.transform import register_transformer, TypeTransformer
+from ..utils.compat import is_classvar, is_final
+from ..utils.functional import pop
 from ..utils.datastructures import unprovided
 from ..utils import exceptions as exc
 from .options import RuntimeContext, Options
@@ -81,6 +82,13 @@ class ClassParser(BaseParser):
                 return True
         return False
 
+    @property
+    def globals(self) -> dict:
+        dic = dict(super().globals)
+        # for the self-reference model in the function (not in global vars)
+        dic.setdefault(self.obj.__name__, self.obj)
+        return dic
+
     def generate_fields(self):
         exclude_vars = self.exclude_vars
         fields = []
@@ -89,6 +97,7 @@ class ClassParser(BaseParser):
         # get annotations from __dict__
         # because if base has annotations and sub does not
         # it will directly use the annotations attr of base's
+        global_vars = self.globals
 
         for key, annotation in annotations.items():
             if (
@@ -110,7 +119,7 @@ class ClassParser(BaseParser):
                     attname=key,
                     annotation=annotation,
                     default=default,
-                    global_vars=self.globals,
+                    global_vars=global_vars,
                     forward_refs=self.forward_refs,
                     options=self.options,
                 )
@@ -141,7 +150,7 @@ class ClassParser(BaseParser):
                     attname=key,
                     annotation=None,
                     default=attr,
-                    global_vars=self.globals,
+                    global_vars=global_vars,
                     forward_refs=self.forward_refs,
                     options=self.options,
                 )
@@ -149,14 +158,20 @@ class ClassParser(BaseParser):
 
         field_map = {}
         for field in fields:
-            if field.name in field_map:
+            name = field.name
+
+            if field.is_case_insensitive(self.options):
+                name = name.lower()
+
+            if name in field_map:
                 raise exc.ConfigError(
-                    f"{self.obj}: field name: {repr(field.name)} conflicted at "
-                    f"{field}, {field_map[field.name]}",
+                    f"{self.obj}: field name: {repr(name)} conflicted at "
+                    f"{field}, {field_map[name]}",
                     obj=self.obj,
-                    field=field.name
+                    field=name
                 )
-            field_map[field.name] = field
+            field_map[name] = field
+
         self.fields.update(field_map)
 
     def generate_from_bases(self):
@@ -319,7 +334,13 @@ class ClassParser(BaseParser):
         def __eq__(_obj_self, other):
             if not isinstance(other, _obj_self.__class__):
                 return False
-            return _obj_self.__dict__ == other.__dict__
+            if _obj_self.__dict__ == other.__dict__:
+                return True
+            self_dict = dict(_obj_self.__dict__)
+            pop(self_dict, '__context__')
+            other_dict = dict(other.__dict__)
+            pop(other_dict, '__context__')
+            return self_dict == other_dict
         self._make_method(__eq__)
 
     def make_repr(self, ignore_str: bool = False):
@@ -395,12 +416,15 @@ class ClassParser(BaseParser):
         if not inspect.isfunction(init_func) or self.function_parser_cls.function_pass(init_func):
             # if __init__ is declared but passed, we still make a new one
 
-            def __init__(_obj_self, **kwargs):
+            def __init__(_obj_self, _d: dict = None, /, **kwargs):
                 parser = self.get_parser(_obj_self)
 
                 context = getattr(_obj_self, '__context__', None)
                 if not isinstance(context, RuntimeContext):
                     context: RuntimeContext = parser.options.make_context(parser.obj)
+
+                if isinstance(_d, dict):
+                    kwargs.update(_d)
 
                 if no_parse:
                     values = kwargs
@@ -447,25 +471,28 @@ class ClassParser(BaseParser):
 def init_dataclass(cls: Type[T], data, options: Options = None, context: RuntimeContext = None) -> T:
     parser: ClassParser = getattr(cls, '__parser__', None)
     if not isinstance(parser, ClassParser):
-        raise TypeError(f'Invalid dataclass: {cls}')
+        raise exc.TypeMismatchError(f'Invalid dataclass: {cls}')
 
     new_context: RuntimeContext = (options or parser.options).make_context(cls, context=context)
     transformer = new_context.transformer
 
-    if not isinstance(data, Mapping):
-        # {} dict instance is an instance of Mapping too
-        if transformer.no_explicit_cast:
-            raise TypeError(f"invalid input type for {cls}, should be dict or Mapping")
-        else:
-            data = transformer.to_dict(data)
+    try:
+        if not isinstance(data, Mapping):
+            # {} dict instance is an instance of Mapping too
+            if transformer.no_explicit_cast:
+                raise TypeError(f"invalid input type for {cls}, should be dict or Mapping")
+            else:
+                data = transformer.to_dict(data)
 
-    if new_context.options.cast_keyword_str:
-        _data = {}
-        for key, val in data.items():
-            if not isinstance(key, str):
-                key = transformer.to_str(key)
-            _data[key] = val
-        data = _data
+        if new_context.options.cast_keyword_str:
+            _data = {}
+            for key, val in data.items():
+                if not isinstance(key, str):
+                    key = transformer.to_str(key)
+                _data[key] = val
+            data = _data
+    except Exception as e:
+        raise exc.ParseError(type=cls, value=data, origin_exc=e) from e
 
     inst = cls.__new__(cls)
     inst.__context__ = new_context

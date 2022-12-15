@@ -21,10 +21,10 @@ class Array(Rule):
     __origin__ = list       # use list instead of abc.Iterable
     primitive = "array"
 
-    def __class_getitem__(cls, item) -> Type["Array"]:
-        if not isinstance(item, tuple):
-            item = (item,)
-        return cls.annotate(cls.__origin__, *item)
+    # def __class_getitem__(cls, item) -> Type["Array"]:
+    #     if not isinstance(item, tuple):
+    #         item = (item,)
+    #     return cls.annotate(cls.__origin__, *item)
 
     @classmethod
     def check_type(cls, t):

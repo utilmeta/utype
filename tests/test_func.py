@@ -7,6 +7,16 @@ from typing import Iterable, Dict, Iterator, Optional, AsyncIterator, AsyncItera
 import warnings
 
 
+@pytest.fixture(params=(False, True))
+def eager(request):
+    return request.param
+
+
+@pytest.fixture(params=('throw', 'exclude', 'preserve'))
+def on_error(request):
+    return request.param
+
+
 class TestFunc:
     def test_basic(self):
         import utype
@@ -103,21 +113,32 @@ class TestFunc:
             ):
                 return f1
 
-        @utype.parse(options=Options(mode='r'))
-        def feed_user(
-            username: str,
-            password: str = Param(mode='wa', default=None),
-            followers_num: int = Param(mode='r', default=None),  # or mode='r'
-            signup_time: datetime = Param(
-                mode='ra',
-                default_factory=datetime.now
-            ),
-            __options__: Options = Options(mode='w')
-        ):
-            return username
+        # @utype.parse(options=Options(mode='r'))
+        # def feed_user(
+        #     username: str,
+        #     password: str = Param(mode='wa', default=None),
+        #     followers_num: int = Param(mode='r', default=None),  # or mode='r'
+        #     signup_time: datetime = Param(
+        #         mode='ra',
+        #         default_factory=datetime.now
+        #     ),
+        #     __options__: Options = Options(mode='w')
+        # ):
+        #     return username
 
     def test_invalids(self):
         from typing import Final, ClassVar
+
+        with pytest.raises(exc.ConfigError):
+            @utype.parse(options=Options(no_default=True))
+            def f():
+                pass
+
+        with pytest.raises(exc.ConfigError):
+            @utype.parse(options=Options(defer_default=True))
+            def f():
+                pass
+
         with pytest.warns():
             @utype.parse
             def func2(
@@ -142,6 +163,30 @@ class TestFunc:
             # immutable means nothing to field
             @utype.parse
             def func(f1: str = Field(repr=False)):
+                return f1
+
+        with pytest.warns():
+            @parse
+            def func(
+                f1: str = Field(alias='test'),
+                /
+            ):
+                return f1
+
+        with pytest.warns():
+            @parse
+            def func(
+                f1: str = Field(alias_from='test'),
+                /
+            ):
+                return f1
+
+        with pytest.warns():
+            @parse
+            def func(
+                f1: str = Field(case_insensitive=True),
+                /
+            ):
                 return f1
 
     def test_field_default_required_function(self):
@@ -197,8 +242,8 @@ class TestFunc:
             @parse
             def func3(
                 f0: str,
-                f1: str = Field(required=False, default=''),
-                f2: str = Field(required=True),
+                f1: str = Param(''),
+                f2: str = Param(),
             ):
                 return locals()
             # required param is after the optional param
@@ -211,15 +256,9 @@ class TestFunc:
             def func(
                 *,  # if we add a key-word-only sign, it
                 f1: str = Param(''),
-                f2: str = Field(required=True),
+                f2: str = Param(),
             ):
                 return f1, f2
-
-        with pytest.warns():
-            # defer default means nothing to
-            @parse
-            def func(f1: str = Field(default=0, defer_default=True)):
-                return f1
 
     def test_args_kwargs(self, on_error):
         from utype import Rule
@@ -262,36 +301,6 @@ class TestFunc:
 
     def test_args_assign(self):
         @utype.parse
-        def complex_func(
-            po1: str = Param(required=True),
-            po2: int = Param(default_factory=str),
-            /,
-            pos_and_kw: int = Param(default=1, alias_from=["pw1", "pw2"]),
-            *,
-            kw_only1: None = Param(case_insensitive=True),
-        ):
-            pass
-
-        def func3(
-            f0: str,
-            f1: str = Param(''),
-            f2: str = Param(),
-            _p1: int = 0,
-            # positional only
-            /,
-            # positional or keyword
-            f3: str = Param(),
-            f4: str = Param(),
-            _p2: int = 0,
-            *args: int,  # positional var
-            # keyword only
-            f5: str = Param(),
-            f6: str,
-            _p3: int = 0,
-            **kwargs: int  # keyword var
-        ):
-            return locals()
-
         def example(
             # positional only
             pos_only: int,
@@ -308,37 +317,15 @@ class TestFunc:
         ):
             return pos_only, pos_or_kw, args, kw_only_1, kw_only_2, kwargs
 
-        r = example(0, 1, 2, pos_or_kw=1)
-        r = example('0', '1', '2', pos_or_kw='1')
+        with pytest.raises(TypeError):
+            example(0, 1, 2, pos_or_kw=1, kw_only_2='0')
 
-        # with pytest.warns(match='alias'):
-        #     # positional only args's alias is meaningless
-        #     @utype.parse
-        #     def complex_func1(
-        #         po1: str = Param(required=True, alias_from=['a1', 'a2']),
-        #         po2: int = Param(default_factory=str), /,
-        #         pos_and_kw: int = 1
-        #     ):
-        #         pass
+        with pytest.raises(exc.AbsenceError):
+            # >  required item: 'pos_only' is absence
+            example(pos_only='1', pos_or_kw=1, kw_only_2='0')
 
-        # with pytest.raises(Exception):
-        #     # positional only args: default ahead of required
-        #     @utype.parse
-        #     def complex_func2(
-        #         po1: str = Param(default=''),
-        #         po2: int = Param(required=True), /,
-        #         pos_and_kw: int = 1
-        #     ):
-        #         pass
-
-        # with pytest.raises(Exception):
-        #     # positional only args: required=False args but no default specified
-        #     @utype.parse
-        #     def complex_func3(
-        #         po1: str = Param(required=False), /,
-        #         pos_and_kw: int = 1
-        #     ):
-        #         pass
+        r = example('0', '1', '2', kw_only_2='0', k='3')
+        assert r == (0, 1, (2,), 0, 0, {'k': 3})
 
     def test_excluded_vars(self):
         @utype.parse
@@ -356,8 +343,7 @@ class TestFunc:
         assert fib('10', _current=10, _next=6) == 55
         assert fib('10', 10, 5) == 615      # can pass through positional args
 
-    def test_generator(self):
-
+    def test_generator(self, eager):
         csv_file = """
         1,3,5
         2,4,6
@@ -366,7 +352,7 @@ class TestFunc:
 
         from typing import Tuple
 
-        @utype.parse
+        @utype.parse(eager=eager)
         def read_csv(file: str) -> Generator[Tuple[int, ...], None, int]:
             lines = 0
             for line in file.splitlines():
@@ -385,7 +371,7 @@ class TestFunc:
         except StopIteration as e:
             assert e.value == 3
 
-        @utype.parse
+        @utype.parse(eager=eager)
         def echo_round() -> Generator[int, float, int]:
             cnt = 0
             sent = 0
@@ -406,6 +392,26 @@ class TestFunc:
         except StopIteration as e:
             assert e.value == 3
 
+        @utype.parse(eager=eager)
+        def split_iterator(*args: str) -> Iterator[Tuple[int, int]]:
+            for arg in args:
+                yield arg.split(',')
+
+        params = ['1,2', '-1,3', 'a,b']
+
+        iterator = split_iterator(*params)
+        err = None
+        while True:
+            try:
+                ln, rn = next(iterator)
+                assert isinstance(ln, int)
+                assert isinstance(rn, int)
+            except StopIteration:
+                break
+            except utype.exc.ParseError as e:
+                err = e
+        assert err and '[2]' in str(err)
+
         # lst = ['12.1', b'0.05', 13.9, 0]
         # result = []
         # next(echo)
@@ -423,7 +429,7 @@ class TestFunc:
         #         result.append(res)
         #     i += 1
 
-        @utype.parse
+        @utype.parse(eager=eager)
         def fib(n: int = Param(ge=0), _current: int = 0, _next: int = 1) -> Iterator[int]:
             if not n:
                 yield _current
@@ -432,16 +438,27 @@ class TestFunc:
 
         assert next(fib('100')) == 354224848179261915075
 
+        if eager:
+            with pytest.raises(exc.ParseError):
+                fib('abc')
+            with pytest.raises(exc.ParseError):
+                fib(-1)
+        else:
+            with pytest.raises(exc.ParseError):
+                next(fib('abc'))
+            with pytest.raises(exc.ParseError):
+                next(fib(-1))
+
         # but with larger num like 1000, it will raise RecursiveError
 
-        @utype.parse
+        @utype.parse(eager=eager)
         def o_fib(n: int = Param(ge=0), _current: int = 0, _next: int = 1) -> Iterator[int]:
             if not n:
                 yield _current
             else:
                 yield utype.raw(o_fib)(n - 1, _next, _current + _next)
 
-        f10 = next(o_fib(10))
+        # f10 = next(o_fib(10))
         assert next(o_fib(2000)) % 100007 == 57937
 
         # @utype.parse
@@ -454,47 +471,80 @@ class TestFunc:
         #         _n += 1
         #     return b
 
+    def test_parse_config(self):
+        class PositiveInt(int, utype.Rule):
+            gt = 0
+
+        class ArticleSchema(utype.Schema):
+            id: Optional[PositiveInt]
+            title: str = Field(max_length=100)
+            slug: str = Field(regex=r"[a-z0-9]+(?:-[a-z0-9]+)*")
+
+        @utype.parse(
+            options=Options(
+                addition=False,
+                case_insensitive=True
+            ),
+            ignore_result=True,
+        )
+        def get_article(id: PositiveInt = None, title: str = '') -> ArticleSchema:
+            return {
+                'id': id,
+                'title': title,
+                'slug': '-'.join([''.join(
+                    filter(str.isalnum, v)) for v in title.split()]).lower()
+            }
+
+        query = {'ID': '3', 'Title': 'Big shot'}
+        assert get_article(**query) == {
+            'id': 3,
+            'title': 'Big shot',
+            'slug': 'big-shot'
+        }
+
     @pytest.mark.asyncio
-    async def test_async(self):
-        import aiohttp
+    async def test_async(self, eager):
         import asyncio
-        from typing import List, Awaitable
+        from utype import types
 
-        async def fetch(url: str) -> str:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url) as response:
-                    return await response.text()
+        @utype.parse(eager=eager)
+        async def sleep(seconds: float = utype.Param(ge=0)) -> Optional[types.NormalFloat]:
+            if not seconds:
+                return None
+            if isinstance(seconds, types.AbnormalFloat):
+                # force return parse error
+                return seconds
+            await asyncio.sleep(seconds)
+            return str(seconds)
 
-        async def fetch_urls(*urls: str) -> Dict[str, dict]:
-            result = {}
-            tasks = []
+        assert await sleep(0) is None
+        assert await sleep('0') is None
+        assert await sleep(b'0.001') == 0.001
 
-            async def task(loc):
-                result[loc] = await fetch(loc)
+        awaitable = sleep('inf')  # test not await
+        with pytest.raises(exc.ParseError):
+            await awaitable
 
-            for url in urls:
-                tasks.append(asyncio.create_task(task(url)))
+        if eager:
+            with pytest.raises(exc.ParseError):
+                _ = sleep(-0.3)
 
-            await asyncio.gather(*tasks)
-            return result
+            with pytest.raises(exc.ParseError):
+                _ = sleep('-inf')  # not ge than 0
+        else:
+            with pytest.raises(exc.ParseError):
+                await sleep(-0.3)
 
-        # def awaitable_fetch_urls(urls: List[str]) -> Awaitable[Dict[str, dict]]:
-        #     return fetch_urls(urls)
-
-        req_urls = [
-            b'https://httpbin.org/get?k1=v1',
-            b'https://httpbin.org/get?k1=v1&k2=v2',
-            b'https://httpbin.org/get',
-        ]
-        res = await fetch_urls(*req_urls)
+            with pytest.raises(exc.ParseError):
+                await sleep('-inf')   # not ge than 0
 
     @pytest.mark.asyncio
-    async def test_async_generator(self):
+    async def test_async_generator(self, eager):
         import utype
         from typing import AsyncGenerator
         import asyncio
 
-        @utype.parse
+        @utype.parse(eager=eager)
         async def waiter(rounds: int = utype.Param(gt=0)) -> AsyncGenerator[int, float]:
             assert isinstance(rounds, int)
             i = rounds
@@ -509,14 +559,23 @@ class TestFunc:
         async for index in wait_gen:
             assert isinstance(index, int)
             try:
-                await wait_gen.asend(b"0.05")
-                # wait for 0.05 seconds
+                await wait_gen.asend(b"0.001")
+                # wait for 0.001 seconds
             except StopAsyncIteration:
                 pass
 
-        with pytest.raises(exc.ParseError):
-            async for _ in waiter(-3):
-                pass
+        if eager:
+            with pytest.raises(exc.ParseError):
+                waiter(-3)
+            with pytest.raises(exc.ParseError):
+                waiter('abc')
+        else:
+            with pytest.raises(exc.ParseError):
+                async for _ in waiter(-3):
+                    pass
+            with pytest.raises(exc.ParseError):
+                async for _ in waiter('abc'):
+                    pass
 
         wait_gen = waiter(2)
         with pytest.raises(exc.ParseError):
@@ -526,55 +585,42 @@ class TestFunc:
                 except StopAsyncIteration:
                     pass
 
-    def test_for_cls(self):
-        from utype import Schema, exc
+        from utype.types import PositiveFloat
 
-        class PowerSchema(Schema):
-            result: float
-            num: float
-            exp: float
+        @utype.parse(eager=eager)
+        async def waiter2(*seconds: PositiveFloat | 0) -> AsyncIterable[int]:
+            for i, sec in enumerate(seconds):
+                yield str(i)
+                if sec:
+                    assert isinstance(sec, float)
+                    await asyncio.sleep(sec)
 
-        @utype.parse
-        def get_power(num: float, exp: float) -> PowerSchema:
-            if num < 0:
-                if 1 > exp > -1 and exp != 0:
-                    raise exc.ParseError(f'operation not supported, '
-                                         f'complex result will be generated')
-            return PowerSchema(
-                num=num,
-                exp=exp,
-                result=num ** exp
-            )
+        w2 = waiter2(0, '0.0001')
 
-        power = get_power('3', 3)
-        assert power.result == 27
+        async for ind in w2:
+            assert isinstance(ind, int)
 
-        with pytest.raises(exc.ParseError):
-            get_power(-0.5, -0.5)
-
-        @utype.parse
-        def get_power_locals(num: float, exp: float) -> PowerSchema:
-            if num < 0:
-                if 1 > exp > -1 and exp != 0:
-                    raise exc.ParseError(f'operation not supported, '
-                                         f'complex result will be generated')
-            result = num ** exp
-            return locals()
-
-        v = get_power_locals(num=3)
+        if eager:
+            with pytest.raises(exc.ParseError):
+                waiter2(-3)
+            with pytest.raises(exc.ParseError):
+                waiter2('abc')
+        else:
+            with pytest.raises(exc.ParseError):
+                async for _ in waiter2(-3):
+                    pass
+            with pytest.raises(exc.ParseError):
+                async for _ in waiter2('abc'):
+                    pass
 
     def test_class_methods(self):
-
         class Class:
+            arg = '3'
+
             @classmethod
             @utype.parse
-            def operation(cls):
-                return cls.generate2(param='3')
-
-            @staticmethod
-            @utype.parse
-            def bad(param, value: int = 0):
-                return param
+            def operation(cls, p: str):
+                return cls.generate2(param=p)
 
             @staticmethod
             @utype.parse
@@ -596,15 +642,52 @@ class TestFunc:
             def generate3(param: int = Param(ge=0)):
                 return param
 
+            @property
             @utype.parse
-            def __call__(self, *args, **kwargs):
-                return self, args, kwargs
+            def test(self) -> int:
+                return self.arg
+
+            @test.setter
+            @utype.parse
+            def test(self, v: int = Param(le=10)):
+                self.arg = v
+
+        assert Class.operation(b'3') == 3
+
+        assert Class.generate1('3') == 3
+        assert Class.generate2(param='3') == 3
+        assert Class.generate3(param='3') == 3
+
+        c = Class()
+        assert c.test == 3
+        c.test = '4'
+        assert c.arg == 4
+        assert c.test == 4
+
+        with pytest.raises(exc.ParseError):
+            c.test = 12
+
+        with pytest.raises(exc.ParseError):
+            c.test = 'abc'
+
+        with pytest.raises(exc.ParseError):
+            c.arg = 'abc'
+            _ = c.test
+
+        with pytest.raises(exc.ParseError):
+            Class.generate1(-1)
+
+        with pytest.raises(exc.ParseError):
+            Class.generate2(param=-1)
+
+        with pytest.raises(exc.ParseError):
+            Class.generate3(param=-1)
 
         @utype.parse()
         class Auto:
             @classmethod
-            def operation(cls):
-                return cls.generate(param='3')
+            def operation(cls, p: str):
+                return cls.generate(param=p)
 
             @staticmethod
             def generate(param: int = Param(ge=0)):
@@ -617,27 +700,159 @@ class TestFunc:
             def __call__(self, *args, **kwargs):
                 return self, args, kwargs
 
+        assert Auto.operation(b'3') == 3
+        assert Auto.generate(b'3') == 3
+
+        with pytest.raises(exc.ParseError):
+            Auto.operation(b'-3')
+
         with pytest.raises(exc.InvalidInstance):
             Auto.method(1, 2)
+
+        assert Auto.method(Auto(), 2) == 2
+        assert Auto().method('3') == 3
 
         @utype.parse
         @utype.dataclass
         class Data:
+            arg: int = Field(le=10)
+
             @classmethod
-            def operation(cls):
-                return cls.generate(param='3')
+            def operation(cls, k: str):
+                return cls.generate(param=k)
 
             @staticmethod
-            def generate(param: int = Param(ge=0)):
-                return param
+            def generate(param: int = Param(ge=0)) -> int:
+                return str(param)
 
             @utype.parse
-            def __call__(self, *args: int, **kwargs: str):
-                return self, args, kwargs
+            def __call__(self, *args: int, **kwargs: int):
+                return self.arg, args, kwargs
 
-    def test_staticmethod(self):
-        pass
+        d = Data(arg=b'10')
+        assert d.arg == 10
 
-    def test_property(self):
-        pass
+        assert d.operation('4') == 4
+
+        with pytest.raises(exc.ParseError):
+            d.operation(-3)
+
+        assert d('1', '2', k='3') == (10, (1, 2), {'k': 3})
+
+        from typing import Union
+
+        class Power:
+            MOD = 10007
+
+            num: float
+            exp: float
+
+            @staticmethod
+            @utype.parse
+            def int_power(
+                num: int = utype.Param(ge=0),
+                exp: int = utype.Param(ge=0),
+                mod: int = None
+            ) -> int:
+                return pow(num, exp, mod)
+
+            @staticmethod
+            @utype.parse
+            def float_power(num: float, exp: float) -> Union[float, complex]:
+                return pow(num, exp)
+
+            @classmethod
+            @utype.parse
+            def cls_power(cls, num: int, exp: int) -> int:
+                return cls.int_power(num, exp, mod=cls.MOD)
+
+            @utype.parse
+            def power(self) -> int:
+                return self.cls_power(self.num, self.exp)
+
+            @utype.parse
+            def __init__(self, num: float, exp: float):
+                if num < 0:
+                    if 1 > exp > -1 and exp != 0:
+                        raise exc.ParseError(f'operation not supported, '
+                                             f'complex result will be generated')
+                self.num = num
+                self.exp = exp
+
+        power = Power('3', 3)
+        assert power.power() == 27
+        assert Power.cls_power('123', 321) == 4402
+
+        with pytest.raises(exc.ParseError):
+            Power.cls_power('-1', 321)
+
+        class IntPower:
+            @utype.parse
+            def __init__(
+                self,
+                base: int = utype.Param(ge=0),
+                exp: int = utype.Param(ge=0),
+            ):
+                self.base = base
+                self.exp = exp
+
+            @utype.parse
+            def power(self, mod: int = utype.Param(None, ge=0)) -> int:
+                return pow(self.base, self.exp, mod=mod)
+
+        p = IntPower('3', 3)
+        assert p.power() == 27
+        assert p.power('5') == 2
+
+        class Request:
+            def __init__(self, body: bytes):
+                self.body = body
+
+            @property
+            @utype.parse
+            def json_body(self) -> dict:
+                return self.body
+
+            @json_body.setter
+            @utype.parse
+            def json_body(self, data: dict):
+                import json
+                self.body = json.dumps(data)
+
+        req = Request(b'{"id": 11, "enabled": false}')
+        assert req.json_body['enabled'] is False
+
+        req.json_body = '{"id": 11, "enabled": true}'
+        assert req.json_body['enabled'] is True
+
+        with pytest.raises(exc.ParseError):
+            req.json_body = '@invalid-payload'
+
+        @utype.parse
+        class PowerIterator:
+            def _power(
+                self,
+                num: Union[int, float],
+                exp: Union[int, float],
+            ) -> Union[int, float, complex]:
+                return pow(num, exp, self.mod)
+
+            def iter_int(self, *args: int, exp: int) -> Iterator[int]:
+                for base in args:
+                    yield self._power(base, exp)
+
+            @utype.parse
+            def __init__(self, mod: int = None):
+                self.mod = mod
+
+        pi = PowerIterator('3')
+        pg = pi.iter_int('3', '4', '5', exp=5)
+        assert next(pg) == 0
+        assert next(pg) == 1
+        assert next(pg) == 2
+
+        with pytest.raises(TypeError) as info:
+            assert pi._power('-1', 1)       # not applied
+
+        assert info.type == TypeError
 

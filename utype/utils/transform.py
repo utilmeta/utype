@@ -221,6 +221,9 @@ class TypeTransformer:
             return data.timestamp()
         elif isinstance(data, timedelta):
             return data.total_seconds()
+        elif isinstance(data, complex) and not self.no_data_loss:
+            if not data.imag:
+                return data.real
         return data
 
     # ---------------------
@@ -402,7 +405,7 @@ class TypeTransformer:
                     if isinstance(res, dict):
                         # maybe set
                         return t(res)
-                    raise TypeError
+                    raise
                 if "=" in data:
                     if "&" in data:
                         # a=b&c=d   querystring index
@@ -415,7 +418,7 @@ class TypeTransformer:
                         value.split("=")[0].strip(): value.split("=")[1].strip()
                         for value in data.split(spliter)
                     })
-                raise TypeError
+                raise
 
         from xml.etree.ElementTree import Element
 
@@ -478,6 +481,23 @@ class TypeTransformer:
             data = self._attempt_from_number(data)
 
         return t(str(data).strip())  # noqa
+
+    @register_transformer(complex)
+    def to_complex(self, data, t=complex) -> complex:
+        if isinstance(data, t):
+            return data
+
+        if self.no_explicit_cast:
+            data = self._from_byte_like(data)
+            if not isinstance(data, (int, float, Decimal, str)):
+                raise TypeError
+        else:
+            if isinstance(data, tuple) and len(data) == 2:
+                return t(*data)
+
+            data = self._attempt_from_number(data)
+
+        return t(data)
 
     @register_transformer(bool)  # after int
     def to_bool(self, data, t=bool) -> bool:
@@ -685,8 +705,6 @@ class TypeTransformer:
 
 
 def type_transform(data, type: Type[T], options=None) -> T:
-    if not options:
-        from ..parser.options import Options
-        options = Options().make_context()
-    cls = options.transformer_cls
-    return cls(options)(data, type)
+    from ..parser.options import Options
+    context = (options or Options()).make_context()
+    return context.transformer(data, type)
