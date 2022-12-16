@@ -7,6 +7,7 @@ site_dir: build
 
 theme:
   name: material
+  favicon: https://utype.io/favicon.ico
   language: en
   logo: https://utype.io/assets/utype-white.png
   palette:
@@ -30,7 +31,7 @@ theme:
 
 repo_name: utilmeta/utype
 repo_url: https://github.com/utilmeta/utype
-edit_uri: ''
+edit_uri: edit/main/docs/en
 plugins:
 - search
 
@@ -44,11 +45,19 @@ nav:
       - references/rule.md
       - references/field.md
       - references/options.md
-  - Feature Extensions:
-      - extension/env.md
-      - extension/cmd.md
+  - Languanges:
+      - En: /
+      - Zh: /zh
+#  - Feature Extensions:
+#      - extension/env.md
+#      - extension/cmd.md
 
 extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/utilmeta/utype
+    - icon: fontawesome/brands/twitter
+      link: https://twitter.com/utype_io
   alternate:
     - name: English
       link: /
@@ -56,6 +65,22 @@ extra:
     - name: 中文
       link: /zh/
       lang: zh
+  analytics:
+    provider: google
+    property: G-T7PKK2EXMW
+    feedback:
+      title: Was this page helpful?
+      ratings:
+        - icon: material/emoticon-happy-outline
+          name: This page was helpful
+          data: 1
+          note: >-
+            Thank you for your feedback~
+        - icon: material/emoticon-sad-outline
+          name: This page could be improved
+          data: 0
+          note: >-
+            Thank you for your feedback~
 
 markdown_extensions:
   - toc:

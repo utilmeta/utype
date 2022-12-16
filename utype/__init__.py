@@ -8,7 +8,7 @@ from .utils import exceptions as exc
 from .decorator import parse, handle, apply, dataclass, raw
 
 
-VERSION = (0, 2, 0, None)
+VERSION = (0, 2, 1, None)
 
 
 def _get_version():

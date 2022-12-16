@@ -3,17 +3,7 @@ import warnings
 from datetime import datetime, date, timedelta, time, timezone
 from uuid import UUID
 from decimal import Decimal
-from typing import (
-    Literal,
-    Union,
-    List,
-    Any,
-    Callable,
-    Iterable,
-    Set,
-    Dict,
-    Optional
-)
+from typing import Literal, Union, List, Any, Callable, Iterable, Set, Dict, Optional
 from .rule import Rule, ConstraintMode, Lax, LogicalType, resolve_forward_type
 from .options import Options, RuntimeContext
 from ..utils.compat import get_args, is_final
@@ -60,7 +50,7 @@ class Field:
         # unprovided: Any = ...,
         immutable: bool = False,
         # secret: bool = None,    # None means depend on the Options.secret_names
-        repr: Union[bool, str, Callable] = None,    # noqa
+        repr: Union[bool, str, Callable] = None,  # noqa
         dependencies: Union[list, str, property] = None,
         # (backup: internal, disallow, unacceptable)
         # unacceptable: we do not accept this field as an input,
@@ -102,13 +92,13 @@ class Field:
             if readonly or writeonly:
                 raise exc.ConfigError(
                     f"Field: mode: ({represent(mode)}) cannot set with readonly or writeonly",
-                    params={'mode': mode}
+                    params={"mode": mode},
                 )
 
         if readonly and writeonly:
             raise exc.ConfigError(
                 f"Field: readonly and writeonly cannot be both specified",
-                params={'readonly': readonly, 'writeonly': writeonly}
+                params={"readonly": readonly, "writeonly": writeonly},
             )
 
         if readonly:
@@ -124,7 +114,7 @@ class Field:
             if default_factory:
                 raise exc.ConfigError(
                     f"Field: default: {represent(default)} and default factory cannot set both",
-                    params={'default': default}
+                    params={"default": default},
                 )
 
         if default_factory:
@@ -132,39 +122,36 @@ class Field:
             if not callable(default_factory):
                 raise exc.ConfigError(
                     f"Field: default_factory: {represent(default_factory)} must be a callable",
-                    params={'default_factory': default_factory}
+                    params={"default_factory": default_factory},
                 )
 
         if defer_default:
             if unprovided(default) and not default_factory:
                 raise exc.ConfigError(
-                    F'Field: specify defer_default=True without any default',
+                    f"Field: specify defer_default=True without any default",
                     params={
-                        'defer_default': defer_default,
-                        'default': default,
-                        'default_factory': default_factory
-                    }
+                        "defer_default": defer_default,
+                        "default": default,
+                        "default_factory": default_factory,
+                    },
                 )
 
         if required is None:
             required = True
 
         if required:
-            if on_error == 'exclude':
-                raise exc.ConfigError(f'Field: required field does not support on_error="exclude"', params={
-                    'required': required,
-                    'on_error': on_error
-                })
+            if on_error == "exclude":
+                raise exc.ConfigError(
+                    f'Field: required field does not support on_error="exclude"',
+                    params={"required": required, "on_error": on_error},
+                )
 
         if isinstance(no_input, str):
             if mode:
                 if no_input not in mode:
                     raise exc.ConfigError(
                         f"Field no_input: {represent(no_input)} is not in mode: {represent(mode)}",
-                        params={
-                            'no_input': no_input,
-                            'mode': mode
-                        }
+                        params={"no_input": no_input, "mode": mode},
                     )
 
         if isinstance(no_output, str):
@@ -172,21 +159,15 @@ class Field:
                 if no_output not in mode:
                     raise exc.ConfigError(
                         f"Field no_output: {represent(no_output)} is not in mode: {represent(mode)}",
-                        params={
-                            'no_output': no_output,
-                            'mode': mode
-                        }
+                        params={"no_output": no_output, "mode": mode},
                     )
 
         if round:
             if decimal_places and decimal_places not in (round, Lax(round)):
                 raise exc.ConfigError(
-                    f'Field round: {round} is a shortcut for decimal_places=Lax({round}), '
-                    f'but you specified a different decimal_places: {represent(decimal_places)}',
-                    params={
-                        'round': round,
-                        'decimal_places': decimal_places
-                    }
+                    f"Field round: {round} is a shortcut for decimal_places=Lax({round}), "
+                    f"but you specified a different decimal_places: {represent(decimal_places)}",
+                    params={"round": round, "decimal_places": decimal_places},
                 )
 
             decimal_places = Lax(round)
@@ -218,15 +199,17 @@ class Field:
             for dep in dependencies:
                 dep = get_name(dep)
                 if not isinstance(dep, str):
-                    raise exc.ConfigError(f'Invalid dependency: {represent(dep)}, must be str or property')
+                    raise exc.ConfigError(
+                        f"Invalid dependency: {represent(dep)}, must be str or property"
+                    )
                 deps.append(dep)
 
         if discriminator:
             discriminator = get_name(discriminator)
             if not isinstance(discriminator, str):
                 raise exc.ConfigError(
-                    f'Field.discriminator must be a str, got {represent(discriminator)}',
-                    params={'discriminator': discriminator}
+                    f"Field.discriminator must be a str, got {represent(discriminator)}",
+                    params={"discriminator": discriminator},
                 )
 
         self.dependencies = deps
@@ -242,11 +225,12 @@ class Field:
 
         if isinstance(repr, bool):
             if repr:
-                repr = represent    # noqa
+                repr = represent  # noqa
             else:
-                repr = lambda v: unprovided     # noqa
+                repr = lambda v: unprovided  # noqa
         elif isinstance(repr, str):
-            def repr(v, _=repr):    # noqa
+
+            def repr(v, _=repr):  # noqa
                 return _
 
         self.repr: Optional[Callable] = repr
@@ -371,8 +355,8 @@ class Param(Field):
         unique_items: Union[bool, ConstraintMode] = None,
     ):
         kwargs = dict(locals())
-        kwargs.pop('self')
-        kwargs.pop('__class__')
+        kwargs.pop("self")
+        kwargs.pop("__class__")
         super().__init__(**kwargs)
 
 
@@ -415,7 +399,7 @@ class ParserField:
     }
 
     SECRET_EXEMPT_TYPES = (bool,)
-    SECRET_REPR = '*' * 6
+    SECRET_REPR = "*" * 6
 
     field_cls = Field
     rule_cls = Rule
@@ -471,7 +455,7 @@ class ParserField:
             return self.type.resolve_origins()
         elif isinstance(self.type, type):
             return [self.type]
-        return []     # not set or ForwardRef
+        return []  # not set or ForwardRef
 
     @property
     def output_origins(self) -> List[type]:
@@ -519,9 +503,11 @@ class ParserField:
                 trans = Rule.transformer_cls.resolver_transformer(self.type)
                 if not trans:
                     if options.unresolved_types == options.THROW:
-                        warnings.warn(f'Field(name={repr(self.name)}) got unresolved type: {self.type}, '
-                                      f'and Options.unresolved_types == "throw", which will raise error'
-                                      f' in the runtime if the input value type does not match')
+                        warnings.warn(
+                            f"Field(name={repr(self.name)}) got unresolved type: {self.type}, "
+                            f'and Options.unresolved_types == "throw", which will raise error'
+                            f" in the runtime if the input value type does not match"
+                        )
                 else:
                     self.input_transformer = trans
 
@@ -532,9 +518,11 @@ class ParserField:
                 trans = Rule.transformer_cls.resolver_transformer(self.output_type)
                 if not trans:
                     if options.unresolved_types == options.THROW:
-                        warnings.warn(f'Field(name={repr(self.name)}) got unresolved output type: {self.output_type}, '
-                                      f'and Options.unresolved_types == "throw", which will raise error'
-                                      f' in the runtime if the input value type does not match')
+                        warnings.warn(
+                            f"Field(name={repr(self.name)}) got unresolved output type: {self.output_type}, "
+                            f'and Options.unresolved_types == "throw", which will raise error'
+                            f" in the runtime if the input value type does not match"
+                        )
                 else:
                     self.output_transformer = trans
 
@@ -567,7 +555,7 @@ class ParserField:
                             f"that not support, must be a data class "
                             f"(like subclass of DataClass / Schema or "
                             f"use @dataclass to decorate a class)",
-                            field=self.name
+                            field=self.name,
                         )
 
                     field = cls_parser.get_field(self.field.discriminator)
@@ -577,7 +565,7 @@ class ParserField:
                             f"{repr(self.field.discriminator)}, but is was not find in type: "
                             f"{arg}, you should define {self.field.discriminator}: "
                             f'Literal["some-value"] in that schema',
-                            field=self.name
+                            field=self.name,
                         )
 
                     const = field.const
@@ -588,7 +576,7 @@ class ParserField:
                             f" common type const ({repr(const)}) set for this field, you should "
                             f"define {self.field.discriminator}: "
                             f'Literal["some-value"] in that schema',
-                            field=self.name
+                            field=self.name,
                         )
 
                     if const in discriminator_map:
@@ -596,7 +584,7 @@ class ParserField:
                             f"Field: {repr(self.attname)} with discriminator: "
                             f"{repr(self.field.discriminator)}, got a duplicate value:"
                             f" {repr(const)} for {arg} and {discriminator_map[const]}",
-                            field=self.name
+                            field=self.name,
                         )
 
                     discriminator_map[const] = arg
@@ -833,11 +821,11 @@ class ParserField:
     def check_function(self, func):
         if not self.always_provided:
             raise exc.ConfigError(
-                f'{func}: Field(name={repr(self.name)}) in function with required=False '
-                f'must specify a default or default_factory',
+                f"{func}: Field(name={repr(self.name)}) in function with required=False "
+                f"must specify a default or default_factory",
                 obj=func,
                 field=self.name,
-                params={'required': self.field.required, 'default': self.field.default}
+                params={"required": self.field.required, "default": self.field.default},
             )
 
         if self.field.defer_default:
@@ -847,7 +835,7 @@ class ParserField:
                 f" please consider move it",
                 obj=func,
                 field=self.name,
-                params={'defer_default': self.field.defer_default}
+                params={"defer_default": self.field.defer_default},
             )
 
         if self.field.no_default:
@@ -857,7 +845,10 @@ class ParserField:
                     f"must specify a default/default_factory value",
                     obj=func,
                     field=self.name,
-                    params={'no_input': self.field.no_input, 'default': self.field.default}
+                    params={
+                        "no_input": self.field.no_input,
+                        "default": self.field.default,
+                    },
                 )
 
             if self.field.mode:
@@ -866,7 +857,7 @@ class ParserField:
                     f"must specify a default/default_factory value",
                     obj=func,
                     field=self.name,
-                    params={'mode': self.field.mode, 'default': self.field.default}
+                    params={"mode": self.field.mode, "default": self.field.default},
                 )
 
         if self.positional_only:
@@ -914,14 +905,19 @@ class ParserField:
             return value
         trans = context.transformer
         try:
-            return trans(value, type)   # noqa
+            return trans(value, type)  # noqa
         except Exception as e:
             error = exc.ParseError(
-                item=self.name, type=self.output_type, value=value, field=self, origin_exc=e
+                item=self.name,
+                type=self.output_type,
+                value=value,
+                field=self,
+                origin_exc=e,
             )
             # todo: apply and distinct input field / output field
-            error_option = (self.output_field.on_error if self.output_field else None
-                            ) or context.options.invalid_values
+            error_option = (
+                self.output_field.on_error if self.output_field else None
+            ) or context.options.invalid_values
             if error_option == context.options.EXCLUDE:
                 context.collect_waring(error.formatted_message)
             elif error_option == context.options.PRESERVE:
@@ -950,9 +946,15 @@ class ParserField:
                 try:
                     value = context.transformer.to_dict(value)
                 except Exception as e:
-                    context.handle_error(exc.ParseError(
-                        item=self.name, type=dict, value=value, field=self, origin_exc=e
-                    ))
+                    context.handle_error(
+                        exc.ParseError(
+                            item=self.name,
+                            type=dict,
+                            value=value,
+                            field=self,
+                            origin_exc=e,
+                        )
+                    )
                     return unprovided
 
             discriminator = value.get(self.field.discriminator)
@@ -960,14 +962,16 @@ class ParserField:
                 type = self.discriminator_map[discriminator]
                 # directly assign type instead parse it in a Logical context
             else:
-                context.handle_error(exc.DiscriminatorMismatchError(
-                    discriminator=self.field.discriminator,
-                    discriminator_value=discriminator,
-                    field=self,
-                    value=value,
-                    item=self.name,
-                    type=self.type
-                ))
+                context.handle_error(
+                    exc.DiscriminatorMismatchError(
+                        discriminator=self.field.discriminator,
+                        discriminator_value=discriminator,
+                        field=self,
+                        value=value,
+                        item=self.name,
+                        type=self.type,
+                    )
+                )
                 return unprovided
 
         if not type:
@@ -976,10 +980,14 @@ class ParserField:
 
         with context.enter(self.name) as new_context:
             try:
-                return new_context.transformer(value, type)   # noqa
+                return new_context.transformer(value, type)  # noqa
             except Exception as e:
                 error = exc.ParseError(
-                    item=self.name, type=self.type, value=value, field=self, origin_exc=e
+                    item=self.name,
+                    type=self.type,
+                    value=value,
+                    field=self,
+                    origin_exc=e,
                 )
                 error_option = self.get_on_error(context.options)
                 if error_option == context.options.EXCLUDE:
@@ -1045,11 +1053,18 @@ class ParserField:
 
                         # some invalid configures
                         if field.alias:
-                            raise exc.ConfigError(field=attname, params={'alias': field.alias})
+                            raise exc.ConfigError(
+                                field=attname, params={"alias": field.alias}
+                            )
                         if field.no_output:
-                            raise exc.ConfigError(field=attname, params={'no_output': field.no_output})
+                            raise exc.ConfigError(
+                                field=attname, params={"no_output": field.no_output}
+                            )
                         if field.dependencies:
-                            raise exc.ConfigError(field=attname, params={'dependencies': field.dependencies})
+                            raise exc.ConfigError(
+                                field=attname,
+                                params={"dependencies": field.dependencies},
+                            )
 
                     else:
                         default = param.default
@@ -1079,11 +1094,17 @@ class ParserField:
 
                     # some invalid configures
                     if output_field.no_input:
-                        raise exc.ConfigError(field=attname, params={'no_input': field.no_input})
+                        raise exc.ConfigError(
+                            field=attname, params={"no_input": field.no_input}
+                        )
                     if output_field.alias_from:
-                        raise exc.ConfigError(field=attname, params={'alias_from': field.alias_from})
+                        raise exc.ConfigError(
+                            field=attname, params={"alias_from": field.alias_from}
+                        )
                     if not output_field.no_default:
-                        raise exc.ConfigError(field=attname, params={'default': field.default})
+                        raise exc.ConfigError(
+                            field=attname, params={"default": field.default}
+                        )
 
                 else:
                     output_field = None
@@ -1093,7 +1114,7 @@ class ParserField:
                     global_vars=global_vars,
                     forward_refs=forward_refs,
                     forward_key=attname,
-                    constraints=output_field.constraints if output_field else None
+                    constraints=output_field.constraints if output_field else None,
                 )
 
             else:
@@ -1119,7 +1140,7 @@ class ParserField:
                 no_input=no_input,
                 no_output=no_output,
                 required=required,
-                immutable=final
+                immutable=final,
             )
 
         if not dependencies and field.dependencies:
@@ -1136,12 +1157,10 @@ class ParserField:
         parser_field = cls(
             attname=attname,
             name=(output_field or field).get_alias(
-                attname,
-                generator=options.alias_generator
+                attname, generator=options.alias_generator
             ),
             aliases=field.get_alias_from(
-                attname,
-                generator=options.alias_from_generator
+                attname, generator=options.alias_from_generator
             ),
             input_type=input_type,
             output_type=output_type,
@@ -1151,7 +1170,7 @@ class ParserField:
             dependencies=dependencies,
             # options=options,
             final=final,
-            positional_only=positional_only
+            positional_only=positional_only,
         )
         parser_field.setup(options=options)
         return parser_field

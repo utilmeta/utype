@@ -26,15 +26,13 @@ from collections import deque, Mapping, OrderedDict, Callable, Generator, AsyncG
 from decimal import Decimal
 
 T = typing.TypeVar("T")
-OTHER = TypeVar('OTHER')
-ORIGIN = TypeVar('ORIGIN')
+OTHER = TypeVar("OTHER")
+ORIGIN = TypeVar("ORIGIN")
 
 NUM_TYPES = (int, float, Decimal)
 SEQ_TYPES = (list, tuple, set, frozenset, deque)
 MAP_TYPES = (dict, Mapping)
-TYPE_EXACT_TOLERANCE = (
-    {int, float},
-)
+TYPE_EXACT_TOLERANCE = ({int, float},)
 OPERATOR_NAMES = {
     "&": "AllOf",
     "|": "AnyOf",
@@ -104,7 +102,7 @@ class LogicalType(type):  # noqa
                 if isinstance(arg, type) and isinstance(obj, arg):
                     return True
             return False
-        origin = getattr(cls, '__origin__', None)
+        origin = getattr(cls, "__origin__", None)
         if isinstance(origin, type):
             if not isinstance(obj, origin):
                 return False
@@ -131,7 +129,7 @@ class LogicalType(type):  # noqa
                     for ori in arg.resolve_origins():
                         if ori not in origins:
                             origins.append(ori)
-                elif isinstance(arg, type):     # exclude forward ref
+                elif isinstance(arg, type):  # exclude forward ref
                     if arg not in origins:
                         origins.append(arg)
             return origins
@@ -396,7 +394,9 @@ class LogicalType(type):  # noqa
                     try:
                         new_context.transformer(value, con)
                         context.handle_error(
-                            exc.NegateViolatedError(f"Negate condition: {con} is violated")
+                            exc.NegateViolatedError(
+                                f"Negate condition: {con} is violated"
+                            )
                         )
                     except Exception:  # noqa
                         break
@@ -425,7 +425,7 @@ class ConstraintMode:
 
 
 class Lax(ConstraintMode):
-    mode = 'lax'
+    mode = "lax"
 
 
 class Constraints:
@@ -504,7 +504,9 @@ class Constraints:
 
             if max_length is not None:
                 if not (isinstance(max_length, int) and max_length > 0):
-                    raise exc.ConfigError(f"Rule max_length: {max_length} must be a int > 0")
+                    raise exc.ConfigError(
+                        f"Rule max_length: {max_length} must be a int > 0"
+                    )
                 if min_length is not None:
                     if max_length < min_length:
                         raise exc.ConfigError(
@@ -722,13 +724,15 @@ class Constraints:
             # only True is valid
             pop(constraints, "unique_items")
 
-        if 'decimal_places' in constraints:
-            decimals = constraints['decimal_places']
-            digits = constraints.get('max_digits')
+        if "decimal_places" in constraints:
+            decimals = constraints["decimal_places"]
+            digits = constraints.get("max_digits")
             if decimals and digits:
                 # 0.123
                 if digits < decimals:
-                    raise exc.ConfigError(f'Rule: constraint max_digits: {digits} must >= {decimals}')
+                    raise exc.ConfigError(
+                        f"Rule: constraint max_digits: {digits} must >= {decimals}"
+                    )
 
         # other constraints other that const is considered not-null
         self.valid_types(constraints)
@@ -770,16 +774,16 @@ class Constraints:
         for key, val in constraints.items():
             mode = constraint_mode.get(key)
             if mode:
-                name = f'{mode}_{key}'
+                name = f"{mode}_{key}"
             else:
                 name = key
             func = getattr(self.__class__, name, None)
             if not func:
-                raise exc.ConfigError(f'{self.__class__}: constraint {repr(name)} not discovered,'
-                                 f' you can override this class and custom it')
-            validators.append(
-                (key, val, func)
-            )
+                raise exc.ConfigError(
+                    f"{self.__class__}: constraint {repr(name)} not discovered,"
+                    f" you can override this class and custom it"
+                )
+            validators.append((key, val, func))
         return validators
 
     @classmethod
@@ -819,7 +823,7 @@ class Constraints:
             value = Decimal(str(value))
 
         digit_tuple, exponent = value.as_tuple()[1:]
-        if exponent in {'F', 'n', 'N'}:
+        if exponent in {"F", "n", "N"}:
             raise ValueError
 
         if exponent >= 0:
@@ -1108,7 +1112,7 @@ class Rule(metaclass=LogicalType):
         else:
             origin = item
         if args and cls.__args__:
-            raise exc.ConfigError(f'{cls}: args: {cls.__args__} already specified')
+            raise exc.ConfigError(f"{cls}: args: {cls.__args__} already specified")
         return cls.annotate(origin, *args)
 
     def __init_subclass__(cls, **kwargs):
@@ -1513,8 +1517,13 @@ class Rule(metaclass=LogicalType):
             return
 
         from collections.abc import Iterable
-        if isinstance(cls.__origin__, type) and not issubclass(cls.__origin__, Iterable):
-            raise exc.ConfigError(f'Rule: constraint: contains is only for Iterable, got {cls.__origin__}')
+
+        if isinstance(cls.__origin__, type) and not issubclass(
+            cls.__origin__, Iterable
+        ):
+            raise exc.ConfigError(
+                f"Rule: constraint: contains is only for Iterable, got {cls.__origin__}"
+            )
 
     @classmethod
     def _parse_contains(cls, value, context: RuntimeContext):
@@ -1533,23 +1542,29 @@ class Rule(metaclass=LogicalType):
                     contains += 1
 
         if not contains:
-            context.handle_error(exc.ConstraintError(
-                f"{cls.contains} not contained in value",
-                constraint='contains',
-                constraint_value=cls.contains
-            ))
+            context.handle_error(
+                exc.ConstraintError(
+                    f"{cls.contains} not contained in value",
+                    constraint="contains",
+                    constraint_value=cls.contains,
+                )
+            )
         elif cls.min_contains and contains < cls.min_contains:
-            context.handle_error(exc.ConstraintError(
-                f"value contains {contains} of {cls.contains}, which is lower than min_contains",
-                constraint="min_contains",
-                constraint_value=cls.min_contains,
-            ))
+            context.handle_error(
+                exc.ConstraintError(
+                    f"value contains {contains} of {cls.contains}, which is lower than min_contains",
+                    constraint="min_contains",
+                    constraint_value=cls.min_contains,
+                )
+            )
         elif cls.max_contains and contains > cls.max_contains:
-            context.handle_error(exc.ConstraintError(
-                f"value contains {contains} of {cls.contains}, which is bigger than max_contains",
-                constraint="max_contains",
-                constraint_value=cls.max_contains,
-            ))
+            context.handle_error(
+                exc.ConstraintError(
+                    f"value contains {contains} of {cls.contains}, which is bigger than max_contains",
+                    constraint="max_contains",
+                    constraint_value=cls.max_contains,
+                )
+            )
         return value
 
     @classmethod
@@ -1602,22 +1617,25 @@ class Rule(metaclass=LogicalType):
 
         if options.no_data_loss and len(value) > len(cls.__args__):
             for item in range(len(cls.__args__), len(value)):
-                context.handle_error(exc.TupleExceedError(
-                    item=item,
-                    value=value[item]
-                ))
+                context.handle_error(exc.TupleExceedError(item=item, value=value[item]))
 
         for i, (arg, func) in enumerate(zip(cls.__args__, cls.__arg_transformers__)):
             if i >= len(value):
-                context.handle_error(exc.AbsenceError(
-                    f"prefixItems required prefix: [{i}] not provided", item=i
-                ))
+                context.handle_error(
+                    exc.AbsenceError(
+                        f"prefixItems required prefix: [{i}] not provided", item=i
+                    )
+                )
 
             with context.enter(route=i) as arg_context:
                 try:
-                    result.append(arg_context.transformer.apply(value[i], arg, func=func))
+                    result.append(
+                        arg_context.transformer.apply(value[i], arg, func=func)
+                    )
                 except Exception as e:
-                    error = exc.ParseError(item=i, value=value[i], type=arg, origin_exc=e)
+                    error = exc.ParseError(
+                        item=i, value=value[i], type=arg, origin_exc=e
+                    )
                     if options.invalid_items == options.PRESERVE:
                         context.collect_waring(error.formatted_message)
                         result.append(value[i])
@@ -1636,7 +1654,11 @@ class Rule(metaclass=LogicalType):
         for i, item in enumerate(value):
             with context.enter(route=i) as arg_context:
                 try:
-                    result.append(arg_context.transformer.apply(item, arg_type, func=arg_transformer))
+                    result.append(
+                        arg_context.transformer.apply(
+                            item, arg_type, func=arg_transformer
+                        )
+                    )
                 except Exception as e:
                     error = exc.ParseError(
                         item=i, value=value[i], type=arg_type, origin_exc=e
@@ -1659,9 +1681,11 @@ class Rule(metaclass=LogicalType):
         options = context.options
 
         for _key, _val in value.items():
-            with context.enter(route=f'{_key}<key>') as key_context:
+            with context.enter(route=f"{_key}<key>") as key_context:
                 try:
-                    key = key_context.transformer.apply(_key, key_type, func=key_transformer)
+                    key = key_context.transformer.apply(
+                        _key, key_type, func=key_transformer
+                    )
                 except Exception as e:
                     error = exc.ParseError(
                         item=f"{_key}<key>", value=_key, type=key_type, origin_exc=e
@@ -1678,7 +1702,9 @@ class Rule(metaclass=LogicalType):
 
             with context.enter(route=key) as value_context:
                 try:
-                    value = value_context.transformer.apply(_val, value_type, func=value_transformer)
+                    value = value_context.transformer.apply(
+                        _val, value_type, func=value_transformer
+                    )
                 except Exception as e:
                     error = exc.ParseError(
                         item=key, value=_val, type=value_type, origin_exc=e

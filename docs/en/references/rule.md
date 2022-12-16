@@ -1,196 +1,325 @@
 # Rule - constraint type
+In utype, the role of Rule is to impose constraints on types, and we will explain its use in detail in this document.
 
-在 utype 中，Rule 组件的作用是为类型施加约束，我们通过继承 `utype.Rule` 来使用它
+## Built-in constraints
+The Rule class has a series of built-in constraints. When you inherit from Rule, you only need to declare the constraint name as an attribute to get the ability of the constraint. Rule currently supports the following built-in constraints
 
-## 基本用法
+### Range constraint
+Range constraints are used to limit the range of data, such as maximum, minimum, and so on. They include
 
-### 绑定类型
+ *  `gt`: The input value must be greater than `gt` the value
+ *  `ge`: The input value must be greater than or equal to `ge` the value
+ *  `lt`: The input value must be less than `lt` the value
+ *  `le`: The input value must be less than or equal to `le` the value
 ```python
-from utype import Rule
+from utype import Rule, exc
 
-class PositiveInt(int, Rule):  
-    gt = 0
+class WeekDay(int, Rule):  
+    ge = 1  
+    le = 7
 
->>> v = PositiveInt('3')
->>> type(v)
-<class 'int'>
+assert WeekDay('3.0') == 3
+
+try:
+	WeekDay(8)
+except exc.ConstraintError as e:
+	print(e) 
+	"""
+	Constraint: <le>: 7 violated
+	"""
 ```
 
-你会发现，
-需要注意的是，Rule 只为
-
-如果你绑定了类型，在转化中，Rule 会先完成类型的转化，再进行约束的校验
-
-### 不绑定类型
+!!! warning
+	
+Range constraints are not restricted to types, and can be supported as long as the type declares a corresponding comparison method ( `__gt__`, `__ge__`, `__lt__`, `__le__`), such as
 
 ```python
-from utype import Rule
+from utype import Rule, exc
+from datetime import datetime
+
+class Year2020(Rule, datetime):  
+    ge = datetime(2020, 1, 1)  
+    lt = datetime(2021, 1, 1)
+
+assert Year2020('2020-03-04') == datetime(2020, 3, 4) 
+
+try:
+	Year2020('2021-01-01')
+except exc.ConstraintError as e:
+	print(e)
+	"""
+	Constraint: <lt>: datetime.datetime(2021, 1, 1, 0, 0) violated
+	"""
+```
+
+!!! note
+
+
+### Length constraint
+Range constraints are used to limit the length of data and are typically used to validate data such as strings or lists, including
+
+*  `length`: Length of input data must be equal to `length` value
+*  `max_length`: The length of the input data must be less than or equal to `max_length` the value of
+*  `min_length`: The length of the input data must be greater than or equal to `min_length`
+```python
+from utype import Rule, exc
 
 class LengthRule(Rule):
 	max_length = 3
 	min_length = 1
 
->>> LengthRule([1, 2, 3])
-[1, 2, 3]
->>> LengthRule('abcde')
-ConstraintError: Constraint: <max_length>: 3 violated
+assert LengthRule([1, 2, 3]) == [1, 2, 3]
+
+try:
+	LengthRule('abcde')
+except exc.ConstraintError as e:
+	print(e)
+	"""
+	Constraint: <max_length>: 3 violated
+	"""
 ```
 
-比如对于 length 约束而言，任何拥有 `__len__` 方法的类型（能够使用 `len()`）都支持，如
-* str
-* list
-* tuple
-* dict
-* set
-
-
-## 内置约束
-
-### 范围约束
- * `gt` / `ge` / `lt` / `le` : 这四个参数分别对应着 >, >=, <, <=
-```python
->>> rule = Rule(gt=4, le=2)
-AssertionError: Rule lt/le (2) must > gt/ge (4)
->>> rule = Rule(ge=0.1, lt=1.0)
->>> rule('0.2')
-0.2
->>> rule(1)
-ValueError: value <1.0> not less than 1.0
-```
+All length constraints must be positive integers. If is `length` set, or cannot be set again.
 
 !!! note
-	如果同时设置了最小值最大值，则最大值不得小于最小值，且两者的类型需一致
 
-### 长度约束
-* `length`:  限制数据的**长度**，一般用于校验字符串和列表的长度，对于没有 `__len__` 方法的对象（如整数）将会校验转化为字符串后的长度
-* `max_length`: 数据的**最大长度**，需要为一个正整数
-* `min_length`: 数据的**最小长度**，需要为一个正整数，如果同时设置了最大长度规则，则最大长度需要大于最小长度
+
+### Regex constraints
+Regular expressions are often able to declare richer string validation rules for many purposes. Regular constraints are as follows
+
+*  `regex` Specifies a regular expression that the data must exactly match
 ```python
->>> rule = Rule(length=3)
->>> rule(3.14)
-ValueError: value <3.14> with length 4 not match the length 3
->>> rule(['A','B','C'])
-['A', 'B', 'C']
->>> rule = Rule(max_length=4)
->>> rule('12345')
-ValueError: value <'12345'> with length 5 is larger than max_length 4
->>> rule('r')
-'r'
->>> rule = Rule(min_length=3)
->>> rule('A Very Long String ...')
-'A Very Long String ...'
+from utype import Rule, exc
+
+class Email(str, Rule):  
+    regex = r"([A-Za-z0-9]+[.-_])*[A-Za-z0-9]+@[A-Za-z0-9-]+(\.[A-Z|a-z]{2,})+"
+
+assert Email('dev@utype.io') == 'dev@utype.io'
+
+try:
+	Email('invalid#email.com')
+except exc.ConstraintError as e:
+	print(e)
+	"""
+	Constraint: <regex>: 
+	'([A-Za-z0-9]+[.-_])*[A-Za-z0-9]+@[A-Za-z0-9-]+(\\.[A-Z|a-z]{2,})+' violated
+	"""
 ```
 
-### 正则约束
-* `regex`: 数据必须完全匹配这个参数的**正则**表达式
+In the example, we declare a constraint type Email that is used to validate email addresses.
+
+### Const and enum
+
+*  `const`: value is a constant value. The input data must all equal the constant.
 ```python
->>> rule = Rule(regex='([A-Za-z0-9]+)')
->>> rule('abcABC123')
-'abcABC123'
->>> rule('abc@123')
-ValueError: value <'abc@123'> not match the regex '([A-Za-z0-9]+)'
-```
+from utype import Rule, exc
 
-
-### 常量与枚举
-
-* `const`：数据必须全等于该常量
-
-```python
-import utype
-
-class Const1(utype.Rule):
+class Const1(Rule):
 	const = 1
 
-class ConstKey(utype.Rule):
+class ConstKey(str, Rule):
 	const = 'SECRET_KEY'
-	
+
+assert ConstKey(b'SECRET_KEY') == 'SECRET_KEY'
+
+try:
+	Const1(True)
+except exc.ConstraintError as e:
+	print(e)
+	"""
+	Constraint: <const>: 1 violated
+	"""
 ```
 
-!!! note “全等的校验”
-	`const` 不仅使用 Python 的全等符号校验值与常量是否 “相等”，还会判断它们的类型是否相等，因为在 Python 中，通过 `__eq__` 方法能够使得一种类型与任意值相等，另外比如 `True == 1` 是为真的，而 True 是 `bool` 类型，1 是 `int` 类型（在 Python 中 `bool` 是  `int` 的子类），所以无法通过 `const` 校验
+If you specify a source type for a constant constraint, the Rule performs the type conversion first and then checks whether the constant is equal, otherwise it makes a direct comparison
 
-* `enum`：数据必须是
+It’s worth noting that Python’s congruence symbol ( `==`) `const` not only verifies that a value is “equal” to a constant, but also that their types are equal, because in Python, a type can be made equal to any value by `__eq__` a method. For example `True == 1`, is true, and True is `bool` of type, 1 is of `int` type (a `int` subclass of in Python `bool`), So it can’t pass the `const` verification.
 
-* Literal
-* Enum
-
-#### 枚举数组
-
-枚举数组是一种基于枚举的常见用法，数组中的每个元素都是枚举中的值
+*  `enum` You can pass in a list, a collection, or an Enum class. The data must be within `enum` the specified value range.
 ```python
-import enum
-import utype
-from utype.types import Array
+from utype import Rule, exc
 
-class EnumLevel(str, enum.Enum):  
-    info = 'INFO'
-    warn = 'WARN'
-    error = 'ERROR'
-  
-class EnumLevelArray(list, Array):  
-    __args__ = (EnumLevel,)  
+class Infinity(float, Rule):  
+    enum = [float("inf"), float("-inf")]
+
+assert Infinity('-infinity') == float("-inf")
+
+try:
+	Infinity(10.5)
+except exc.ConstraintError as e:
+	print(e)
+	"""
+	Constraint: <enum>: [inf, -inf] violated
+	"""
 ```
-
-```python
-from utype.types import enum_array
-
-level_array_type = enum_array(
-	item_enum=['INFO', 'WARN', 'ERROR'],
-	array_type=list,
-	unique=True			   
-)
-```
-
-在例子中我们制造了一个枚举数组类型，其中数组的每个元素都需要在 `['INFO', 'WARN', 'ERROR']` 中，并且数组中的每个元素都需要是唯一的
-
-!!! note
-	如果忽略顺序的话，直接将 `array_type` 设置为 `set` 也会获得去除的元素
-
-
-### 数字约束
-下面的约束仅适用于数字类型（int, float, Decimal）
-* `max_digits`：规定数字的整数位最多有多少位数（不包括符号位）
-* `multiple_of`：
-* `round`：
-
-!!! note
-	round 并不是一个校验约束，而是一个转化约束，它并不校验当前的数据的小数位有多少，而是使用 Python 的 `round()` 方法将其转化到目标的位数
 
 !!! warning
-	虽然对于数字类型，`max_length` 等长度约束也起作用，但它们会校验
-	`len(str(-10.1230))`，得到的长度会包含符号位，小数点和小数部分，
 
-### 数组约束
+!!! note
 
-* `contains`
-* `max_contains`
-* `min_contains`
-* `unique_items`
+### Numeric constraints
+Numeric constraints are used to place restrictions on numeric types (int, float, Decimal), including
+
+*  `max_digits`: Limit the maximum number of digits in a number (excluding the sign bit or decimal point)
+*  `multiple_of`: The number must be a `multiple_of` multiple of the specified number
+```python
+from utype import Rule, exc
+
+class Hundreds(int, Rule):
+	max_digits = 3
+	multiple_of = 100
+
+assert Hundreds('200') == 200
+
+try:
+	Hundreds(1000)
+except exc.ConstraintError as e:
+	print(e)
+	"""
+	Constraint: <max_digits>: 3 violated
+	"""
+
+try:
+	Hundreds(120)
+except exc.ConstraintError as e:
+	print(e)
+	"""
+	Constraint: <multiple_of>: 100 violated
+	"""
+```
+
+!!! note
+
+*  `decimal_places` Limit the maximum number of digits in the decimal part of a number to this values
+```python
+from utype import Rule, exc
+import decimal
+
+class ConDecimal(decimal.Decimal, Rule):  
+    decimal_places = 2  
+    max_digits = 4
+
+assert ConDecimal(1.5) == decimal.Decimal('1.50')
+
+try:
+	ConDecimal(123.4)   
+except exc.ConstraintError as e:
+	print(e)
+	"""
+	Constraint: <max_digits>: 4 violated
+	"""
+
+try:
+	ConDecimal('1.500')   
+except exc.ConstraintError as e:
+	print(e)
+	"""
+	Constraint: <decimal_places>: 2 violated
+	"""
+```
+
+If the source type of the constraint is fixed-point number `decimal.Decimal`, when the decimal digits of the input data are insufficient, it will be completed first, so the data `123.4` will be completed first `Decimal('123.40')`, and then the verification `max_digits` will not pass.
+
+And if the incoming data contains a decimal place, it will be calculated whether the end is 0 or not, for example `Decimal('1.500')`, 3 digits will be calculated according to the decimal place of the fixed-point number.
+
+!!! warning
+
+### Array constraint
+Array constraints are used to constrain lists, tuples, sets, and other data that can traverse a single element, including
+
+*  `contains`: Specifies a type, which can be a normal type or a constraint type. The data must contain matching elements.
+*  `max_contains`: The maximum number of elements of the matching `contains` type
+*  `min_contains`: Minimum number of elements of match `contains` type
+```python
+from utype import Rule, exc
+
+class Const1(int, Rule):
+	const = 1
+
+class ConTuple(tuple, Rule):
+	contains = Const1
+	max_contains = 3
+
+assert ConTuple([1, True]) == (1, True)
+
+try:
+	ConTuple([0, 2]) 
+except exc.ConstraintError as e:
+	print(e)
+	"""
+	Constraint: <contains>: Const1(int, const=1) violated: 
+	Const1(int, const=1) not contained in value
+	"""
+
+try:
+	ConTuple([1, True, b'1', '1.0'])
+except exc.ConstraintError as e:
+	print(e)
+	"""
+	Constraint: <max_contains>: 3 violated: 
+	value contains 4 of Const1(int, const=1), 
+	which is bigger than max_contains
+	"""
+```
+
+The constraint of `contains` type ConTuple in the example specifies a type of 1 converted to an integer, and the maximum number `max_contains` of matches is 3, so if no element in the data matches the type of Const1, or if the number of matched elements exceeds 3, an error will be thrown
+
+!!! note
+
+*  `unique_items`: Does the element need to be unique
+```python
+from utype import Rule, exc, types
+
+class UniqueList(types.Array):
+	unique_items = True
+
+assert UniqueList[int]([1, '2', 3.5]) == [1, 2, 3]
+
+try:
+	UniqueList[int]([1, '1', True])
+except exc.ConstraintError as e:
+	print(e)
+	"""
+	Constraint: <unique_items>: True violated: value is not unique
+	"""
+```
+
+In the example, we use `UniqueList[int]` conversion, so we will convert the element type first, and then check the constraint.
+
+!!! note
 
 
-## 扩展约束
+### Lax constraint
 
+Lax constraint (aka loose constraint, transformational constraint) refers to a kind of constraint that is not strict, and its effect is to transform the input data to the goal satisfying the constraint as much as possible.
 
-## 约束模式
+Declaring a relaxed constraint simply requires importing `Lax` the class from the utype and wrapping the constraint value in Lax, as shown in
+```python
+from utype import Rule, Lax
 
-在 Rule 类中可以通过 `strict` 属性控制约束的模式，`strict` 默认为 True，可以在子类中
+class LaxLength(Rule):
+	max_length = Lax(3)
 
-* `strict=True`：严格校验约束，对不满足的数据直接抛出错误，适合不信任输入数据来源的类型，如处理网络请求
-* `strict=False`：尽可能让输入数据符合约束，
+print(LaxLength('ab'))
+# > ab
 
-* max_length 截断：当数据
+print(LaxLength('abcd'))
+# > abc
+```
 
-对于 min_length 违背，gt/lt 违背，正则违背等情况，无法进行
+In the example, when the input `'abcd'` does not meet the loose constraint `max_length`, it will be truncated directly according to `max_length` the length of the data and output `'abc'`, instead of throwing an error directly like the strict constraint.
 
-实际上由于约束支持自行扩展，在扩展或覆盖的约束中你可以调整不同的约束模式下的行为，或者自己声明一种新的约束模式
+Different constraints behave differently in the loose mode. The constraints supported by the loose mode and their respective behaviors are
 
+*  `max_length`: Defines a loose maximum length, truncating to the given maximum length if the value is longer than it.
+*  `length`: If the data is greater than this length, it is truncated to `length` the corresponding length. If the data is less than this length, an error is thrown.
+*  `ge` If the value is less than `ge`, output `ge` the value of directly, otherwise use the input value
+*  `le` If the value is greater than `le`, the value of is output `le` directly, otherwise the input value is used
+*  `decimal_places`: Instead of checking the decimal place, the decimal place is reserved directly `decimals_places`, which is consistent with the effect of Python’s `round()` built-in method.
+*  `max_digits` If the number of digits exceeds the maximum number of digits, round off the decimal places from the smallest to the largest, and throw an error if it still cannot be satisfied.
+*  `multiple_of`: If the data is not `multiple_of` an integer multiple of, the value of an integer multiple of the nearest input data that is smaller than the input data is taken.
+*  `const`: Direct output constant
+*  `enum`: If the data is not within the range, the first value of the range will be output directly
+*  `unique_items`: If the data is duplicated, the deduplicated data will be returned
 
-## 嵌套类型
-
-* List
-* Dict
-* Tuple
-* Set
-等等
-
+General constraints are only used for verification, but loose constraints may convert the input data. Although information loss may occur during the conversion, loose constraints will also ensure that the conversion is ** Idempotent **, that is, the value obtained from a data after multiple conversions is the same as that obtained from a single conversion

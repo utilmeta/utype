@@ -92,9 +92,9 @@ except TypeError:
 
 * `unresolved_types`：指定处理未知类型的行为，它有几个取值
 
-1. `'ignore'`：忽略，不再转化，而是直接使用输入值作为结果
-2. `'init'`：尝试使用 `t(data)` 对未知类型进行初始化
-3. `'throw'`：直接抛出错误，不再转化，这个选项是默认值
+	1. `'ignore'`：忽略，不再转化，而是直接使用输入值作为结果
+	2. `'init'`：尝试使用 `t(data)` 对未知类型进行初始化
+	3. `'throw'`：直接抛出错误，不再转化，这个选项是默认值
 
 ```python
 from utype import Schema, Options
@@ -139,10 +139,10 @@ Options 提供了一些选项用于对于函数的参数以及数据类的输入
 
 * `addition`：调控超出声明范围之外的参数，有几个选项可以指定
 
-1. `None`：默认选项，直接忽略，不进行接收和处理
-2. `True`：接受额外的参数
-3. `False`：禁止额外参数，如果输入中包含额外参数，则直接抛出错误
-4. `<type>`：指定一个类型，表示额外参数的值都需要转化到这个类型
+	1. `None`：默认选项，直接忽略，不进行接收和处理
+	2. `True`：接受额外的参数
+	3. `False`：禁止额外参数，如果输入中包含额外参数，则直接抛出错误
+	4. `<type>`：指定一个类型，表示额外参数的值都需要转化到这个类型
 
 下面来示例一下 `addition` 的用法
 ```python
@@ -442,6 +442,7 @@ utype 为了使得命名风格的转化更加方便，在 `utype.utils.style.Ali
 ```python
 from utype import Schema
 from utype.utils.style import AliasGenerator
+from datetime import datetime
 
 class ArticleSchema(Schema):
     __options__ = Schema.Options(

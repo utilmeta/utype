@@ -16,7 +16,7 @@ from .exceptions import TypeMismatchError
 if TYPE_CHECKING:
     from ..parser.options import RuntimeContext
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 __transformers__ = []
 __cache__ = {}
@@ -410,14 +410,17 @@ class TypeTransformer:
                     if "&" in data:
                         # a=b&c=d   querystring index
                         from urllib.parse import parse_qs
+
                         qs = parse_qs(data)
                         return t({k: v[0] if len(v) == 1 else v for k, v in qs.items()})
                     spliter = ";" if ";" in data else ","
                     # cookie syntax or comma separate syntax
-                    return t({
-                        value.split("=")[0].strip(): value.split("=")[1].strip()
-                        for value in data.split(spliter)
-                    })
+                    return t(
+                        {
+                            value.split("=")[0].strip(): value.split("=")[1].strip()
+                            for value in data.split(spliter)
+                        }
+                    )
                 raise
 
         from xml.etree.ElementTree import Element
@@ -706,5 +709,6 @@ class TypeTransformer:
 
 def type_transform(data, type: Type[T], options=None) -> T:
     from ..parser.options import Options
+
     context = (options or Options()).make_context()
     return context.transformer(data, type)

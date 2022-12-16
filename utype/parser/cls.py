@@ -14,9 +14,9 @@ import warnings
 from types import FunctionType
 from collections.abc import Mapping
 
-T = TypeVar('T')
+T = TypeVar("T")
 
-__all__ = ['ClassParser', 'init_dataclass']
+__all__ = ["ClassParser", "init_dataclass"]
 
 
 class ClassParser(BaseParser):
@@ -54,9 +54,7 @@ class ClassParser(BaseParser):
 
             attr = getattr(base, name, None)
             if self.is_class_internals(
-                attr,
-                attname=name,
-                class_qualname=base.__qualname__
+                attr, attname=name, class_qualname=base.__qualname__
             ):
                 raise TypeError(
                     f"field: {repr(name)} was declared in {base}, "
@@ -76,7 +74,7 @@ class ClassParser(BaseParser):
         if name and qualname:
             if not class_qualname:
                 # loosely check
-                return attname == name and '.' in qualname
+                return attname == name and "." in qualname
 
             if attname == name and qualname.startswith(f"{class_qualname}."):
                 return True
@@ -133,9 +131,7 @@ class ClassParser(BaseParser):
                 # if this attr is a field in bases, this means to exclude this field in current class
                 # otherwise this attr declared that this field is never take from input
                 # or isinstance(attr, property)
-                self.is_class_internals(
-                    attr, attname=key, class_qualname=self.obj_name
-                )
+                self.is_class_internals(attr, attname=key, class_qualname=self.obj_name)
                 or isinstance(attr, self.IGNORE_ATTR_TYPES)
                 # check class field name at last
                 # because this will check bases internals trying to find illegal override
@@ -168,7 +164,7 @@ class ClassParser(BaseParser):
                     f"{self.obj}: field name: {repr(name)} conflicted at "
                     f"{field}, {field_map[name]}",
                     obj=self.obj,
-                    field=name
+                    field=name,
                 )
             field_map[name] = field
 
@@ -221,6 +217,7 @@ class ClassParser(BaseParser):
             _obj_self.__dict__[field.attname] = value
             if callable(post_setattr):
                 post_setattr(_obj_self, field, value, context)
+
         return setter
 
     def make_deleter(self, field: ParserField, post_delattr=None):
@@ -246,6 +243,7 @@ class ClassParser(BaseParser):
 
             if callable(post_delattr):
                 post_delattr(_obj_self, field, context)
+
         return deleter
 
     def make_getter(self, field: ParserField):
@@ -255,14 +253,17 @@ class ClassParser(BaseParser):
                     f"{self.name}: {repr(field.attname)} not provided in schema"
                 )
             return _obj_self.__dict__[field.attname]
+
         return getter
 
-    def assign_properties(self,
-                          getter: Callable = None,
-                          setter: Callable = None,
-                          deleter: Callable = None,
-                          post_setattr: Callable = None,
-                          post_delattr: Callable = None):
+    def assign_properties(
+        self,
+        getter: Callable = None,
+        setter: Callable = None,
+        deleter: Callable = None,
+        post_setattr: Callable = None,
+        post_delattr: Callable = None,
+    ):
 
         for key, field in self.fields.items():
             if field.property:
@@ -284,11 +285,7 @@ class ClassParser(BaseParser):
             for f in (field_getter, field_setter, field_deleter):
                 f.__name__ = field.attname
 
-            prop = property(
-                fget=field_getter,
-                fset=field_setter,
-                fdel=field_deleter
-            )
+            prop = property(fget=field_getter, fset=field_setter, fdel=field_deleter)
             # prop.__field__ = field        # cannot set attribute to @property
             setattr(self.obj, field.attname, prop)
 
@@ -307,7 +304,7 @@ class ClassParser(BaseParser):
             # already declared
             return False
         attr_func = getattr(self.obj, name, None)
-        if hasattr(attr_func, '__parser__'):
+        if hasattr(attr_func, "__parser__"):
             # already inherited
             return False
         func.__parser__ = self
@@ -324,7 +321,9 @@ class ClassParser(BaseParser):
                 return False
             if not output_only:
                 return True
-            if field.no_output(_obj_self.__dict__[field.attname], options=parser.options):
+            if field.no_output(
+                _obj_self.__dict__[field.attname], options=parser.options
+            ):
                 return False
             return True
 
@@ -337,10 +336,11 @@ class ClassParser(BaseParser):
             if _obj_self.__dict__ == other.__dict__:
                 return True
             self_dict = dict(_obj_self.__dict__)
-            pop(self_dict, '__context__')
+            pop(self_dict, "__context__")
             other_dict = dict(other.__dict__)
-            pop(other_dict, '__context__')
+            pop(other_dict, "__context__")
             return self_dict == other_dict
+
         self._make_method(__eq__)
 
     def make_repr(self, ignore_str: bool = False):
@@ -354,18 +354,22 @@ class ClassParser(BaseParser):
                 items.append(f"{field.attname}={field.repr_value(val)}")
             values = ", ".join(items)
             return f"{parser.name}({values})"
+
         self._make_method(__repr__)
 
         if not ignore_str:
+
             def __str__(_obj_self):
                 return _obj_self.__repr__()
+
             self._make_method(__str__)
 
-    def set_attributes(self,
-                       values: dict,
-                       instance: object,
-                       options: Options,
-                       ):
+    def set_attributes(
+        self,
+        values: dict,
+        instance: object,
+        options: Options,
+    ):
 
         for key, value in list(values.items()):
             field = self.get_field(key)
@@ -375,7 +379,9 @@ class ClassParser(BaseParser):
                     values.pop(key)
                 if field.property:
                     try:
-                        field.property.fset(instance, values[key])  # call the original setter
+                        field.property.fset(
+                            instance, values[key]
+                        )  # call the original setter
                         # setattr(instance, field.attname, values[key])
                     except Exception as e:
                         error_option = field.get_on_error(options)
@@ -413,13 +419,15 @@ class ClassParser(BaseParser):
             self.init_parser = init_parser
             return
 
-        if not inspect.isfunction(init_func) or self.function_parser_cls.function_pass(init_func):
+        if not inspect.isfunction(init_func) or self.function_parser_cls.function_pass(
+            init_func
+        ):
             # if __init__ is declared but passed, we still make a new one
 
             def __init__(_obj_self, _d: dict = None, /, **kwargs):
                 parser = self.get_parser(_obj_self)
 
-                context = getattr(_obj_self, '__context__', None)
+                context = getattr(_obj_self, "__context__", None)
                 if not isinstance(context, RuntimeContext):
                     context: RuntimeContext = parser.options.make_context(parser.obj)
 
@@ -441,11 +449,17 @@ class ClassParser(BaseParser):
             if not no_parse:
                 self.init_parser = self.function_parser_cls.apply_for(init_func)
                 if self.init_parser.pos_only_keys:
-                    raise exc.ConfigError(f'{self.obj}: positional only keys: {self.init_parser.pos_only_keys} '
-                                          f'is not allowed for dataclasses __init__', obj=self.obj)
+                    raise exc.ConfigError(
+                        f"{self.obj}: positional only keys: {self.init_parser.pos_only_keys} "
+                        f"is not allowed for dataclasses __init__",
+                        obj=self.obj,
+                    )
                 if self.init_parser.pos_var:
-                    raise exc.ConfigError(f'{self.obj}: positional var: {self.init_parser.pos_var} '
-                                          f'is not allowed for dataclasses __init__', obj=self.obj)
+                    raise exc.ConfigError(
+                        f"{self.obj}: positional var: {self.init_parser.pos_var} "
+                        f"is not allowed for dataclasses __init__",
+                        obj=self.obj,
+                    )
 
                 __init__ = self.init_parser.wrap(parse_params=True, parse_result=False)
                 __init__.__parser__ = self
@@ -468,19 +482,25 @@ class ClassParser(BaseParser):
         return __init__
 
 
-def init_dataclass(cls: Type[T], data, options: Options = None, context: RuntimeContext = None) -> T:
-    parser: ClassParser = getattr(cls, '__parser__', None)
+def init_dataclass(
+    cls: Type[T], data, options: Options = None, context: RuntimeContext = None
+) -> T:
+    parser: ClassParser = getattr(cls, "__parser__", None)
     if not isinstance(parser, ClassParser):
-        raise exc.TypeMismatchError(f'Invalid dataclass: {cls}')
+        raise exc.TypeMismatchError(f"Invalid dataclass: {cls}")
 
-    new_context: RuntimeContext = (options or parser.options).make_context(cls, context=context)
+    new_context: RuntimeContext = (options or parser.options).make_context(
+        cls, context=context
+    )
     transformer = new_context.transformer
 
     try:
         if not isinstance(data, Mapping):
             # {} dict instance is an instance of Mapping too
             if transformer.no_explicit_cast:
-                raise TypeError(f"invalid input type for {cls}, should be dict or Mapping")
+                raise TypeError(
+                    f"invalid input type for {cls}, should be dict or Mapping"
+                )
             else:
                 data = transformer.to_dict(data)
 

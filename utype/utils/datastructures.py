@@ -1,4 +1,3 @@
-
 class Unprovided:
     def __bool__(self):
         return False
@@ -10,7 +9,7 @@ class Unprovided:
         return isinstance(v, Unprovided)
 
     def __repr__(self):
-        return '<unprovided>'
+        return "<unprovided>"
 
 
 unprovided = Unprovided()

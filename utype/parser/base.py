@@ -31,12 +31,10 @@ class BaseParser:
         return None
 
     @classmethod
-    def apply_for(
-        cls, obj, no_cache: bool = False, **kwargs
-    ) -> "BaseParser":
+    def apply_for(cls, obj, no_cache: bool = False, **kwargs) -> "BaseParser":
         if isinstance(obj, cls):
             return obj
-        parser = getattr(obj, "__dict__", {}).get('__parser__')
+        parser = getattr(obj, "__dict__", {}).get("__parser__")
         # do not use getattr(obj, '__parser__')
         # since it may get to the base class
         if isinstance(parser, cls):
@@ -56,7 +54,7 @@ class BaseParser:
 
     def __init__(self, obj, options: Options = None):
         self.obj = obj
-        self.init_kwargs = {'options': options}
+        self.init_kwargs = {"options": options}
         self.options: Options = self.options_cls.generate_from(options)
 
         self.forward_refs: Dict[
@@ -75,10 +73,12 @@ class BaseParser:
         self.setup()
 
     def get_name(self) -> str:
-        name = getattr(self.obj, "__qualname__", getattr(self.obj, '__name__', None)) or str(self.obj)
+        name = getattr(
+            self.obj, "__qualname__", getattr(self.obj, "__name__", None)
+        ) or str(self.obj)
         while LOCALS_NAME in name:
             lhs, rhs = name.split(LOCALS_NAME)
-            name = str(rhs).strip('.')
+            name = str(rhs).strip(".")
         return name
 
     def setup(self):
@@ -261,7 +261,7 @@ class BaseParser:
                                 f"{self.obj}: alias: [{repr(alias)}] "
                                 f"conflict with field: [{repr(alias_map[alias])}]",
                                 obj=self.obj,
-                                field=field.name
+                                field=field.name,
                             )
                         alias_map[alias] = key
                     # if field.attname != alias:
@@ -287,7 +287,7 @@ class BaseParser:
                             f"{self.obj}: case sensitive field: [{repr(key)}] "
                             f"conflict with case insensitive field in {inter}",
                             obj=self.obj,
-                            field=field.name
+                            field=field.name,
                         )
 
         # a: str = Field(alias_from=['a1', 'a2'], case_insensitive=True)

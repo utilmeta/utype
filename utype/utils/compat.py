@@ -115,4 +115,3 @@ ATOM_TYPES = (str, int, bool, float, type(None))
 JSON_TYPES = (*ATOM_TYPES, list, dict)
 # types thar can directly dump to json
 # COMMON_TYPES = (*JSON_TYPES, set, tuple, bytes, *VENDOR_TYPES)
-

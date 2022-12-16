@@ -7,13 +7,13 @@ from ..utils.datastructures import unprovided
 from ..utils import exceptions as exc
 
 DEFAULT_SECRET_NAMES = (
-    'password',
-    'secret',
-    'dsn',
-    'private_key',
-    'session_key',
-    'pwd',
-    'passphrase',
+    "password",
+    "secret",
+    "dsn",
+    "private_key",
+    "session_key",
+    "pwd",
+    "passphrase",
 )
 
 
@@ -28,8 +28,8 @@ class Options:
     EXCLUDE = "exclude"
     PRESERVE = "preserve"
     THROW = "throw"
-    IGNORE = 'ignore'
-    INIT = 'init'
+    IGNORE = "ignore"
+    INIT = "init"
 
     transformer_cls = TypeTransformer  # support custom with scope
     collect_errors: bool = False
@@ -91,7 +91,7 @@ class Options:
     case_insensitive: bool = None
     alias_from_generator: Union[Callable, List[Callable]] = None
     alias_generator: Callable = None
-    secret_names: Union[Set[str], List[str]] = ()   # DEFAULT_SECRET_NAMES
+    secret_names: Union[Set[str], List[str]] = ()  # DEFAULT_SECRET_NAMES
     # unprovided_attribute: Any = ...
     immutable: bool = False
     override: bool = False
@@ -169,7 +169,9 @@ class Options:
 
         if not collect_errors:
             if max_errors:
-                warnings.warn(f'Options with max_errors: {max_errors} should turn on collect_errors=True')
+                warnings.warn(
+                    f"Options with max_errors: {max_errors} should turn on collect_errors=True"
+                )
                 max_errors = None
 
         options = {}
@@ -208,7 +210,7 @@ class Options:
         cls=None,
         force_error: bool = False,
         context: "RuntimeContext" = None,
-    ) -> 'RuntimeContext':
+    ) -> "RuntimeContext":
         # kwargs = dict(self._options)
 
         # if options is Options, it's the first
@@ -241,10 +243,7 @@ class Options:
                 options = context.options
                 # override
         return RuntimeContext(
-            context=context,
-            cls=cls,
-            options=options,
-            force_error=force_error
+            context=context, cls=cls, options=options, force_error=force_error
         )
 
     # def clone(self):
@@ -303,8 +302,10 @@ class Options:
     def __call__(self, fn=None, *args, **kwargs):
         # fn can be a schema or function
         if inspect.isclass(fn):
+
             class new_cls(fn):
                 __options__ = self
+
             new_cls.__module__ = fn.__module__
             new_cls.__name__ = fn.__name__
             new_cls.__qualname__ = fn.__qualname__
@@ -355,7 +356,9 @@ class RuntimeContext:
         #             self.__dict__[key] = val
 
         if self.options.max_depth and self.depth > self.options.max_depth:
-            raise exc.DepthExceedError(max_depth=self.options.max_depth, depth=self.depth, type=cls)
+            raise exc.DepthExceedError(
+                max_depth=self.options.max_depth, depth=self.depth, type=cls
+            )
 
     # class KeyContext:
     #     def __init__(self, route: str, context: 'RuntimeContext'):
@@ -369,7 +372,7 @@ class RuntimeContext:
     #         pass
     #
 
-    def enter(self, route: Union[str, int]) -> 'RuntimeContext':
+    def enter(self, route: Union[str, int]) -> "RuntimeContext":
         """
         Isolate the error
         if the new context has some collected error
@@ -383,7 +386,7 @@ class RuntimeContext:
             route=route,
             force_error=self.force_error,
             options=self.options,
-            error_hooks=self.error_hooks
+            error_hooks=self.error_hooks,
         )
 
     def __enter__(self):
@@ -453,7 +456,10 @@ class RuntimeContext:
         if force_raise or not self.options.collect_errors:
             raise e
 
-        if self.options.max_errors is not None and len(self.errors) >= self.options.max_errors:
+        if (
+            self.options.max_errors is not None
+            and len(self.errors) >= self.options.max_errors
+        ):
             errors = list(self.errors)
             if self.tmp_errors:
                 errors.extend(self.tmp_errors)

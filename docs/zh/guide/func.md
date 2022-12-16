@@ -180,6 +180,7 @@ print(alice)
 由于函数的特点，在函数中声明字段配置比在数据类中声明字段多了一定的限制，我们来了解一下
 
 **Python 函数的传参方式**
+
 在介绍字段的声明限制之前，我们先来回顾一下 Python 函数的参数类型与传参方式
 ```python
 def add(a: int, b: int) -> int:
@@ -202,7 +203,7 @@ def example(
     pos_only,  
     /,  
     # positional or keyword  
-    pos_or_kw  
+    pos_or_kw,
     # positional var  
     *args,  
     # keyword only  
@@ -222,6 +223,7 @@ def example(
 接下来我们来介绍具体的参数声明限制，不同类别的参数的限制可能会有所不同
 
 **可选参数的声明限制**
+
 在 Python 函数中，不能将支持顺序方式传递的必传参数声明在可选参数后面，如
 
 ```python
@@ -281,6 +283,7 @@ def ok_example(
 
 
 **受限的 Param 配置**
+
 由于函数参数必须传入一个有意义的值（无论是输入值还是默认值），所以 Param 配置中的一些参数的使用是受到限制的，如果使用它们则必须指定 `default`  /  `default_factory`
 
 * `required=False`
@@ -288,6 +291,7 @@ def ok_example(
 * 使用 `mode` / `readonly` / `writeonly`
 
 **某些条件下无效的 Param 配置**
+
 对只支持顺序传入的参数中，有一些参数是无效的，如
 
 * `alias_from`
@@ -383,7 +387,7 @@ print(fib('10', 5, 8))
 
 可以看到，以名称方式传入的私有参数会被忽略，但是以顺序参数方式传入的私有参数会被接受和处理
 
-如果你需要让私有参数彻底无法传入，可以将其声明成只允许名称方式传参
+如果你需要让私有参数彻底无法传入，可以将其声明成只允许名称方式传参，如
 ```python
 import utype
 from datetime import datetime
@@ -401,6 +405,7 @@ def get_info(
 	这样的效果其实与声明 `no_input=True` 配置相同
 
 **获取原函数**
+
 对于使用 `@utype.parse` 装饰的解析函数，如果你确实需要在代码中传入私有参数或者 `no_input=True` 的参数，虽然直接调用函数无法完成，但是可以通过 `utype.raw` 获取解析函数的原函数，如
 
 ```python
@@ -443,8 +448,8 @@ class PositiveInt(int, utype.Rule):
 
 class ArticleSchema(utype.Schema):
 	id: Optional[PositiveInt]
-	title: str = Field(max_length=100)
-	slug: str = Field(regex=r"[a-z0-9]+(?:-[a-z0-9]+)*")
+	title: str = utype.Field(max_length=100)
+	slug: str = utype.Field(regex=r"[a-z0-9]+(?:-[a-z0-9]+)*")
 
 @utype.parse
 def get_article(id: PositiveInt = None, title: str = '') -> ArticleSchema:
@@ -554,10 +559,10 @@ csv_file = """
 @utype.parse  
 def read_csv(file: str) -> Generator[Tuple[int, ...], None, int]:
 	lines = 0
-    for line in file.splitlines():  
-        if line.strip():  
-            yield line.strip().split(',')
-            lines += 1
+	for line in file.splitlines():  
+		if line.strip():  
+			yield line.strip().split(',')
+			lines += 1
 	return lines
 
 csv_gen = read_csv(csv_file)
@@ -666,7 +671,7 @@ except StopIteration as e:
 
 生成器函数的另一种用法是帮助 Python 解决尾递归优化问题，比如
 ```python
-def fib(n: int = Field(ge=0), _current: int = 0, _next: int = 1):  
+def fib(n: int, _current: int = 0, _next: int = 1):  
     if not n:  
         yield _current  
     else:  
@@ -687,9 +692,10 @@ print(res % 100007)
 
 ```python
 import utype
+from typing import Iterator
 
 @utype.parse
-def fib(n: int = Field(ge=0), _current: int = 0, _next: int = 1) -> Iterator[int]:  
+def fib(n: int = utype.Param(ge=0), _current: int = 0, _next: int = 1) -> Iterator[int]:  
     if not n:  
         yield _current  
     else:  
@@ -719,9 +725,10 @@ except Exception as e:
 
 ```python
 import utype
+from typing import Iterator
 
 @utype.parse
-def fib(n: int = Field(ge=0), _current: int = 0, _next: int = 1) -> Iterator[int]:  
+def fib(n: int = utype.Param(ge=0), _current: int = 0, _next: int = 1) -> Iterator[int]:  
     if not n:  
         yield _current  
     else:  
@@ -788,8 +795,6 @@ if __name__ == '__main__':
 !!! note
 	在 Python 中，异步生成器不支持返回值
 
-可以看到，虽然我们在传参和 `yield` 中使用了字符等类型，它们全部都按照声明转化为了期望的数字类型（当然在无法完成转化时会抛出错误）
-
 
 ## 配置函数解析
 
@@ -797,7 +802,7 @@ if __name__ == '__main__':
 
 * `ignore_params`：是否忽略对函数参数的解析，默认为 False，如果开启，则 utype 不会对函数参数进行类型转化与约束校验
 * `ignore_result`：是否忽略对函数结果的解析，默认为 False，如果开启，则 utype 不会对函数结果进行类型转化与约束校验
-* `options`：传入一个解析选项来调控解析行为，具体用法可以参考 [Options 解析配置](../references/options)
+* `options`：传入一个解析选项来调控解析行为，具体用法可以参考 [Options 解析配置](/zh/references/options)
 
 下面示例一下解析配置的用法
 ```python
@@ -809,11 +814,11 @@ class PositiveInt(int, utype.Rule):
 
 class ArticleSchema(utype.Schema):
 	id: Optional[PositiveInt]
-	title: str = Field(max_length=100)
-	slug: str = Field(regex=r"[a-z0-9]+(?:-[a-z0-9]+)*")
+	title: str = utype.Field(max_length=100)
+	slug: str = utype.Field(regex=r"[a-z0-9]+(?:-[a-z0-9]+)*")
 
 @utype.parse(
-	options=Options(  
+	options=utype.Options(  
 	    addition=False,  
 	    case_insensitive=True  
 	),
@@ -904,7 +909,7 @@ import utype
 from typing import Iterator
 
 @utype.parse
-def fib(n: int = Param(ge=0), _current: int = 0, _next: int = 1) -> Iterator[int]:  
+def fib(n: int = utype.Param(ge=0), _current: int = 0, _next: int = 1) -> Iterator[int]:  
     if not n:  
         yield _current  
     else:  
@@ -921,7 +926,7 @@ except utype.exc.ParseError as e:
 	"""
 
 @utype.parse(eager=True)
-def eager_fib(n: int = Param(ge=0), _current: int = 0, _next: int = 1) -> Iterator[int]:  
+def eager_fib(n: int = utype.Param(ge=0), _current: int = 0, _next: int = 1) -> Iterator[int]:  
     if not n:  
         yield _current  
     else:  
@@ -1090,7 +1095,7 @@ except utype.exc.ParseError as e:
 
 ```python
 import utype
-from typing import Iterator
+from typing import Iterator, Union
 
 @utype.parse  
 class PowerIterator:  

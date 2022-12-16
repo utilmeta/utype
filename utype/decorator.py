@@ -8,13 +8,13 @@ from .parser.rule import Rule, Lax
 from .utils.datastructures import unprovided, Unprovided
 from .utils import exceptions as exc
 
-T = TypeVar('T')
-FUNC = TypeVar('FUNC')
-CLS = TypeVar('CLS')
+T = TypeVar("T")
+FUNC = TypeVar("FUNC")
+CLS = TypeVar("CLS")
 
 
 def raw(f: FUNC):
-    parser = getattr(f, '__parser__', None)
+    parser = getattr(f, "__parser__", None)
     if isinstance(parser, FunctionParser):
         return parser.obj
     return f
@@ -22,7 +22,8 @@ def raw(f: FUNC):
 
 def parse(
     f: T = None,
-    /, *,
+    /,
+    *,
     parser_cls: Type[FunctionParser] = FunctionParser,
     options: Union[Options, Type[Options]] = None,
     no_cache: bool = False,
@@ -46,7 +47,7 @@ def parse(
                 no_cache=no_cache,
                 ignore_result=ignore_result,
                 ignore_params=ignore_params,
-                eager=eager
+                eager=eager,
             )
             return func
         else:
@@ -65,7 +66,8 @@ def parse(
 
 def dataclass(
     obj: CLS = None,
-    /, *,
+    /,
+    *,
     parser_cls: Type[ClassParser] = ClassParser,
     options: Union[Options, Type[Options]] = None,
     no_cache: bool = False,
@@ -76,7 +78,7 @@ def dataclass(
     post_delattr: Callable = None,
     contains: bool = False,
     repr: bool = True,  # noqa
-    eq: bool = False
+    eq: bool = False,
 ) -> Union[CLS, Callable[[CLS], CLS]]:
     def decorator(cls: CLS) -> CLS:
         parser = parser_cls.apply_for(cls, options=options, no_cache=no_cache)
@@ -100,8 +102,10 @@ def dataclass(
                 post_setattr=post_setattr, post_delattr=post_delattr
             )
         elif post_setattr or post_delattr:
-            warnings.warn(f'@utype.dataclass received post_delattr / post_setattr '
-                          f'without "set_properties=True", these params won\'t take effect')
+            warnings.warn(
+                f"@utype.dataclass received post_delattr / post_setattr "
+                f'without "set_properties=True", these params won\'t take effect'
+            )
 
         cls.__parser__ = parser
         # set the flag so that class parser can be quickly resolve
@@ -145,8 +149,10 @@ def apply(
 
     if round:
         if decimal_places and decimal_places not in (round, Lax(round)):
-            raise exc.ConfigError(f'@apply round: {round} is a shortcut for decimal_places=Lax({round}), '
-                                  f'but you specified a different decimal_places: {repr(decimal_places)}')
+            raise exc.ConfigError(
+                f"@apply round: {round} is a shortcut for decimal_places=Lax({round}), "
+                f"but you specified a different decimal_places: {repr(decimal_places)}"
+            )
 
         decimal_places = Lax(round)
 
@@ -178,9 +184,9 @@ def apply(
 
     def decorator(_type):
         cls = rule_cls.annotate(_type, constraints=constraints)
-        cls.__name__ = getattr(_type, '__name__', cls.__name__)
-        cls.__repr__ = getattr(_type, '__repr__', cls.__repr__)
-        cls.__str__ = getattr(_type, '__str__', cls.__str__)
+        cls.__name__ = getattr(_type, "__name__", cls.__name__)
+        cls.__repr__ = getattr(_type, "__repr__", cls.__repr__)
+        cls.__str__ = getattr(_type, "__str__", cls.__str__)
         return cls
         #
         # if init:

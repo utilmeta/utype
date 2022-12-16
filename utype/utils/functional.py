@@ -33,10 +33,11 @@ def get_name(func) -> Optional[str]:
     if isinstance(func, property):
         func = func.fget
     from functools import partial
+
     if isinstance(func, partial):
-        if hasattr(func, '__name__'):
+        if hasattr(func, "__name__"):
             return func.__name__
         func = func.func
-    if hasattr(func, '__name__'):
+    if hasattr(func, "__name__"):
         return func.__name__
     return None

@@ -137,9 +137,11 @@ print(article)
 * `slug`：文章的 URL 路径字段，使用 `regex` 为字段指定了正则约束，并且设置了 `immutable=True`，意味着字段不可被修改，还指定了示例值 `example` 和描述 `description` 用于更好的说明字段的用途
 
 ```python
+from utype import exc
+
 try:  
     article.slug = 'other-slug'  
-except AttributeError as e:  
+except exc.UpdateError as e:  
     print(e)  
     """  
     ArticleSchema: Attempt to set immutable attribute: ['slug']    
@@ -614,7 +616,8 @@ print(user.age)
 * **解析调节选项**：`ignore_required`，`no_default`，`ignore_constraints` 等一系列对于解析行为和字段行为进行调节的选项
 * **字段生成选项**：`alias_generator`，`case_insensitive` 等，用于对字段生成别名，或者指定是否大小写敏感的选项
 
-解析选项在对类型，数据类和函数的解析转化中都是通用的，更全面的解析参数说明请参考 [Options 解析选项](/zh/references/options)
+!!! note
+	解析选项调控着 utype 对类型，数据类和函数的解析转化，更全面的解析参数说明请参考 [Options 解析选项](/zh/references/options)
 
 下面示例一种解析选项的使用场景
 ```python
@@ -693,7 +696,7 @@ form = {
 }
 
 try:
-	LoginForm(**form, __options__=options)
+	LoginForm.__from__(form, options=options)
 except exc.CollectedParseError as e:
 	print(e)
 	"""
@@ -703,13 +706,8 @@ except exc.CollectedParseError as e:
 	"""
 ```
 
-通过在初始化函数中传递 `__options__` 参数，就可以传递一个运行时解析选项，utype 会按照这个选项对数据进行解析
+通过在数据类的 `__from__` 函数中传递 `options` 参数，就可以传递一个运行时解析选项，utype 会按照这个选项对数据进行解析
 
-如果你希望在类中约束运行时解析选项的范围，可以在类的 Options 中声明一个参数`allow_runtime_options`，它的取值有
-
-* `'*'`：默认值，允许所有运行时解析选项
-* `None`：不允许运行时解析选项
-* 字符串列表：只允许列表中的选项
 
 #### 解析选项的继承与覆盖
 当你继承一个数据类时，你同样会继承它的解析选项，所以你也可以声明全局的解析选项

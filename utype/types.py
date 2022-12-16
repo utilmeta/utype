@@ -18,7 +18,7 @@ class Number(Rule):
 
 
 class Array(Rule):
-    __origin__ = list       # use list instead of abc.Iterable
+    __origin__ = list  # use list instead of abc.Iterable
     primitive = "array"
 
     # def __class_getitem__(cls, item) -> Type["Array"]:
@@ -89,8 +89,9 @@ class NegativeFloat(Float):
 
 class NanFloat(Float):
     @classmethod
-    def post_validate(cls,  value, options=None):
+    def post_validate(cls, value, options=None):
         import math
+
         if not math.isnan(value):
             # do not use const = float('nan')
             # cause NaN can not use equal operator
@@ -129,6 +130,7 @@ class Timestamp(Float):
     @classmethod
     def pre_validate(cls, value, options=None):
         import datetime
+
         if isinstance(value, datetime.datetime):
             value = value.timestamp()
         elif isinstance(value, datetime.timedelta):
@@ -136,12 +138,10 @@ class Timestamp(Float):
         return value
 
 
-def round_number(
-    precision: int = 0,
-    num_type: type = float
-):
+def round_number(precision: int = 0, num_type: type = float):
     class RoundNumber(num_type, Rule):
         decimal_places = Lax(precision)
+
     return RoundNumber
 
 
@@ -157,6 +157,7 @@ def enum_array(
     if isinstance(item_enum, Enum):
         EnumItem = item_enum
     else:
+
         class EnumItem(Rule):
             __origin__ = item_type
             enum = item_enum

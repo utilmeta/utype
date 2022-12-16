@@ -57,8 +57,10 @@ class InfoSchema(Schema):
 2. 你需要在解析时动态得出默认值，比如例子中的 `current_time` 字典在缺省时会调用 `datetime.now()` 得到当前的时间
 
 * `defer_default`：如果开启，这时默认值将不会在数据没有输入时填充作为数据的一部分，而只会在访问缺省的属性时被计算
-
 ```python
+from utype import Schema, Field
+from datetime import datetime
+
 class InfoSchema(Schema):
 	metadata: dict = Field(default_factory=dict, defer_default=True)
 	current_time: datetime = Field(default_factory=datetime.now)
@@ -93,11 +95,11 @@ print(info.metadata)
 对于函数参数，使用 utype 提供的 Field 类的子类 Param 来声明更加方便，其中 `default` 就是 Param 类的第一个参数，并且取消了 `required`  与 `defer_default` 配置，如果没有声明默认值（没有 `default` 或 `default_factory`）就会被视为是必传参数，如
 
 ```python
-from utype import Schema, Param, parse
+from utype import Param, parse
 
 @parse
 def init_user(
-	name: str = Param()
+	name: str = Param(),
 	age: int = Param(0)
 ):
 	pass
@@ -360,7 +362,7 @@ from utype import Schema, Field
 
 class ArticleSchema(Schema):  
     slug: str = Field(  
-		title='Article Slug'
+		title='Article Slug',
         description='the url route of an article',
         example='my-awesome-article',    
     )  
@@ -428,6 +430,9 @@ Field 还提供了在字段级别调控数据的输入输出行为的配置，�
 `no_input=True` 的字段虽然不能在数据中输入，但是可以在缺省是填充 `default` 或 `default_factory` 的默认值，或者在数据类中被属性赋值，例如
 
 ```python
+from utype import Schema, Field
+from datetime import datetime
+
 class ArticleSchema(Schema):  
 	slug: str = Field(no_input=True)
 	title: str
@@ -490,6 +495,7 @@ print(dict(info))
 
 ```python
 from utype import Schema, Field  
+from typing import Optional
 
 class ArticleSchema(Schema):
 	title: Optional[str] = Field(no_output=lambda v: v is None)
@@ -536,9 +542,9 @@ class UserSchema(Schema):
 
 在例子中我们声明了一个 UserSchema 数据类，其中
 
-	`username`：没有模式声明，可以用于任意模式
-	`password` ：声明了 `writeonly=True`，也就是说它只用于 **写** 模式，不能用于读取
-	`signup_time` ：声明了 `readonly=True`，也就是说它只用于 **读** 模式，不能用于更新
+1. `username`：没有模式声明，可以用于任意模式
+2. `password` ：声明了 `writeonly=True`，也就是说它只用于 **写** 模式，不能用于读取
+3. `signup_time` ：声明了 `readonly=True`，也就是说它只用于 **读** 模式，不能用于更新
 
 utype 提供的这种机制，使得你只需要声明一个数据类，就能够在不同的模式中有着不同的表现， Field 提供了几个参数用于指定的字段支持的模式
 
@@ -564,11 +570,11 @@ utype 提供的这种机制，使得你只需要声明一个数据类，就能�
 
 在这几个例子中，我们使用的都是 `'r'`/`'w'`/`'a'` 的模式，来示例一个典型的用户类的数据读取/更新/创建的场景
 
-1. **继承并指定不同模式的解析选项**
+**继承并指定不同模式的解析选项**
 
 在 [Options 解析选项](/zh/references/options) 中支持配置 `mode` 模式参数，来指定当前数据类或函数使用的模式，所以你可以通过继承数据类，指定不同的解析选项来提供不同模式下的数据子类，如
 ```python
-from utype import Schema, Field
+from utype import Schema, Field, Options
 from datetime import datetime
 
 class UserSchema(Schema):
@@ -616,11 +622,11 @@ print(updated_user)
 
 在例子中我们可以看到，当使用了指定模式为 `'w'` 的 UserUpdate 数据类初始化数据时，`'w'` 模式中不支持的数据不会被输入，并且即使你试图去赋值，也不会生效，最后得到的输出数据就是 `'w'` 模式中支持的数据字段
 
-2. **使用运行时解析选项指定模式**
+**使用运行时解析选项指定模式**
 
 你还可以使用数据类的 `__from__` 方法进行初始化，其中第一个参数传入数据，并且支持 `options` 参数指定一个运行时解析选项，可以用于模式的动态指定，如
 ```python
-from utype import Schema, Field
+from utype import Schema, Field, Options
 from datetime import datetime
 
 class UserSchema(Schema):
@@ -643,15 +649,15 @@ user_query_result = {
     'signup_time': '2022-03-04 10:11:12',  
 }  
 queried_user = UserSchema.__from__(user_query_result, options=Options(mode='r'))
-print(queries_user)
+print(queried_user)
 # > UserSchema(username='new-user', followers_num=3, signup_time=datetime(...)))
 ```
 
-3. **在函数解析选项中指定模式**
+**在函数解析选项中指定模式**
 
 你还可以利用函数的解析选项来指定函数中所有数据类参数的解析模式，如
 ```python
-from utype import Schema, Field, parse
+from utype import Schema, Field, Options, parse
 from datetime import datetime
 
 class UserSchema(Schema):
@@ -681,6 +687,7 @@ print(create_user(new_user_form))
 	在解析函数中声明能够影响内部参数的解析选项（如例子中影响了 user 参数的解析模式）需要指定 `override=True`，否则数据类参数将会按照其自身的选项进行对应解析
 
 **模式的扩展**
+
 utype 并没有限制模式的语义和范围，所以可以在字段的 `mode` 参数中自由声明自定义的模式，一般来说模式使用一个英文小写字母来表示
 
 utype 支持按照不同的模式输出 json-schema 文档，所以你可以只用一个数据类得到它在读取，更新，创建等多种模式场景下的输入和输出模板
@@ -717,6 +724,7 @@ print(new_article)
 ```
 
 在例子中的数据类 Article 声明的模式字段有
+
 * `slug`：在更新（`'w'`）与创建（`'a'`）时禁用输入，但不禁用输出（也就是如果被赋值了，可以作为结果中的字段进行输出），并且没有限制其他模式（如读取）的输入输出
 * `created_at`：指定了模式为读取（`'r'`）与创建（`'a'`），并禁用了在创建（`'a'`）模式下的输入，在创建模式解析时会忽略输入，填入默认值，也就是当前的时间，符合字段的语义，而在读取时正常支持输入与输出
 
@@ -776,10 +784,9 @@ except exc.DeleteError as e:
 	严格意义上，在 Python 中，你无法让实例的属性彻底无法变更，如果开发者执意要做，可以通过操作 `__dict__` 等方法来变更属性，`immutable` 参数实际上也承担着一种标记和提示的作用，提醒开发者这个字段是不应该被变更的
 
 * `repr`：可以指定一个布尔变量，字符串或者函数，来调控字段显示行为，即在  `__repr__` 与 `__str__` 函数中的显示值，它们分别表示
-
-1. bool：是否进行显示，默认为 True，如果指定为 False，则该字段即使提供在数据中，也不会进行展示
-2. str：指定一个固定的显示值，往往用于隐藏这些字段的信息
-3. Callable：提供一个函数，接受字段对应的数据值作为输入，输出一个表示函数
+	1. `bool`：是否进行显示，默认为 True，如果指定为 False，则该字段即使提供在数据中，也不会进行展示
+	2. `str`：指定一个固定的显示值，往往用于隐藏这些字段的信息
+	3. `Callable`：提供一个函数，接受字段对应的数据值作为输入，输出一个表示函数
 
 ```python
 from utype import Schema, Field
@@ -816,9 +823,9 @@ Field 还可以为字段配置错误处理策略，也就是当字段对应的�
 
 * `on_error`：配置字段的错误处理行为，这个参数有几个可选值
 
-1. `'throw'`：默认值，抛出错误
-2. `'exclude'`：将字段从结果中剔出（如果字段是必传的，则不能使用这个选项）
-3. `'preserve'`：将字段保留在结果中，也就是允许结果中有校验不通过的字段
+	1. `'throw'`：默认值，抛出错误
+	2. `'exclude'`：将字段从结果中剔出（如果字段是必传的，则不能使用这个选项）
+	3. `'preserve'`：将字段保留在结果中，也就是允许结果中有校验不通过的字段
 
 我们来看一个例子
 ```python

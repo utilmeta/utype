@@ -35,6 +35,7 @@ except exc.ConstraintError as e:
 范围约束并没有类型的限制，只要类型声明了对应的比较方法（`__gt__`，`__ge__`，`__lt__`，`__le__`），就可以支持范围约束，比如
 
 ```python
+from utype import Rule, exc
 from datetime import datetime
 
 class Year2020(Rule, datetime):  
@@ -64,7 +65,7 @@ except exc.ConstraintError as e:
 * `max_length`：输入数据的长度必须小于等于  `max_length` 的值
 * `min_length`：输入数据的长度必须大于等于  `min_length` 的值
 ```python
-from utype import Rule
+from utype import Rule, exc
 
 class LengthRule(Rule):
 	max_length = 3
@@ -115,7 +116,7 @@ except exc.ConstraintError as e:
 
 * `const`：值得一个常量值，输入数据必须全等于该常量
 ```python
-from utype import Rule
+from utype import Rule, exc
 
 class Const1(Rule):
 	const = 1

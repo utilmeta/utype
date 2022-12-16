@@ -3,7 +3,7 @@ from typing import Union, Any, List, Set
 
 
 class ConfigError(SyntaxError):
-    def __init__(self, msg='', obj=None, params: dict = None, field: str = None):
+    def __init__(self, msg="", obj=None, params: dict = None, field: str = None):
         super().__init__(msg)
         self.obj = obj
         self.params = params
@@ -62,7 +62,7 @@ class ParseError(TypeError, ValueError):
     def formatted_message(self):
         msg = self.msg
         if self.item:
-            msg = f'parse item: [{repr(self.item)}] failed: {msg}'
+            msg = f"parse item: [{repr(self.item)}] failed: {msg}"
         return msg
 
 
@@ -154,6 +154,7 @@ class AliasConflictError(ParseError):
 
 # class ItemsExceedError(ExceedError):
 #     pass
+
 
 class DepthExceedError(ParseError):
     def __init__(

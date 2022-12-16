@@ -9,8 +9,8 @@ from .utils.datastructures import unprovided
 from typing import Union, Callable, List, TypeVar
 from functools import partial
 
-T = TypeVar('T')
-OTHER = TypeVar('OTHER')
+T = TypeVar("T")
+OTHER = TypeVar("OTHER")
 
 
 class LogicalMeta(type):
@@ -68,7 +68,8 @@ class DataClass(metaclass=LogicalMeta):
     __parser__: ClassParser
     __options__: Options
 
-    def __init__(self, **kwargs): pass
+    def __init__(self, **kwargs):
+        pass
 
     def __init_subclass__(cls, **kwargs):
         options = getattr(cls, "__options__", None)
@@ -86,8 +87,7 @@ class DataClass(metaclass=LogicalMeta):
         parser.make_repr(ignore_str=False)
         parser.make_contains(output_only=True)
         parser.assign_properties(
-            post_setattr=cls.__post_setattr__,
-            post_delattr=cls.__post_delattr__
+            post_setattr=cls.__post_setattr__, post_delattr=cls.__post_delattr__
         )
 
     @property
@@ -100,7 +100,7 @@ class DataClass(metaclass=LogicalMeta):
     def __validate__(self):
         pass
 
-    def __post_init__(self, values, context: RuntimeContext):      # noqa
+    def __post_init__(self, values, context: RuntimeContext):  # noqa
         self.__validate__()
 
     def __post_setattr__(self, field: ParserField, value, context: RuntimeContext):
@@ -119,13 +119,14 @@ class DataClass(metaclass=LogicalMeta):
     def __from__(cls, data, options: Options = None):
         return init_dataclass(cls, data, options=options)
 
-    def __export__(self,
-                   includes: Union[str, List[str]] = None,
-                   excludes: Union[str, List[str]] = None,
-                   as_attname: bool = False,
-                   no_output: Callable = None,      # control by value
-                   mode: str = None,
-                   ) -> dict:
+    def __export__(
+        self,
+        includes: Union[str, List[str]] = None,
+        excludes: Union[str, List[str]] = None,
+        as_attname: bool = False,
+        no_output: Callable = None,  # control by value
+        mode: str = None,
+    ) -> dict:
         pass
 
 
@@ -150,28 +151,32 @@ class Schema(dict, metaclass=LogicalMeta):
         parser.assign_properties(
             getter=cls.__field_getter__,
             setter=cls.__field_setter__,
-            deleter=cls.__field_deleter__
+            deleter=cls.__field_deleter__,
         )
 
         for key, field in parser.property_fields.items():
             # if field.property.fset:
             #   if field.always_no_output(cls.__options__.make_runtime(cls)) and not field.dependants:
             #       continue
-            getter = partial(cls.__field_getter__, field=field, getter=field.property.fget)
-            setter = partial(cls.__field_setter__, field=field, setter=field.property.fset) \
-                if field.property.fset else None
-            deleter = partial(cls.__field_deleter__, field=field, deleter=field.property.fdel) \
-                if field.property.fdel else None
+            getter = partial(
+                cls.__field_getter__, field=field, getter=field.property.fget
+            )
+            setter = (
+                partial(cls.__field_setter__, field=field, setter=field.property.fset)
+                if field.property.fset
+                else None
+            )
+            deleter = (
+                partial(cls.__field_deleter__, field=field, deleter=field.property.fdel)
+                if field.property.fdel
+                else None
+            )
 
             for f in (getter, setter, deleter):
                 if f:
                     f.__name__ = field.attname
 
-            hooked_property = property(
-                fget=getter,
-                fset=setter,
-                fdel=deleter
-            )
+            hooked_property = property(fget=getter, fset=setter, fdel=deleter)
             setattr(cls, field.attname, hooked_property)
 
     def __class_getitem__(cls, item):
@@ -223,7 +228,7 @@ class Schema(dict, metaclass=LogicalMeta):
                     return
 
         try:
-            attr = field.property.fget(self)    # get from the original getter
+            attr = field.property.fget(self)  # get from the original getter
         except Exception as e:
             error_option = field.output_field.on_error if field.output_field else None
             msg = f"@property: {repr(field.attname)} calculate failed with error: {e}"
@@ -233,7 +238,7 @@ class Schema(dict, metaclass=LogicalMeta):
                 warnings.warn(msg)
             return
 
-        value = field.parse_output_value(       # parse @property result also
+        value = field.parse_output_value(  # parse @property result also
             attr, context=context
         )
 
@@ -256,11 +261,11 @@ class Schema(dict, metaclass=LogicalMeta):
 
     def __post_init__(self, values, context: RuntimeContext):
         super().__init__(values)
-        self.__options__ = context.options      # set options
+        self.__options__ = context.options  # set options
         for key, field in self.__parser__.property_fields.items():
             self.__coerce_property__(field, context=context)
         self.__validate__()
-        context.raise_error()   # raise error if there is any
+        context.raise_error()  # raise error if there is any
 
     def __contains__(self, item: str):
         field = self.__parser__.get_field(item)
@@ -285,7 +290,9 @@ class Schema(dict, metaclass=LogicalMeta):
                 )
             return value
 
-        deferred_default = field.get_default(options=self.__options__, defer=True)    # get deferred default
+        deferred_default = field.get_default(
+            options=self.__options__, defer=True
+        )  # get deferred default
         if not unprovided(deferred_default):
             return deferred_default
         raise AttributeError(
@@ -393,7 +400,9 @@ class Schema(dict, metaclass=LogicalMeta):
 
     def popitem(self):
         if self.__options__.immutable:
-            raise exc.DeleteError(f"{self.__name__}: Attempt to popitem in immutable schema")
+            raise exc.DeleteError(
+                f"{self.__name__}: Attempt to popitem in immutable schema"
+            )
         return super().popitem()
 
     def pop(self, key: str):

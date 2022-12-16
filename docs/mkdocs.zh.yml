@@ -30,7 +30,7 @@ theme:
 
 repo_name: utilmeta/utype
 repo_url: https://github.com/utilmeta/utype
-edit_uri: ''
+edit_uri: edit/main/docs/zh
 plugins:
 - search
 
@@ -44,11 +44,19 @@ nav:
       - references/rule.md
       - references/field.md
       - references/options.md
-  - 功能扩展:
-      - extension/env.md
-      - extension/cmd.md
+  - 语言:
+      - English: /
+      - 中文: /zh
+#  - 功能扩展:
+#      - extension/env.md
+#      - extension/cmd.md
 
 extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/utilmeta/utype
+    - icon: fontawesome/brands/twitter
+      link: https://twitter.com/utype_io
   alternate:
     - name: English
       link: /
@@ -56,6 +64,22 @@ extra:
     - name: 中文
       link: /zh/
       lang: zh
+  analytics:
+    provider: google
+    property: G-T7PKK2EXMW
+    feedback:
+      title: 本篇文档是否能帮助到你？
+      ratings:
+        - icon: material/emoticon-happy-outline
+          name: This page was helpful
+          data: 1
+          note: >-
+            感谢反馈~
+        - icon: material/emoticon-sad-outline
+          name: This page could be improved
+          data: 0
+          note: >-
+            感谢反馈~
 
 markdown_extensions:
   - toc:

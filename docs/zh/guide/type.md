@@ -172,7 +172,8 @@ class File:
 ### 类型引用字符串
 在类型声明中除了传入类型本身的引用外，还可以传入在全局命名空间有定义的类型的名称字符串来进行注解，这样的方式主要用于
 
-1. **类属性中引用类本身**
+**类属性中引用类本身**
+
 简称自引用，如
 ```python
 class Comment:
@@ -181,7 +182,8 @@ class Comment:
 	comments: List['Comment']
 ```
 
-2. **引用尚未被定义的类型**
+**引用尚未被定义的类型**
+
 这种用法很常见，如循环引用
 ```python
 class Article:
@@ -193,7 +195,8 @@ class Comment:
 	on_article: Article = None
 ```
 
-3. **需要引用的类型已在局域空间中被污染**
+ **需要引用的类型已在局域空间中被污染**
+
 比如在局域的命名空间中，你需要的类型的名称已经被占用了，那么你可以使用字符串引用来在全局命名空间中引用对应的类型
 ```python
 from datetime import datetime
@@ -323,6 +326,7 @@ print(mon.get_days(2020))
 	其实使用 `@utype.apply` 装饰器方式本质上是在 utype 内部完成的 Rule 混入继承，声明更加简洁方便，但对应约束校验逻辑的调整空间有限
 
 **isinstance 检测**
+
 在 Python 中，一般使用 `isinstance(obj, t)` 来测试对象 obj 是否是类型 t 的实例（包括 t 的子类的实例），而对于约束类型，这个行为实际上检测的是对象是否是约束类型的源类型的实例，并且满足约束条件，所以
 ```python
 from utype import Rule
@@ -377,7 +381,7 @@ print(level_array(['INFO', 'WARN']))
 
 try:
 	level_array(['OTHER'])
-except exc.ParserError as e:
+except exc.ParseError as e:
 	print(e)
 	"""
 	ParseError: 'OTHER' is not a valid EnumLevel
@@ -385,7 +389,7 @@ except exc.ParserError as e:
 
 value = ('1', True, b'2.3')
 
-print(Array[int](value))
+print(types.Array[int](value))
 # > [1, 1, 2]
 ```
 
@@ -397,7 +401,7 @@ utype 目前支持的嵌套类型有
 
 你可以继承这些嵌套类型，赋予约束并指定其他的源类型等，用法和 Rule 相似（因为这些嵌套类型也是继承自 Rule）
 ```python
-from utype import types
+from utype import types, exc
 
 class UniqueTuple(types.Array):  
 	__origin__ = tuple
@@ -409,7 +413,7 @@ print(unique_tuple(['1', '2', 't']))
 
 try:
 	unique_tuple(['1', '1', '3'])
-except exc.ParserError as e:
+except exc.ParseError as e:
 	print(e)
 	"""
 	ConstraintError: Constraint: <unique_items>: True violated: value is not unique
@@ -466,6 +470,7 @@ assert weekday_or_date('2000-1-1') == date(2000, 1, 1)
 	utype 可以支持任意层数的逻辑嵌套，所以理论上你可以使用这种语法声明任意复杂的类型逻辑条件，但在实践中并不建议使用过于复杂的类型，那样会使得开发和调试都变得困难
 
 **常用场景：反选排除**
+
 一种逻辑组合的常见的场景是需要使用某个类型，但排除一些值，比如作为被除数就需要排除 0，此时我们就可以先把需要排除的值用约束声明出来，再取反后与源类型结合，就能够得到我们需要的排除类型了
 
 ```python
@@ -561,7 +566,7 @@ Python 原生并没有提供任意类型值转化到其他任意类型的安全�
 在 utype 中，每个类型都是通过类型转化函数来完成转化的，但是这些函数并非是固定的，而是可以进行灵活的注册，比如
 
 ```python
-from utype import Rule, register_transformer
+from utype import Rule, Schema, register_transformer
 from typing import Type
 
 class Slug(str, Rule):  
@@ -622,7 +627,7 @@ from collections.abc import Mapping
 from pydantic import BaseModel  
   
 @register_transformer(BaseModel)  
-def transform_attrs(transformer, data, cls):  
+def transform_pydantic(transformer, data, cls):  
     if not transformer.no_explicit_cast and not isinstance(data, Mapping):  
         data = transformer(data, dict)  
     return cls(**data)
@@ -657,7 +662,7 @@ from utype import register_transformer
 from collections.abc import Mapping  
 
 @register_transformer(attr='__dataclass_fields__')  
-def transform_attrs(transformer, data, cls):  
+def transform_dataclass(transformer, data, cls):  
     if not transformer.no_explicit_cast and not isinstance(data, Mapping):  
         data = transformer(data, dict)
     data = {k: v for k, v in data.items() if k in cls.__dataclass_fields__}  

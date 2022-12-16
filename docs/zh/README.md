@@ -9,8 +9,8 @@
 
 utype 是一个基于 Python 类型注解的数据类型声明与解析库，能够在运行时根据你声明的类型和数据结构对数据进行解析转化
 
-* 版本：`0.2.0`【测试】
-* 作者：周煦林（<a href="https://github.com/voidZXL" target="_blank">https://github.com/voidZXL</a>）
+* 版本：`0.2.1`【测试】
+* 作者：<a href="https://github.com/voidZXL" target="_blank">@voidZXL</a>
 * 协议：Apache 2.0
 * 开源仓库：<a href="https://github.com/utilmeta/utype" target="_blank">https://github.com/utilmeta/utype</a>
 
@@ -65,7 +65,6 @@ except utype.exc.ParseError as e:
 * 基于 Python 类型注解在运行时对类型，数据结构，函数参数与结果等进行解析转化
 * 支持类型约束，类型的逻辑运算等，以声明更复杂的解析条件
 * 高度可扩展，所有类型的转化函数都可以注册，覆盖与扩展，并提供高度灵活的解析选项
-* 支持输出 json-schema 格式的文档，兼容 OpenAPI 
 
 ## 安装
 
@@ -82,6 +81,8 @@ pip install -U utype
 ## 用法示例
 
 ### 类型与约束
+
+utype 支持方便地为类型施加约束，你可以使用常见的约束任意构造约束类型
 ```Python
 from utype import Rule, exc
 
@@ -99,9 +100,11 @@ except exc.ParseError as e:
 	"""
 ``` 
 
-符合类型和约束声明的数据会成功完成转化，不符合的数据会抛出一个指示哪里出现问题的解析错误
+在调用约束类型时，符合类型和约束声明的数据会成功完成转化，不符合的数据会抛出一个指示哪里出现问题的解析错误
 
 ### 转化数据结构
+
+utype 支持以类似 `pydantic` 和 `attrs` 的方式解析类中声明的字段
 ```python
 from utype import Schema, Field, exc
 from datetime import datetime
@@ -124,8 +127,15 @@ except exc.ParseError as e:
 	"""
 ```
 
+在简单的声明后，你就可以获得
+
+* 无需声明 `__init__` 便能够接收对应的参数，并且完成类型转化和约束校验
+* 提供清晰可读的 `__repr__` 与 `__str__` 函数使得在输出和调试时方便直接获得内部的数据值
+* 在属性赋值或删除时根据字段的类型与配置进行解析与保护，避免出现脏数据
 
 ### 解析函数参数与结果
+
+utype 提供了函数解析的机制，你只需要把函数参数的类型与配置声明出来，就可以在函数中拿到类型安全，约束保障的参数值，并且调用者也能够获得满足声明的返回类型的结果
 ```python
 import utype
 from typing import Optional
@@ -135,8 +145,8 @@ class PositiveInt(int, utype.Rule):
 
 class ArticleSchema(utype.Schema):
 	id: Optional[PositiveInt]
-	title: str = Field(max_length=100)
-	slug: str = Field(regex=r"[a-z0-9]+(?:-[a-z0-9]+)*")
+	title: str = utype.Field(max_length=100)
+	slug: str = utype.Field(regex=r"[a-z0-9]+(?:-[a-z0-9]+)*")
 
 @utype.parse
 def get_article(id: PositiveInt = None, title: str = '') -> ArticleSchema:
@@ -213,34 +223,28 @@ if __name__ == '__main__':
 ### 类型的逻辑运算
 utype 支持使用 Python 原生的逻辑运算符对类型与数据结构进行逻辑运算
 ```python
-from utype import Rule, exc
+from utype import Schema, Field
+from typing import Tuple
 
-class PositiveInt(int, Rule):  
-    gt = 0
+class User(Schema):  
+    name: str = Field(max_length=10)  
+    age: int
 
-class Month(PositiveInt):  
-    le = 12
+one_of_user = User ^ Tuple[str, int]
 
-month_or_none = Month | None
-print(month_or_none('11.0'))
-# > 11
+print(one_of_user({'name': 'test', 'age': '1'}))
+# > User(name='test', age=1)
 
-assert month_or_none(None) is None
-
-try:
-	month_or_none('abc')
-except exc.ParseError as e:
-	print(e)
-	"""
-	CollectedParseError: could not convert string to float: 'abc';
-	"""
+print(one_of_user([b'test', '1']))
+# > ('test', 1)
 ```
 
+例子中使用了 `^` 异或符号对 utype 数据类和 typing 嵌套类型进行逻辑组合，新的逻辑类型就获得了能够将数据转换为其中一种声明的能力
 
 ### 类型的注册扩展
 由于每个项目需要的类型转化方式和校验严格程度可能不同，在 utype 中，所有的类型都是支持自行注册和扩展转化函数，如
 ```python
-from utype import Rule, register_transformer
+from utype import Rule, Schema, register_transformer
 from typing import Type
 
 class Slug(str, Rule):  
@@ -263,7 +267,7 @@ print(dict(ArticleSchema(slug=b'My Awesome Article!')))
 !!! note
 	注册转换器并没有影响类的 `__init__` 方法的行为，所以直接调用 `Slug(value)` 并不会生效
 
-你不仅可以为自定义类型注册转化器，还可以为基本类型（如 str, int, bool 等）或标准库中的类型（如 datetime, Enum 等）注册转化器函数，来自定义其中的转化行为
+你不仅可以为自定义类型注册转化器，还可以为基本类型（如 `str`, `int` 等）或标准库中的类型（如 `datetime`, `Enum` 等）注册转化器函数，来自定义其中的转化行为
 
 !!! note
 	`utype` 提供的是 **运行时** 提供的类型解析能力，也就是说它不能（也没有必要）让 Python 像静态语言一样在程序启动时就能够分析所有的类型与调用是否正确
