@@ -424,7 +424,7 @@ class ClassParser(BaseParser):
         ):
             # if __init__ is declared but passed, we still make a new one
 
-            def __init__(_obj_self, _d: dict = None, /, **kwargs):
+            def __init__(_obj_self, _d: dict = None, **kwargs):
                 parser = self.get_parser(_obj_self)
 
                 context = getattr(_obj_self, "__context__", None)

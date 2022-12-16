@@ -322,7 +322,8 @@ class LogicalType(type):  # noqa
     def parse(cls, value, *args, **kwargs):
         pass
 
-    def logical_parse(cls, value, /, context: RuntimeContext = None, **kwargs):
+    # compat Python 3.7, not adding the positional only sign
+    def logical_parse(cls, value, context: RuntimeContext = None, **kwargs):
         context = context or RuntimeContext()
         # IMPORTANT:
         # we must do clone here (as the parser do make_runtime)
