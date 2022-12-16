@@ -1,41 +1,27 @@
 """
 Python type hint standard may vary from versions
 """
-
 import sys
 import typing
-from typing import (  # type: ignore
-    TYPE_CHECKING,
-    AbstractSet,
-    Any,
-    Callable as TypingCallable,
-    ClassVar,
-    Final,
-    Dict,
-    ForwardRef,
-    Generator,
-    Iterable,
-    List,
-    Mapping,
-    NewType,
-    Optional,
-    Sequence,
-    Set,
-    Tuple,
-    Type,
-    TypeVar,
-    Union,
-)
+from typing import (Any, ClassVar, ForwardRef, Optional, Tuple,  # type: ignore
+                    Type, Union)
 
 try:
     from typing import Literal
 except ImportError:
     from typing_extensions import Literal
 
+try:
+    from typing import Final
+except ImportError:
+    from typing_extensions import Final
+
 
 __all__ = [
     "get_origin",
     "get_args",
+    'Literal',
+    'Final',
     "ForwardRef",
     "is_final",
     "is_union",
@@ -52,8 +38,8 @@ if sys.version_info < (3, 8):
         return getattr(t, "__args__", ())
 
 else:
-    from typing import get_origin as _typing_get_origin
     from typing import get_args as _typing_get_args
+    from typing import get_origin as _typing_get_origin
 
     def get_origin(tp) -> Optional[Type[Any]]:
         return _typing_get_origin(tp) or getattr(tp, "__origin__", None)
@@ -83,7 +69,6 @@ if sys.version_info < (3, 10):
 
 else:
     import types
-    import typing
 
     def is_union(tp: Optional[Type[Any]]) -> bool:
         return tp is Union or tp is types.UnionType  # noqa

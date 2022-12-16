@@ -1,5 +1,6 @@
 import warnings
-from typing import Union, List, Callable
+from typing import Callable, List, Union
+
 from .functional import multi
 
 

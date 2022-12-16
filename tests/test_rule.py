@@ -1,12 +1,13 @@
 import decimal
-
-from utype import Rule, Lax, Options, exc
-from utype.parser.rule import LogicalType
-from utype import types
-import pytest
-from typing import List, Iterator, Iterable, Literal
-from datetime import datetime, date, timedelta, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from enum import Enum
+from typing import Iterator, List
+
+import pytest
+
+from utype import Lax, Options, Rule, exc, types
+from utype.parser.rule import LogicalType
+from utype.utils.compat import Literal
 
 
 class TestRule:
@@ -538,6 +539,7 @@ class TestRule:
 
     def test_args(self):
         import enum
+
         from utype.types import Array
 
         class EnumLevel(str, enum.Enum):

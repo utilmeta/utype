@@ -1,26 +1,18 @@
-from typing import Tuple, List
-from .options import Options, RuntimeContext
-from ..utils.functional import pop
-from ..utils.datastructures import unprovided
-from ..utils.compat import is_final, is_classvar
-from ..utils import exceptions as exc
-from .rule import resolve_forward_type, Rule
-from .field import ParserField
 import inspect
-from .base import BaseParser
-from functools import wraps, cached_property
-from collections.abc import (
-    Generator,
-    AsyncGenerator,
-    Iterator,
-    AsyncIterator,
-    Iterable,
-    AsyncIterable,
-    Mapping,
-    Callable,
-)
 import warnings
+from collections.abc import (AsyncGenerator, AsyncIterable, AsyncIterator,
+                             Callable, Generator, Iterable, Iterator, Mapping)
+from functools import wraps
+from typing import List, Tuple
 
+from ..utils import exceptions as exc
+from ..utils.compat import is_classvar, is_final
+from ..utils.datastructures import cached_property, unprovided
+from ..utils.functional import pop
+from .base import BaseParser
+from .field import ParserField
+from .options import Options, RuntimeContext
+from .rule import Rule, resolve_forward_type
 
 LAMBDA_NAME = (lambda: None).__name__
 LOCALS_NAME = "<locals>"

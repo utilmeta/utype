@@ -1,13 +1,13 @@
 import warnings
+from functools import partial
+from typing import Callable, List, TypeVar, Union
 
-from .parser.rule import LogicalType
-from .parser.options import Options, RuntimeContext
 from .parser.cls import ClassParser, init_dataclass
 from .parser.field import ParserField
+from .parser.options import Options, RuntimeContext
+from .parser.rule import LogicalType
 from .utils import exceptions as exc
 from .utils.datastructures import unprovided
-from typing import Union, Callable, List, TypeVar
-from functools import partial
 
 T = TypeVar("T")
 OTHER = TypeVar("OTHER")

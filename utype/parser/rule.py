@@ -1,29 +1,21 @@
-import typing
-from typing import (
-    Union,
-    Type,
-    Optional,
-    List,
-    Literal,
-    Dict,
-    Any,
-    TypeVar,
-    Tuple,
-)
 import inspect
-from ..utils.compat import get_origin, get_args, ForwardRef, evaluate_forward_ref
-from ..utils.transform import TypeTransformer, register_transformer
-from ..utils.functional import pop, multi
-from ..utils.datastructures import unprovided
-from ..utils import exceptions as exc
-from .options import RuntimeContext
-from enum import EnumMeta, Enum
-from functools import partial
-
 import re
+import typing
 import warnings
-from collections import deque, Mapping, OrderedDict, Callable, Generator, AsyncGenerator
+from collections import deque
 from decimal import Decimal
+from enum import Enum, EnumMeta
+from functools import partial
+from typing import (Any, AsyncGenerator, Callable, Dict, Generator, List,
+                    Mapping, Optional, Tuple, Type, TypeVar, Union)
+
+from ..utils import exceptions as exc
+from ..utils.compat import (ForwardRef, Literal, evaluate_forward_ref,
+                            get_args, get_origin)
+from ..utils.datastructures import unprovided
+from ..utils.functional import multi, pop
+from ..utils.transform import TypeTransformer, register_transformer
+from .options import RuntimeContext
 
 T = typing.TypeVar("T")
 OTHER = TypeVar("OTHER")
@@ -754,7 +746,7 @@ class Constraints:
 
     def generate_validators(self) -> List[Tuple[str, Any, Callable]]:
         constraint_mode = {}
-        constraints = OrderedDict()
+        constraints = dict()    # for python >= 3.7, ordered dict is dict
         for key in self.rule_cls.__constraints__:
             if hasattr(self.rule_cls, key) and hasattr(self.__class__, key):
                 value = getattr(self.rule_cls, key)
@@ -1723,11 +1715,18 @@ class Rule(metaclass=LogicalType):
         return result
 
 
-@register_transformer(Callable, allow_subclasses=False)
-def transform_callable(transformer: TypeTransformer, value, t):
-    if not callable(value):
-        raise TypeError
-    return value
+if isinstance(Callable, type):
+    @register_transformer(Callable, allow_subclasses=False)
+    def transform_callable(transformer: TypeTransformer, value, t):
+        if not callable(value):
+            raise TypeError
+        return value
+
+if isinstance(Any, type):
+    @register_transformer(Any, allow_subclasses=False)
+    def transform_callable(transformer: TypeTransformer, value, t):
+        # accept any value
+        return value
 
 
 @register_transformer(metaclass=LogicalType)

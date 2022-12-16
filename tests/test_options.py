@@ -1,9 +1,11 @@
-import utype
-from utype import Schema, Options, exc, Field
-from utype.utils.style import AliasGenerator
+from datetime import date, datetime, timedelta
+from typing import Dict, List, Tuple
+
 import pytest
-from typing import List, Dict, Tuple
-from datetime import date, timedelta, datetime
+
+import utype
+from utype import Field, Options, Schema, exc
+from utype.utils.style import AliasGenerator
 
 
 @pytest.fixture(params=(False, True))

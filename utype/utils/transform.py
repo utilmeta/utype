@@ -1,17 +1,17 @@
 import inspect
-from typing import Optional, Callable, Type, TypeVar
 import json
-from collections.abc import Mapping, Sequence, Iterable
-from collections import deque
 import re
-from .compat import ForwardRef
-from datetime import timezone, datetime, date, timedelta, time
-from typing import TYPE_CHECKING
-from .functional import multi
-from enum import Enum
+from collections import deque
+from collections.abc import Iterable, Mapping, Sequence
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
+from enum import Enum
+from typing import TYPE_CHECKING, Callable, Optional, Type, TypeVar
 from uuid import UUID
+
+from .compat import ForwardRef
 from .exceptions import TypeMismatchError
+from .functional import multi
 
 if TYPE_CHECKING:
     from ..parser.options import RuntimeContext

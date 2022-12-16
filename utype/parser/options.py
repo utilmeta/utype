@@ -1,10 +1,12 @@
 import inspect
 import warnings
-from typing import Literal, Union, List, Optional, Any, Callable, Type, Set
-from ..utils.transform import TypeTransformer
-from ..utils.functional import multi
-from ..utils.datastructures import unprovided
+from typing import Any, Callable, List, Optional, Set, Type, Union
+
 from ..utils import exceptions as exc
+from ..utils.compat import Literal
+from ..utils.datastructures import unprovided
+from ..utils.functional import multi
+from ..utils.transform import TypeTransformer
 
 DEFAULT_SECRET_NAMES = (
     "password",

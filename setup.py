@@ -31,6 +31,9 @@ setup(
         'Topic :: Software Development :: Libraries :: Python Modules',
         'Topic :: Internet',
     ],
+    requires=[
+        'typing-extensions>=4.1.0',
+    ],
     python_requires=">=3.7",
     license="Apache 2.0",
     url="https://utype.io",

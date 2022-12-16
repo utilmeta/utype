@@ -1,8 +1,9 @@
-from .parser.rule import Rule, Lax
-from .utils import exceptions as exc
 from decimal import Decimal
-from typing import Union, Type
 from enum import Enum
+from typing import Type, Union
+
+from .parser.rule import Lax, Rule
+from .utils import exceptions as exc
 
 # from typing import TypeVar
 # T = TypeVar('T')

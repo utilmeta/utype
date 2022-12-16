@@ -1,7 +1,7 @@
 # uType - Introduction
 
 <a href="https://pypi.org/project/utype/" target="_blank">
-<img src="https://img.shields.io/pypi/v/utype" alt="">
+	<img src="https://img.shields.io/pypi/v/utype" alt="">
 </a>
 <a href="https://github.com/utilmeta/utype/blob/main/LICENSE" target="_blank">
 <img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="">
@@ -73,7 +73,7 @@ pip install -U utype
 ```
 
 !!! note
-    utype requires Python >= 3.7, no other third-party dependencies required
+    utype requires Python >= 3.7
 
 !!! warning
     If you see this prompt, you are welcome to become a user of the beta version of utype. At present, utype is still in the beta stage. There may be some functions that have not been tested, and the API may change in the future. Please be cautious when using it in a production environment, and enjoy~

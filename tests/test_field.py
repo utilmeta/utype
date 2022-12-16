@@ -1,9 +1,12 @@
-from utype import Field, Schema, DataClass, exc, Options, parse, dataclass
-import pytest
 import warnings
-from typing import Union, Literal, Final
-from utype.utils.style import AliasGenerator
 from datetime import datetime
+from typing import Union
+
+import pytest
+
+from utype import DataClass, Field, Options, Schema, dataclass, exc, parse
+from utype.utils.compat import Final, Literal
+from utype.utils.style import AliasGenerator
 
 
 @pytest.fixture(params=(False, True))

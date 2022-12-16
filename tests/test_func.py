@@ -1,10 +1,14 @@
-import utype
+import sys
 import typing
-from utype import Param, Field, exc, Options, parse
-import pytest
-from datetime import datetime
-from typing import Iterable, Dict, Iterator, Optional, AsyncIterator, AsyncIterable, Awaitable, Generator
 import warnings
+from datetime import datetime
+from typing import AsyncIterable, Dict, Generator, Iterator, Optional
+
+import pytest
+
+import utype
+from utype import Field, Options, Param, exc, parse
+from utype.utils.compat import Final
 
 
 @pytest.fixture(params=(False, True))
@@ -127,7 +131,7 @@ class TestFunc:
         #     return username
 
     def test_invalids(self):
-        from typing import Final, ClassVar
+        from typing import ClassVar
 
         with pytest.raises(exc.ConfigError):
             @utype.parse(options=Options(no_default=True))
@@ -165,29 +169,31 @@ class TestFunc:
             def func(f1: str = Field(repr=False)):
                 return f1
 
-        with pytest.warns():
-            @parse
-            def func(
-                f1: str = Field(alias='test'),
-                /
-            ):
-                return f1
-
-        with pytest.warns():
-            @parse
-            def func(
-                f1: str = Field(alias_from='test'),
-                /
-            ):
-                return f1
-
-        with pytest.warns():
-            @parse
-            def func(
-                f1: str = Field(case_insensitive=True),
-                /
-            ):
-                return f1
+        # TODO
+        # if sys.version_info >= (3, 8):
+        #     with pytest.warns():
+        #         @parse
+        #         def func(
+        #             f1: str = Field(alias='test'),
+        #             /
+        #         ):
+        #             return f1
+        #
+        #     with pytest.warns():
+        #         @parse
+        #         def func(
+        #             f1: str = Field(alias_from='test'),
+        #             /
+        #         ):
+        #             return f1
+        #
+        #     with pytest.warns():
+        #         @parse
+        #         def func(
+        #             f1: str = Field(case_insensitive=True),
+        #             /
+        #         ):
+        #             return f1
 
     def test_field_default_required_function(self):
         # @parse
@@ -222,21 +228,23 @@ class TestFunc:
             # required param is after the optional param
             # in not-keyword-only (can be positional passed) function
 
-        with pytest.raises(SyntaxError):
-            @parse
-            def func3(
-                f0: str,
-                f1: str = Field(required=False, default=''),
-                f2: str = Field(required=True),
-                _p1: int = 0,
-                # positional only
-                /,
-                # positional or keyword
-                f3: str = Field(required=True),
-            ):
-                return locals()
-            # required param is after the optional param
-            # in not-keyword-only (can be positional passed) function
+        # TODO, add positional args test for version>3.8
+        # if sys.version_info >= (3, 8):
+        #     with pytest.raises(SyntaxError):
+        #         @parse
+        #         def func3(
+        #             f0: str,
+        #             f1: str = Field(required=False, default=''),
+        #             f2: str = Field(required=True),
+        #             _p1: int = 0,
+        #             # positional only
+        #             /,
+        #             # positional or keyword
+        #             f3: str = Field(required=True),
+        #         ):
+        #             return locals()
+        #         # required param is after the optional param
+        #         # in not-keyword-only (can be positional passed) function
 
         with pytest.warns():
             @parse
@@ -304,7 +312,7 @@ class TestFunc:
         def example(
             # positional only
             pos_only: int,
-            /,
+            # /,
             # positional or keyword
             pos_or_kw: int = Param(0),
             # positional var
@@ -322,10 +330,38 @@ class TestFunc:
 
         with pytest.raises(exc.AbsenceError):
             # >  required item: 'pos_only' is absence
-            example(pos_only='1', pos_or_kw=1, kw_only_2='0')
+            example(pos_or_kw=1, kw_only_2='0')
 
         r = example('0', '1', '2', kw_only_2='0', k='3')
         assert r == (0, 1, (2,), 0, 0, {'k': 3})
+
+        # TODO: add pos args test for sys.version_info >= (3, 8):
+        # @utype.parse
+        # def example(
+        #         # positional only
+        #         pos_only: int,
+        #         /,
+        #         # positional or keyword
+        #         pos_or_kw: int = Param(0),
+        #         # positional var
+        #         *args: int,
+        #         # keyword only
+        #         kw_only_1: int = Param(0),
+        #         kw_only_2: int = Param(),
+        #         # keyword var
+        #         **kwargs: int
+        # ):
+        #     return pos_only, pos_or_kw, args, kw_only_1, kw_only_2, kwargs
+        #
+        # with pytest.raises(TypeError):
+        #     example(0, 1, 2, pos_or_kw=1, kw_only_2='0')
+        #
+        # with pytest.raises(exc.AbsenceError):
+        #     # >  required item: 'pos_only' is absence
+        #     example(pos_only='1', pos_or_kw=1, kw_only_2='0')
+        #
+        # r = example('0', '1', '2', kw_only_2='0', k='3')
+        # assert r == (0, 1, (2,), 0, 0, {'k': 3})
 
     def test_excluded_vars(self):
         @utype.parse
@@ -505,6 +541,7 @@ class TestFunc:
     @pytest.mark.asyncio
     async def test_async(self, eager):
         import asyncio
+
         from utype import types
 
         @utype.parse(eager=eager)
@@ -540,9 +577,10 @@ class TestFunc:
 
     @pytest.mark.asyncio
     async def test_async_generator(self, eager):
-        import utype
-        from typing import AsyncGenerator
         import asyncio
+        from typing import AsyncGenerator
+
+        import utype
 
         @utype.parse(eager=eager)
         async def waiter(rounds: int = utype.Param(gt=0)) -> AsyncGenerator[int, float]:
@@ -764,7 +802,7 @@ class TestFunc:
             @classmethod
             @utype.parse
             def cls_power(cls, num: int, exp: int) -> int:
-                return cls.int_power(num, exp, mod=cls.MOD)
+                return cls.int_power(num, exp, cls.MOD)
 
             @utype.parse
             def power(self) -> int:
@@ -798,7 +836,7 @@ class TestFunc:
 
             @utype.parse
             def power(self, mod: int = utype.Param(None, ge=0)) -> int:
-                return pow(self.base, self.exp, mod=mod)
+                return pow(self.base, self.exp, mod)
 
         p = IntPower('3', 3)
         assert p.power() == 27

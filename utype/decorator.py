@@ -1,12 +1,13 @@
 import inspect
-from typing import Any, Iterable, Callable, Type, TypeVar, Union
 import warnings
-from .parser.func import FunctionParser
+from typing import Any, Callable, Iterable, Type, TypeVar, Union
+
 from .parser.cls import ClassParser
+from .parser.func import FunctionParser
 from .parser.options import Options
-from .parser.rule import Rule, Lax
-from .utils.datastructures import unprovided, Unprovided
+from .parser.rule import Lax, Rule
 from .utils import exceptions as exc
+from .utils.datastructures import Unprovided, unprovided
 
 T = TypeVar("T")
 FUNC = TypeVar("FUNC")

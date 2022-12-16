@@ -1,5 +1,5 @@
 # ERROR for handling parse
-from typing import Union, Any, List, Set
+from typing import Any, List, Set, Union
 
 
 class ConfigError(SyntaxError):

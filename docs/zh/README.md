@@ -73,7 +73,7 @@ pip install -U utype
 ```
 
 !!! note
-	utype 需要 Python >= 3.7，无其他第三方依赖
+	utype 需要 Python >= 3.7
 
 !!! warning
 	如果你看到这条提示，欢迎你成为 utype 的测试版本用户，目前 utype 还处于测试阶段，可能存在一些功能没有被测试到，API 也有可能会在未来发生变动，请谨慎用于生产环境，and enjoy~

@@ -1,16 +1,17 @@
-import utype
-import pytest
-from utype import Rule, Options, exc
-from utype.utils.transform import TypeTransformer, register_transformer, DateFormat
-from utype import types
 import uuid
-import pytest
-from typing import List, Iterator, Iterable
-from datetime import datetime, date, timedelta, time, timezone
-from uuid import UUID
+from collections.abc import Mapping
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from enum import Enum
-from collections.abc import Mapping
+from typing import Iterable
+from uuid import UUID
+
+import pytest
+
+import utype
+from utype import Options
+from utype.utils.transform import (DateFormat, TypeTransformer,
+                                   register_transformer)
 
 
 class TestType:

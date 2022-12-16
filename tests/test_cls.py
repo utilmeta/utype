@@ -1,12 +1,15 @@
-import typing
-import utype
-from utype import Rule, Options, exc, Field, Schema, DataClass, register_transformer
-from utype import types
-from typing import List, Dict, Tuple, Union, Set, Optional, Type, Any
-from datetime import datetime, date, timedelta, time, timezone
-from uuid import UUID
 import json
+import typing
+from datetime import date, datetime
+from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
+from uuid import UUID
+
 import pytest  # noqa
+
+import utype
+from utype import (DataClass, Field, Options, Rule, Schema, exc,
+                   register_transformer, types)
+from utype.utils.compat import Final
 
 
 @pytest.fixture(params=(False, True))
@@ -373,9 +376,9 @@ class TestClass:
             r17: typing.ClassVar[str] = '3'
             r18: typing.ClassVar = '3'
             r19: typing.ForwardRef('str') = '3'
-            r20: typing.Final = 1
-            r21: typing.Final[str] = 'a'        # no input and immutable
-            r22: typing.Final[int]              # immutable
+            r20: Final = 1
+            r21: Final[str] = 'a'        # no input and immutable
+            r22: Final[int]              # immutable
 
         assert set(TestSchema.__parser__.fields) == {
             'r1', 'r2', 'r3', 'r4', 'r8', 'r9', 'r12', 'r13',

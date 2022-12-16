@@ -1,14 +1,13 @@
-from typing import Optional, Callable, Type, Dict, Set, List, Union, Tuple
-from .field import ParserField
-
-from .options import Options, RuntimeContext
-from ..utils.compat import *
-from ..utils.datastructures import unprovided
-from ..utils import exceptions as exc
-from .rule import resolve_forward_type
-from functools import cached_property
 import inspect
 import sys
+from typing import Callable, Dict, List, Optional, Set, Tuple, Type, Union
+
+from ..utils import exceptions as exc
+from ..utils.compat import *
+from ..utils.datastructures import cached_property, unprovided
+from .field import ParserField
+from .options import Options, RuntimeContext
+from .rule import resolve_forward_type
 
 LOCALS_NAME = "<locals>"
 __parsers__ = {}
