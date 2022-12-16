@@ -2,14 +2,18 @@
 [![Version](https://img.shields.io/pypi/v/utype)](https://pypi.org/project/utype/)
 [![Python Requires](https://img.shields.io/pypi/pyversions/utype)](https://pypi.org/project/utype/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](https://github.com/utilmeta/utype/blob/main/LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/utilmeta/utype/test.yaml?branch=main&label=CI)](https://github.com/utilmeta/utype/actions?query=branch%3Amain+)
+[![Test Coverage](https://img.shields.io/codecov/c/github/utilmeta/utype?color=green)](https://app.codecov.io/github/utilmeta/utype)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Downloads](https://pepy.tech/badge/utype/month)](https://pepy.tech/project/utype)
 
-
-utype is a data type & schema declaration & parsing library based on Python type annotations, enforce type and constraints at runtime
+utype is a data types declaration & parsing library based on Python type annotations, 
+enforce types and constraints for classes and functions at runtime
 
 * Version: `0.2.1` [test]
 * Author: [@voidZXL](https://github.com/voidZXL)
 * License: Apache 2.0
+* Source Code: [https://github.com/utilmeta/utype](https://github.com/utilmeta/utype)
 * Documentation: [https://utype.io](https://utype.io)
 * 中文文档: [https://utype.io/zh](https://utype.io/zh)
 

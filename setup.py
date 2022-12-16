@@ -7,7 +7,7 @@ with open("README.md", "r", encoding="UTF-8") as fh:
 setup(
     name="utype",
     version=__version__,
-    description="Declare & parse data types / dataclasses / functions",
+    description="Declare & parse types / dataclasses / functions based on Python type annotations",
     long_description=long_description,
     long_description_content_type="text/markdown",
     author="XuLin Zhou",
@@ -31,7 +31,7 @@ setup(
         'Topic :: Software Development :: Libraries :: Python Modules',
         'Topic :: Internet',
     ],
-    requires=[
+    install_requires=[
         'typing-extensions>=4.1.0',
     ],
     python_requires=">=3.7",

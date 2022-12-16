@@ -3,8 +3,17 @@
 <a href="https://pypi.org/project/utype/" target="_blank">
 	<img src="https://img.shields.io/pypi/v/utype" alt="">
 </a>
+<a href="https://pypi.org/project/utype/" target="_blank">
+	<img src="https://img.shields.io/pypi/pyversions/utype" alt="">
+</a>
 <a href="https://github.com/utilmeta/utype/blob/main/LICENSE" target="_blank">
-<img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="">
+	<img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="">
+</a>
+<a href="https://github.com/utilmeta/utype/actions?query=branch%3Amain+" target="_blank">
+	<img src="https://img.shields.io/github/actions/workflow/status/utilmeta/utype/test.yaml?branch=main&label=CI" alt="">
+</a>
+<a href="https://app.codecov.io/github/utilmeta/utype" target="_blank">
+	<img src="https://img.shields.io/codecov/c/github/utilmeta/utype?color=green" alt="">
 </a>
 
 utype is a data type declaration and parsing library based on Python type annotations, which can parse and convert data according to your declared type and data structure at runtime
@@ -12,7 +21,7 @@ utype is a data type declaration and parsing library based on Python type annota
 * Version: `0.2.1` [Test]
 * Author: <a href="https://github.com/voidZXL" target="_blank">@voidZXL</a>
 * License: Apache 2.0
-* Code Repository: <a href="https://github.com/utilmeta/utype" target="_blank"> https://github.com/utilmeta/utype.</a>
+* Code Repository: <a href="https://github.com/utilmeta/utype" target="_blank">https://github.com/utilmeta/utype</a>
 
 ## Motivation
 

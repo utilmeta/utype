@@ -3,16 +3,26 @@
 <a href="https://pypi.org/project/utype/" target="_blank">
 	<img src="https://img.shields.io/pypi/v/utype" alt="">
 </a>
+<a href="https://pypi.org/project/utype/" target="_blank">
+	<img src="https://img.shields.io/pypi/pyversions/utype" alt="">
+</a>
 <a href="https://github.com/utilmeta/utype/blob/main/LICENSE" target="_blank">
 	<img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="">
 </a>
+<a href="https://github.com/utilmeta/utype/actions?query=branch%3Amain+" target="_blank">
+	<img src="https://img.shields.io/github/actions/workflow/status/utilmeta/utype/test.yaml?branch=main&label=CI" alt="">
+</a>
+<a href="https://app.codecov.io/github/utilmeta/utype" target="_blank">
+	<img src="https://img.shields.io/codecov/c/github/utilmeta/utype?color=green" alt="">
+</a>
 
-utype 是一个基于 Python 类型注解的数据类型声明与解析库，能够在运行时根据你声明的类型和数据结构对数据进行解析转化
+
+utype 是一个基于 Python 类型注解的数据类型声明与解析库，能够在运行时根据你的声明对类与函数的参数进行解析转化
 
 * 版本：`0.2.1`【测试】
 * 作者：<a href="https://github.com/voidZXL" target="_blank">@voidZXL</a>
 * 协议：Apache 2.0
-* 开源仓库：<a href="https://github.com/utilmeta/utype" target="_blank">https://github.com/utilmeta/utype</a>
+* 代码：<a href="https://github.com/utilmeta/utype" target="_blank">https://github.com/utilmeta/utype</a>
 
 ## 需求动机
 
