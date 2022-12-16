@@ -1,7 +1,9 @@
 # uType
 [![Version](https://img.shields.io/pypi/v/utype)](https://pypi.org/project/utype/)
+[![Python Requires](https://img.shields.io/pypi/pyversions/utype)](https://pypi.org/project/utype/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](https://github.com/utilmeta/utype/blob/main/LICENSE)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+
 
 utype is a data type & schema declaration & parsing library based on Python type annotations, enforce type and constraints at runtime
 
@@ -41,10 +43,10 @@ assert PositiveInt(b'3') == 3
 try:
     PositiveInt(-0.5)
 except exc.ParseError as e:
-	print(e)
-	"""
-	Constraint: <gt>: 0 violated
-	"""
+    print(e)
+    """
+    Constraint: <gt>: 0 violated
+    """
 ``` 
 Data that conforms to the type and constraint declaration will complete the conversion successfully, data that does not will throw a parse error indicating what went wrong
 
@@ -55,19 +57,19 @@ from utype import Schema, Field, exc
 from datetime import datetime
 
 class UserSchema(Schema):
-	username: str = Field(regex='[0-9a-zA-Z]{3,20}')
-	signup_time: datetime
+    username: str = Field(regex='[0-9a-zA-Z]{3,20}')
+    signup_time: datetime
 
 print(UserSchema(username='bob', signup_time='2022-10-11 10:11:12'))
 #> UserSchema(username='bob', signup_time=datetime.datetime(2022, 10, 11, 10, 11, 12))
 
 try:
-	UserSchema(username='@invalid', signup_time='2022-10-11 10:11:12')
+    UserSchema(username='@invalid', signup_time='2022-10-11 10:11:12')
 except exc.ParseError as e:
-	print(e)
-	"""
-	Constraint: <regex>: '[0-9a-zA-Z]{3,20}' violated
-	"""
+    print(e)
+    """
+    Constraint: <regex>: '[0-9a-zA-Z]{3,20}' violated
+    """
 ```
 ### Parse functions
 
@@ -80,39 +82,39 @@ class PositiveInt(int, utype.Rule):
     gt = 0
 
 class ArticleSchema(utype.Schema):
-	id: Optional[PositiveInt]
-	title: str = utype.Field(max_length=100)
-	slug: str = utype.Field(regex=r"[a-z0-9]+(?:-[a-z0-9]+)*")
+    id: Optional[PositiveInt]
+    title: str = utype.Field(max_length=100)
+    slug: str = utype.Field(regex=r"[a-z0-9]+(?:-[a-z0-9]+)*")
 
 @utype.parse
 def get_article(id: PositiveInt = None, title: str = '') -> ArticleSchema:
-	return {
-		'id': id,
-		'title': title,
-		'slug': '-'.join([''.join(
-			filter(str.isalnum, v)) for v in title.split()]).lower()
-	}
+    return {
+        'id': id,
+        'title': title,
+        'slug': '-'.join([''.join(
+            filter(str.isalnum, v)) for v in title.split()]).lower()
+    }
 
 print(get_article('3', title=b'My Awesome Article!'))
 #> ArticleSchema(id=3, title='My Awesome Article!', slug='my-awesome-article')
 
 try:
-	get_article('-1')
+    get_article('-1')
 except utype.exc.ParseError as e:
-	print(e)
-	"""
-	parse item: ['id'] failed: Constraint: : 0 violated
-	"""
+    print(e)
+    """
+    parse item: ['id'] failed: Constraint: : 0 violated
+    """
 
 try:
-	get_article(title='*' * 101)
+    get_article(title='*' * 101)
 except utype.exc.ParseError as e:
-	print(e)
-	"""
-	parse item: ['<return>'] failed: 
-	parse item: ['title'] failed: 
-	Constraint: <max_length>: 100 violated
-	"""
+    print(e)
+    """
+    parse item: ['<return>'] failed: 
+    parse item: ['title'] failed: 
+    Constraint: <max_length>: 100 violated
+    """
 ```
 
 !!! success
@@ -188,13 +190,13 @@ class Slug(str, Rule):
 
 @register_transformer(Slug)
 def to_slug(transformer, value, t: Type[Slug]):
-	str_value = transformer(value, str)
-	return t('-'.join([''.join(
-	filter(str.isalnum, v)) for v in str_value.split()]).lower())
+    str_value = transformer(value, str)
+    return t('-'.join([''.join(
+    filter(str.isalnum, v)) for v in str_value.split()]).lower())
 
 
 class ArticleSchema(Schema):
-	slug: Slug
+    slug: Slug
 
 print(dict(ArticleSchema(slug=b'My Awesome Article!')))
 # > {'slug': 'my-awesome-article'}

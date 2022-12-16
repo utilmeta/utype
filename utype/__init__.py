@@ -20,3 +20,17 @@ def _get_version():
 
 
 __version__ = _get_version()
+
+
+def version_info() -> str:
+    import platform
+    import sys
+    from pathlib import Path
+
+    info = {
+        'utype version': __version__,
+        'installed path': Path(__file__).resolve().parent,
+        'python version': sys.version,
+        'platform': platform.platform(),
+    }
+    return '\n'.join('{:>30} {}'.format(k + ':', str(v).replace('\n', ' ')) for k, v in info.items())

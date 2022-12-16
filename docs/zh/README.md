@@ -87,12 +87,12 @@ utype 支持方便地为类型施加约束，你可以使用常见的约束任�
 from utype import Rule, exc
 
 class PositiveInt(int, Rule):  
-    gt = 0
+	gt = 0
 
 assert PositiveInt(b'3') == 3
 
 try:
-    PositiveInt(-0.5)
+	PositiveInt(-0.5)
 except exc.ParseError as e:
 	print(e)
 	"""
@@ -141,7 +141,7 @@ import utype
 from typing import Optional
 
 class PositiveInt(int, utype.Rule):  
-    gt = 0
+	gt = 0
 
 class ArticleSchema(utype.Schema):
 	id: Optional[PositiveInt]

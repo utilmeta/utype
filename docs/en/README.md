@@ -94,10 +94,10 @@ assert PositiveInt(b'3') == 3
 try:
     PositiveInt(-0.5)
 except exc.ParseError as e:
-	print(e)
-	"""
-	Constraint: : 0 violated
-	"""
+    print(e)
+    """
+    Constraint: : 0 violated
+    """
 ``` 
 
 
@@ -111,21 +111,21 @@ from utype import Schema, Field, exc
 from datetime import datetime
 
 class UserSchema(Schema):
-	username: str = Field(regex='[0-9a-zA-Z]{3,20}')
-	signup_time: datetime
+    username: str = Field(regex='[0-9a-zA-Z]{3,20}')
+    signup_time: datetime
 
 data = {'username': 'bob', 'signup_time': '2022-10-11 10:11:12'}
 print(UserSchema(**data))
 #> UserSchema(username='bob', signup_time=datetime.datetime(2022, 10, 11, 10, 11, 12))
 
 try:
-	UserSchema(username='@invalid', signup_time='2022-10-11 10:11:12')
+    UserSchema(username='@invalid', signup_time='2022-10-11 10:11:12')
 except exc.ParseError as e:
-	print(e)
-	"""
-	parse item: ['username'] failed: 
-	Constraint: <regex>: '[0-9a-zA-Z]{3,20}' violated
-	"""
+    print(e)
+    """
+    parse item: ['username'] failed: 
+    Constraint: <regex>: '[0-9a-zA-Z]{3,20}' violated
+    """
 ```
 
 After a simple declaration, you can obtain
@@ -145,39 +145,39 @@ class PositiveInt(int, utype.Rule):
     gt = 0
 
 class ArticleSchema(utype.Schema):
-	id: Optional[PositiveInt]
-	title: str = utype.Field(max_length=100)
-	slug: str = utype.Field(regex=r"[a-z0-9]+(?:-[a-z0-9]+)*")
+    id: Optional[PositiveInt]
+    title: str = utype.Field(max_length=100)
+    slug: str = utype.Field(regex=r"[a-z0-9]+(?:-[a-z0-9]+)*")
 
 @utype.parse
 def get_article(id: PositiveInt = None, title: str = '') -> ArticleSchema:
-	return {
-		'id': id,
-		'title': title,
-		'slug': '-'.join([''.join(
-			filter(str.isalnum, v)) for v in title.split()]).lower()
-	}
+    return {
+        'id': id,
+        'title': title,
+        'slug': '-'.join([''.join(
+            filter(str.isalnum, v)) for v in title.split()]).lower()
+    }
 
 print(get_article('3', title=b'My Awesome Article!'))
 #> ArticleSchema(id=3, title='My Awesome Article!', slug='my-awesome-article')
 
 try:
-	get_article('-1')
+    get_article('-1')
 except utype.exc.ParseError as e:
-	print(e)
-	"""
-	parse item: ['id'] failed: Constraint: : 0 violated
-	"""
+    print(e)
+    """
+    parse item: ['id'] failed: Constraint: : 0 violated
+    """
 
 try:
-	get_article(title='*' * 101)
+    get_article(title='*' * 101)
 except utype.exc.ParseError as e:
-	print(e)
-	"""
-	parse item: ['<return>'] failed: 
-	parse item: ['title'] failed: 
-	Constraint: <max_length>: 100 violated
-	"""
+    print(e)
+    """
+    parse item: ['<return>'] failed: 
+    parse item: ['title'] failed: 
+    Constraint: <max_length>: 100 violated
+    """
 ```
 
 !!! success
@@ -253,9 +253,9 @@ class Slug(str, Rule):
 
 @register_transformer(Slug)
 def to_slug(transformer, value, t: Type[Slug]):
-	str_value = transformer(value, str)
-	return t('-'.join([''.join(
-	filter(str.isalnum, v)) for v in str_value.split()]).lower())
+    str_value = transformer(value, str)
+    return t('-'.join([''.join(
+    filter(str.isalnum, v)) for v in str_value.split()]).lower())
 
 
 class ArticleSchema(Schema):
