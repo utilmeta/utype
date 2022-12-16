@@ -22,7 +22,7 @@ def raw(f: FUNC):
 
 def parse(
     f: T = None,
-    /,
+    # /,  compat 3.7
     *,
     parser_cls: Type[FunctionParser] = FunctionParser,
     options: Union[Options, Type[Options]] = None,
@@ -66,7 +66,7 @@ def parse(
 
 def dataclass(
     obj: CLS = None,
-    /,
+    # /,  compat 3.7
     *,
     parser_cls: Type[ClassParser] = ClassParser,
     options: Union[Options, Type[Options]] = None,
