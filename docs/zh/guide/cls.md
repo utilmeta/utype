@@ -127,9 +127,6 @@ article = ArticleSchema(
     body='article body',  
     tags=[]
 )
-
-print(article)  
-# > ArticleSchema(slug='test-article', content='article body', views=0)  
 ```
 
 我们逐个看一下例子中声明的字段
@@ -178,7 +175,7 @@ print(dict(article))
 # }
 ```
 
-在为 `created_at` 字段赋值后，它被转化为了字段的类型 datetime，并且在输出数据（转化为字典的数据）中，`created_at` 字段的名称变成了它指定的 `alias` 参数的值 `'createdAt'`
+在为 `created_at` 字段赋值后，它被转化为了字段的类型 (`datetime`)，并且在输出数据（转化为字典的数据）中，`created_at` 字段的名称变成了它指定的 `alias` 参数的值 `'createdAt'`
 
 * `tags`：文章的标签字段，指定了默认值的工厂函数为 list，也就是说如果这个字段没有提供，将会制造一个空列表（`list()`） 作为默认值，另外指定了 `no_output` 函数，表示当值为空时不进行输出
 
@@ -192,7 +189,7 @@ print(dict(article))
 * **说明与标记**：`title`，`description`，`example`，`deprecated` 等，用于给字段编写文档说明，示例，或者指示是否弃用
 * **约束配置**：包括 [Rule 约束](/zh/references/rule) 中的所有约束参数，如 `gt`, `le`, `max_length`, `regex` 等等，用于给字段以参数的方式指定约束
 * **别名配置**：`alias`，`alias_from`，`case_insensitive` 等，用于为字段指定属性名外的名称，以及大小写是否敏感等，可以用于定义属性声明不支持的字段名称
-* **模式配置**：`readonly`，`writeonly`，`mode` 等，用于配置数据类或函数在不同的解析模式下的行为
+* **模式配置**：`readonly`，`writeonly`，`mode` 等，用于支持多种解析模式，配置字段在不同的解析模式下的行为
 * **输入与输出配置**：`no_input`，`no_output`，用于控制字段的输入和输出行为
 * **属性行为配置**：`immutable`，`secret`，用于控制字段对应属性的可变更性，显示行为等
 
@@ -206,7 +203,6 @@ print(dict(article))
 我们知道在 Python 的类中，可以使用 `@property` 装饰器声明属性，从而使用函数控制属性的访问，赋值和删除
 
 utype 也支持使用  `@property` 声明属性字段，从而更深入地控制属性行为，先看一个简单的例子
-
 ```python
 from utype import Schema
 from datetime import datetime
@@ -256,7 +252,7 @@ class ArticleSchema(Schema):
 如果 property 属性没有声明 setter，则它就是不可被赋值的，这样声明不可变更的字段是更加原生的做法
 
 !!! note
-	在 Schema 数据类中，输入的字段都会在初始化中赋值相应的属性，如果属性使用了 setter，就会执行 setter 中的逻辑
+	在数据类中，输入的字段都会在初始化中赋值相应的属性，如果属性使用了 setter，就会执行 setter 中的逻辑
 
 
 #### 为属性配置 Field
@@ -303,7 +299,7 @@ Field 实例可以配置到属性的 getter 和 setter 上，它们各自的用�
 * `alias_from`：指定输入来源的字段别名列表
 
 !!! warning
-	同时指定 `no_input` 和 `immutable` 会导致 setter 变得无效
+	同时指定 `no_input=True` 和 `immutable=True` 会导致 setter 变得无效
 
 下面来看一下这些属性的行为
 ```python
@@ -340,9 +336,9 @@ except exc.ParseError as e:
 
 字段配置在数据类声明周期的各个环节的作用分别为
 
-* 数据输入 `no_input`：此字段不参与数据输入
-* 实例操作 `immutable`：无法在实例中操作此字段（无法被赋值或删除）
-* 数据输出 `no_output`：此字段不参与数据输出
+* 数据输入 `no_input=True`：字段不参与数据输入
+* 实例操作 `immutable=True`：无法在实例中操作此字段（无法被赋值或删除）
+* 数据输出 `no_output=True`：字段不参与数据输出
 
 ### 字段准入规则
 
@@ -350,7 +346,7 @@ except exc.ParseError as e:
 
 * 以下划线（`'_'`）开头的属性不会作为字段，以下划线开头的属性往往作为类的保留属性，utype 不会将其作为字段处理
 * 所有的 `@classmethod`，`@staticmethod` 和类中声明的方法都不会作为字段
-* 如果你使用了 `ClassVar` 作为属性的类型提示，那么表示这个属性是一个类变量，而不是实例变量，所以有这样声明的属性也不会被 utype 作为字段处理
+* 如果你使用了 `ClassVar` 作为属性的类型注解，那么表示这个属性是一个类变量，而不是实例变量，所以也不会作为字段处理
 
 ```python
 from utype import Schema
@@ -420,7 +416,7 @@ except TypeError as e:
 ```
 
 !!! note
-	使用 Final 作为类型的字段也会直接被标记为一个不可变更（`immutable=True`）的字段，如果指定了属性值，则还是不可输入（`no_input=True`）的，即无法通过初始化数据影响它的值
+	使用 `Final` 作为类型的字段也会直接被标记为一个不可变更（`immutable=True`）的字段，如果为属性指定了值，则还是不可输入（`no_input=True`）的，即无法通过初始化数据影响它的值
 
 
 ## 数据类的使用
@@ -444,7 +440,7 @@ class GroupSchema(Schema):
 	members: List[MemberSchema] = Field(default_factory=list)
 ```
 
-我们在声明的数据类 GroupSchema 中使用另一个数据类 MemberSchema 作为字段的类型提示，表示传入的数据需要符合声明的数据类的结构（往往是一个字典，或者 JSON），如
+我们在声明的数据类 GroupSchema 中使用另一个数据类 MemberSchema 作为字段的类型注解，表示传入的数据需要符合声明的数据类的结构（往往是一个字典，或者 JSON），如
 ``` python
 alice = {'name': 'Alice', 'level': '3'}   # dict format
 bob = b'{"name": "Bob"}'                  # json format
@@ -546,7 +542,7 @@ print(one_of_user([b'test', '1']))
 # > ('test', 1)
 ```
 
-我们将数据类 `User` 与 Tuple 嵌套类型进行逻辑运算（是的，你可以这么做，尽管 `Tuple[str, int]` 并不是一个类型，utype 会在运算时将其进行转化），使得输入既可以接受字典或 JSON 数据，也可以接受列表或元组数据，只要能够转化到声明的类型
+我们将数据类 `User` 与 Tuple 嵌套类型进行了异或（XOR）逻辑运算（是的，你可以这么做，尽管 `Tuple[str, int]` 并不是一个类型，utype 会在运算时将其进行转化），使得输入既可以接受字典或 JSON 数据，也可以接受列表或元组数据，只要能够转化到声明的类型
 
 ### 用于函数
 数据类还可以用于函数中，作为函数参数或返回结果的类型提示，只需要函数使用 `@utype.parse` 装饰器

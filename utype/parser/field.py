@@ -1135,6 +1135,10 @@ class ParserField:
             else:
                 annotation = Any
 
+        if inspect.isclass(field) and issubclass(field, Field):
+            # field is a Field subclass
+            field = field()
+
         if not isinstance(field, Field):
             field = cls.field_cls(
                 default=default,

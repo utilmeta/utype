@@ -16,7 +16,7 @@
 	<img src="https://img.shields.io/codecov/c/github/utilmeta/utype?color=green" alt="">
 </a>
 
-utype is a data type declaration and parsing library based on Python type annotations, which can parse and convert data according to your declared type and data structure at runtime
+utype is a data type declaration and parsing library based on Python type annotations, enforce types and constraints for classes and functions at runtime
 
 * Version: `0.2.1` [Test]
 * Author: <a href="https://github.com/voidZXL" target="_blank">@voidZXL</a>
@@ -25,7 +25,7 @@ utype is a data type declaration and parsing library based on Python type annota
 
 ## Motivation
 
-Currently, Python does not have a mechanism to resolve types and check constraints at runtime, so when we write a function, we often need to perform type assertion, constraint checking and other operations on the parameters before we can start writing the real logic. Otherwise, an exception may occur at runtime, such as
+Currently, Python does not have the mechanism to guarantee types at runtime, so when we write a function, we often need to perform type assertion and constraint checking on parameters before we can start writing the actual logic. such as
 ```python
 def login(username, password):  
     import re  
@@ -38,7 +38,7 @@ def login(username, password):
     # below is your actual logic
 ```
 
-However, if we can declare all types and constraints in the parameters in advance, we can check them at the time of calling, and throw a high-readability error directly for parameters that cannot complete type conversion or do not pass constraint checking, such as
+However, if we can declare all types and constraints in the parameters, enforce validation at calling, and throw an error directly for invalid input, such as
 ```python
 import utype
 
@@ -50,9 +50,11 @@ def login(
 	# you can directly start coding
 	return username, password
 
+# - Valid input
 print(login('alice', 123456))
 ('alice', '123456')
 
+# - Invalid input
 try:
 	login('@invalid', 123456)
 except utype.exc.ParseError as e:
@@ -63,17 +65,17 @@ except utype.exc.ParseError as e:
 	"""
 ```
 
-In this way we can obtain
+we can get
 
-* Type checking, code completion, etc. From IDEs improve development efficiency and reduce the chance of bugs.
-* Eliminate all the type conversion and verification work, and get the standard high-readability error message to locate the problem.
-* The types and constraints of parameters are clearly visible to callers, which improves the efficiency of collaborative development.
+* Type checking, code completion, etc. from IDE to improve efficiency and reduce bugs.
+* Eliminate all the type conversion and verification code, and get the standard high-readability error message to locate the problem.
+* The types and constraints of parameters are clearly to callers, which improves the efficiency of collaboration
 
 ## Core features
 
-* Parse and convert types, data classes, function parameters and results at runtime based on Python type annotations
-* Support for type constraints, logical operations on types, etc. To declare more complex parsing conditions
-* Highly extensible, all types of conversion functions can be registered, overridden, and extended, and provide highly flexible parsing options
+* Enforce types, data classes, function params and result parsing at runtime based on Python type annotation  
+* Support a variety of constraints, logical operators and flexible parsing options  
+* Highly extensible, all type transformer can be register, extend and override
 
 ## Installation
 
@@ -85,13 +87,13 @@ pip install -U utype
     utype requires Python >= 3.7
 
 !!! warning
-    If you see this prompt, you are welcome to become a user of the beta version of utype. At present, utype is still in the beta stage. There may be some functions that have not been tested, and the API may change in the future. Please be cautious when using it in a production environment, and enjoy~
+    If you see this prompt, welcome to become a user of the beta version of utype. At present, there may be some functions that have not been tested, and the API may change in the future. Please be cautious when using it in production, and enjoy~
 
 ## Usage examples
 
 ### Types and constraints
 
-The utype support makes it easy to impose constraints on types, and you can use common constraints to construct arbitrary constraint types.
+The utype support to add constraints on types, such as
 ```Python
 from utype import Rule, exc
 
@@ -105,16 +107,16 @@ try:
 except exc.ParseError as e:
     print(e)
     """
-    Constraint: : 0 violated
+    Constraint: 0 violated
     """
 ``` 
 
 
-Data that conforms to the type and constraint declaration will complete the conversion successfully, data that does not will throw a parse error indicating what went wrong
+Data that conforms to the type and constraints will complete the conversion, otherwise will throw a parse error indicating what went wrong
 
-### Parse classes
+### Parsing dataclasses
 
-utype supports the resolution of fields declared in classes in a manner similar to `pydantic` and `attrs`
+utype supports the "dataclass" usage that convert a dict or JSON to a class instance, similar to `pydantic` and `attrs`
 ```python
 from utype import Schema, Field, exc
 from datetime import datetime
@@ -123,10 +125,12 @@ class UserSchema(Schema):
     username: str = Field(regex='[0-9a-zA-Z]{3,20}')
     signup_time: datetime
 
+# 1. Valid input
 data = {'username': 'bob', 'signup_time': '2022-10-11 10:11:12'}
 print(UserSchema(**data))
 #> UserSchema(username='bob', signup_time=datetime.datetime(2022, 10, 11, 10, 11, 12))
 
+# 2. Invalid input
 try:
     UserSchema(username='@invalid', signup_time='2022-10-11 10:11:12')
 except exc.ParseError as e:
@@ -137,15 +141,15 @@ except exc.ParseError as e:
     """
 ```
 
-After a simple declaration, you can obtain
+After a simple declaration, you can get
 
-* The corresponding parameters can be received without declaration `__init__`, and the type conversion and constraint verification are completed.
-* Providing clearly readable `__repr__` and `__str__` functions makes it easy to get the internal data values directly during output and debugging.
-* When assigning or deleting an attribute, perform analysis and protection according to the type and configuration of the field to avoid dirty data
+* Automatic `__init__` to take input data, perform validation and attribute assignment
+* Providing  `__repr__` and `__str__` to get the clearly print output of the instance
+* parse and protect attribute assignment and deletion to avoid dirty data
 
-### Parse functions
+### Parsing functions
 
-utype provides a function parsing mechanism. You only need to declare the type and configuration of the function parameter, and then you can get the type-safe and constraint-guaranteed parameter value in the function, and the caller can also get the result that meets the declared return type
+utype can also parse function params and result
 ```python
 import utype
 from typing import Optional
@@ -190,9 +194,9 @@ except utype.exc.ParseError as e:
 ```
 
 !!! success
-    Using this usage, you can easily get type checking and code completion of IDEs (such as Pycharm, VS Code) during development
+    You can easily get type checking and code completion of IDEs (such as Pycharm, VS Code) during development
 
-The utype supports not only the parsing of normal functions, but also generator functions, asynchronous functions, and asynchronous generator functions. Their usage is the same, and only the corresponding type annotations need to be declared correctly.
+utype supports not only normal functions, but also generator functions, asynchronous functions, and asynchronous generator functions with the same usage
 ```python
 import utype  
 import asyncio  
@@ -225,13 +229,13 @@ if __name__ == '__main__':
 ```
 
 !!! note
-    The `AsyncGenerator` type is used to annotate the return value of the asynchronous generator, which has two parameters, the first represents the type of the value output by `yield`, and the second represents the type of the value sent by `asend`
+    The `AsyncGenerator` type is used to annotate the return value of the asynchronous generator, which has two parameters: the type of the value output by `yield`, type of the value sent by `asend`
 
-As you can see, even though we used types such as character in passing parameters and `yield`, they were all converted to the expected numeric type as declared (of course, an error was thrown if the conversion could not be completed).
+As you can see, the parameters passed to the function and the value received from `yield` were all converted to the expected type as declared
 
 
 ### Logical operation of type
-Utype supports logical operations on types and data structures using Python-native logical operators
+utype supports logical operations on types and data structures using Python-native logical operators
 ```python
 from utype import Schema, Field
 from typing import Tuple
@@ -249,10 +253,10 @@ print(one_of_user([b'test', '1']))
 # > ('test', 1)
 ```
 
-The example uses the `^` exclusive or symbol to logically combine the utype data class and the typing nested type, and the new logical type gains the ability to convert data to one of these declarations
+The example uses the `^` exclusive or symbol to logically combine  `User` and `Tuple[str, int]`, and the new logical type gains the ability to convert data to one of those
 
 ### Register transformer for type
-Type transformation and validation strictness required by each project may be different, so in utype, all types support self-registration and extended conversion functions, such as
+Type transformation and validation strictness required by each project may be different, so in utype, all types support registraton, extension and override, such as
 ```python
 from utype import Rule, Schema, register_transformer
 from typing import Type
@@ -278,7 +282,7 @@ You can register transformers not only for custom types, but also for basic type
 
 
 ## RoadMap and Contribution
-The utype is still growing, and the following features are planned for implementation in the new version
+utype project is still growing, and the following features are planned for implementation in the new version
 
 * Support the generation of input and output template documents in json-schema format
 * Improve the handling mechanism of parsing errors, including error handling hook functions, etc.

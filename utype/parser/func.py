@@ -3,7 +3,7 @@ import warnings
 from collections.abc import (AsyncGenerator, AsyncIterable, AsyncIterator,
                              Callable, Generator, Iterable, Iterator, Mapping)
 from functools import wraps
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 from ..utils import exceptions as exc
 from ..utils.compat import is_classvar, is_final
@@ -357,6 +357,12 @@ class FunctionParser(BaseParser):
 
     def __repr__(self):
         return f"<{self.__class__.__name__}: {self.obj.__qualname__}>"
+
+    def get_pos_field(self, index: int) -> Optional[ParserField]:
+        key = self.pos_key_map.get(index)
+        if key:
+            return self._get_field_from(self.fields, key)
+        return None
 
     def generate_fields(self):
         exclude_vars = set()

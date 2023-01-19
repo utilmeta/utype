@@ -26,7 +26,7 @@ utype 是一个基于 Python 类型注解的数据类型声明与解析库，能
 
 ## 需求动机
 
-目前 Python 没有在运行时解析类型与校验约束的机制，所以当我们编写一个函数时，往往需要先对参数进行类型断言，约束校验等操作，然后才能开始编写真正的逻辑，否则很可能会在运行时发生异常错误，如
+目前 Python 没有在运行时解析类型与校验约束的机制，所以当我们编写一个函数时，往往需要先对参数进行类型断言和约束校验等操作，然后才能开始编写真正的逻辑，否则很可能会在运行时发生异常错误，如
 ```python
 def login(username, password):  
     import re  
@@ -39,7 +39,7 @@ def login(username, password):
     # 下面才是你真正的处理逻辑
 ```
 
-但如果我们能够提前把所有的类型和约束都在参数中声明出来，在调用时就进行校验，对无法完成类型转化或不通过约束校验的参数直接抛出一个高可读性的错误，如
+但如果我们能够把类型和约束都在参数中声明出来，在调用时就进行校验，对非法参数直接抛出错误，如
 ```python
 import utype
 
@@ -110,11 +110,11 @@ except exc.ParseError as e:
 	"""
 ``` 
 
-在调用约束类型时，符合类型和约束声明的数据会成功完成转化，不符合的数据会抛出一个指示哪里出现问题的解析错误
+在调用约束类型时，符合类型和约束声明的数据会成功完成转化，不符合的数据会抛出一个解析错误，用于指示哪里出了问题
 
-### 转化数据结构
+### 解析 JSON 数据
 
-utype 支持以类似 `pydantic` 和 `attrs` 的方式解析类中声明的字段
+utype 支持将字典或 JSON 数据转化为类实例，类似与 `pydantic` 和 `attrs` ，如
 ```python
 from utype import Schema, Field, exc
 from datetime import datetime
@@ -123,10 +123,12 @@ class UserSchema(Schema):
 	username: str = Field(regex='[0-9a-zA-Z]{3,20}')
 	signup_time: datetime
 
+# 1. 正常输入
 data = {'username': 'bob', 'signup_time': '2022-10-11 10:11:12'}
 print(UserSchema(**data))
 #> UserSchema(username='bob', signup_time=datetime.datetime(2022, 10, 11, 10, 11, 12))
 
+# 2. 异常输入
 try:
 	UserSchema(username='@invalid', signup_time='2022-10-11 10:11:12')
 except exc.ParseError as e:
@@ -145,7 +147,7 @@ except exc.ParseError as e:
 
 ### 解析函数参数与结果
 
-utype 提供了函数解析的机制，你只需要把函数参数的类型与配置声明出来，就可以在函数中拿到类型安全，约束保障的参数值，并且调用者也能够获得满足声明的返回类型的结果
+utype 提供了函数解析的机制，你只需要把函数参数的类型与配置声明出来，就可以在函数中拿到类型安全，约束保障的参数值，函数的调用者也能够获得满足返回类型声明的结果
 ```python
 import utype
 from typing import Optional
@@ -192,7 +194,7 @@ except utype.exc.ParseError as e:
 !!! success
 	使用这样的用法你可以在开发中轻松获得 IDE （如  Pycharm, VS Code）的类型检查与代码补全
 
-utype 不仅支持解析普通函数，还支持生成器函数，异步函数和异步生成器函数，它们的用法都是一致的，只需要正确地声明对应的类型注解
+utype 不仅支持解析普通函数，还支持生成器函数，异步函数和异步生成器函数，它们的用法都是一致的，只需要正确地使用对应的类型注解
 ```python
 import utype  
 import asyncio  
@@ -249,7 +251,7 @@ print(one_of_user([b'test', '1']))
 # > ('test', 1)
 ```
 
-例子中使用了 `^` 异或符号对 utype 数据类和 typing 嵌套类型进行逻辑组合，新的逻辑类型就获得了能够将数据转换为其中一种声明的能力
+例子中使用了 `^` 异或符号对 utype 数据类 `User` 和嵌套类型 `Tuple[str, int]` 进行逻辑组合，新的逻辑类型就获得了将数据转换为其中一种类型的能力
 
 ### 类型的注册扩展
 由于每个项目需要的类型转化方式和校验严格程度可能不同，在 utype 中，所有的类型都是支持自行注册和扩展转化函数，如

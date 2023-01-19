@@ -1,6 +1,6 @@
 # Data Classes
 
-A data class is a generic class that has a set of properties (fields) that are also required to satisfy certain types or constraints, such as
+dataclass is a class that has a set of properties that are also required to satisfy certain types or constraints, such as
 ```python
 class Article:  
     slug: str  
@@ -23,13 +23,15 @@ class Article:
 ```
 
 !!! note
-	When defining such a class, we often need to declare a `__init__` function to receive its initialization parameters, and also need to do some type and constraint checking in it, otherwise we may get unusable data, such as
+	There are many usage of the above dataclass, such as ORM model 
+
+When defining such class, we often need to declare a `__init__` function to receive its initialization parameters, and do type and constraint checking in it, otherwise we may get unusable data, such as
 
 ```python
 bad_article = Article(title=False, content=123, views='text value')
 ```
 
-With utype, the data structure in the above example can be declared in a more concise way and gain more capabilities, such as
+With utype, the above data structur can be declared in a more concise way and gain more capabilities, such as
 ```python
 from utype import Schema, Rule, Field
 
@@ -66,18 +68,17 @@ article.views = '3.0'   # will be convert to int
 print(dict(article))
 # > {'slug': 'my-article', 'content': 'my article body', 'views': 3}
 ```
-You can get directly.
+You can get
 
-* The corresponding parameters can be received without declaration `__init__`, and the type conversion and constraint verification are completed.
-* Providing clearly readable `__repr__` and `__str__` functions makes it easy to get the internal data values directly during output and debugging.
-* Analyze and protect according to the type and configuration of the field during attribute assignment or deletion to avoid dirty data
-* Can be directly used as dictionary data for parameter passing or serialization
+* Automatic `__init__` to take input data, perform validation and attribute assignment
+* Providing  `__repr__` and `__str__` to get the clearly print output of the instance
+* parse and protect attribute assignment and deletion to avoid dirty data
 
 So in this document, we will introduce the declaration and usage of data classes in detail.
 
-## Declare a data field
+## Define fields
 
-There are many ways to declare a field in a data class, the simplest being
+There are many ways to declare a field in a dataclass, the simplest being
 ```python
 from utype import Schema
 
@@ -88,15 +89,13 @@ class UserSchema(Schema):
 
 The declared fields are
 
-*  `name`: Declares only type `str`, which is a required parameter
-*  `age`: The type is `int` declared, and the default value 0 is declared. It is an optional parameter. If it is not passed in, the default value 0 will be used as the field value in the instance.
+* `name`:  only with type `str`, which is a required parameter
+* `age`: declared `int` type , and default value 0. which makes It an optional parameter. If not passed in, the default value 0 will be used as the field value in the instance.
 
 However, in addition to the type and default value, a field often needs to be configured with other behaviors, so the following usage is needed.
 
-### Configure the Field field
-Field can configure more rich behaviors for a field. You only need to use an instance of the Field class as the attribute value/default value of the field to obtain the field configuration declared in its parameters.
-
-The following examples show the usage of some common Field configurations. We still use the data structure of the article as an example.
+### Configure Field
+in utype, `Field` can be used to configure the behaviors for a field. The following examples show the usage of some common Field configurations.
 ```python
 from utype import Schema, Field  
 from datetime import datetime  
@@ -124,15 +123,12 @@ article = ArticleSchema(
     slug=b'test-article',  
     body='article body',  
     tags=[]
-)
-
-print(article)  
-# > ArticleSchema(slug='test-article', content='article body', views=0)  
+) 
 ```
 
-Let’s take a look at each of the declared fields in the example.
+In the example.
 
-* The URL path field of the `slug` article. `regex` A regular constraint is specified for the field and is set `immutable=True`, meaning that the field cannot be modified. Sample values `example` and descriptions `description` are also specified to better describe the purpose of the field.
+* `slug`: the URL route of an article. the `regex` constraint is specified for the field and is set `immutable=True`, meaning that the field cannot be assigned to or be deleted
 
 ```python
 from utype import exc
@@ -146,9 +142,11 @@ except exc.UpdateError as e:
     """  
 ```
 
-*  `content`: The content field of the article, which uses `alias_from` parameters to specify some aliases that can be converted from it. This feature is very useful for field renaming and version compatibility. For example, the content field name of the previous version is `'body'`. Is deprecated and used `'content'` as the name of the content field in the current version
+Sample values `example` and descriptions `description` are also specified to better describe the purpose of the field.
 
-*  `views`: The page view field of the article specifies a `ge` minimum value constraint and a default value of 0, so the default value of 0 is automatically filled in when there is no input, and an error is thrown when the input value or the assigned value violates the constraint.
+* `content`: the content field of the article, which uses `alias_from` to specify some aliases that can be converted from. This feature is very useful for field renaming and version compatibility. For example, the content field name of the previous version is `'body'`. Is deprecated and used `'content'` as the name of the content field in the current version
+
+* `views`: the page view field of the article, specifies a `ge` minimum value constraint and a default value 0, so the default value 0 is automatically filled in when there is no input, and an error is thrown when the input value or the assigned value violates the constraint.
 
 ```python
 from utype import exc  
@@ -163,7 +161,7 @@ except exc.ParseError as e:
     """
 ```
 
-*  `created_at`: The creation time field of the article, using `alias` the alias `'createdAt'` of the specified field in the output, using `required=False` the tag This is an optional field, and there is no default value specified, so when you do not enter the field, it will not appear in the data, such as
+* `created_at`: the creation time field of the article, using `alias` to specify the output name `'createdAt'`, using `required=False` to declare an optional field with no default value, so if the field not provided in the input data, it will not be in the instance, such as
 ```python
 assert 'createdAt' not in article   # True
 article.created_at = '2022-02-02 10:11:12'  
@@ -176,31 +174,33 @@ print(dict(article))
 # }
 ```
 
-When a value is assigned to `created_at` a field, it is converted to the field’s type datetime, and in the output data (converted to dictionary data), `created_at` the name of the field becomes the value of the parameter it specifies `alias`
+When a value is assigned to `created_at`, it is converted to the field’s type (`datetime`), and in the output data, the field is using the `alias` specified name `'createdAt'`
 
-*  `tags`: The label field of the article specifies that the factory function of the default value is list, which means that if this field is not provided, an empty list ( `list()`) will be created as the default value. In addition, the `no_output` function is specified, which means that no output will be made when the value is empty.
+* `tags`: the label field of the article specifies that the factory function of the default value is list, which means that if this field is not provided, an empty list ( `list()`) will be created as the default value. In addition, the `no_output` function is specified, which means that no output will be made when the value is empty.
 
+!!! warnings
+	utype can parse attribute assignment only if you assign it directly (like the above example), if you use something like `article.tags.append(obj)` to operate `tags`, you will not gain the parsing ability
 
-As we can see from the example, the Field class can provide many common configuration items, including
+`Field` provided many configuration params, including
 
-* **Optional and default values**: `required`, `default`, `default_factory`, A factory function used to indicate whether a field is mandatory and its default or manufacturing default value.
-* **Description and marking**: `title`, `description`, `example`, `deprecated` etc. Used to document a field, an example, or to indicate whether it is deprecated
-* **Constraint configuration**: Includes [Rule](/en/references/rule) all constraint parameters in, such as `gt`, `le`, `max_length`, `regex` and so on, and is used to specify constraints as parameters for the field
-* **Alias configuration**: `alias`, `alias_from`, `case_insensitive`, etc. Used to specify names for fields other than property names, case sensitivity, etc. Can be used to define field names that are not supported by property declarations
-* **Mode configuration**: `readonly`, `writeonly` `mode`, etc., to configure the behavior of a data class or function in different parsing modes
-* **Input and output configuration**: `no_input`, `no_output`, used to control the input and output behavior of the field
-* **Attribute behavior configuration**: `immutable`, `secret` used to control the changeability and display behavior of the corresponding attribute of the field.
+* **Optional and default**: `required`, `default`, `default_factory` to indicate the optional field and it's default value / factory method
+* **Description and marking**: `title`, `description`, `example`, `deprecated` etc. used to document a field, specify an example, or to indicate whether it is deprecated
+* **Constraintsn**: includes all constraints in [Rule](/references/rule), such as `gt`, `le`, `max_length`, `regex` 
+* **Alias configuration**: `alias`, `alias_from`, `case_insensitive`, etc. used to specify aliases for fields other than attribute name
+* **Mode configuration**: `readonly`, `writeonly` `mode`, etc., to support multiple parse mode and control the behavior of field in certain mode.
+* **Input and output**: `no_input`, `no_output`, used to control the input and output behavior of the field
+* **Attribute behaviors**: `immutable`, `secret` used to control the immutability and display behavior of the corresponding attribute of the field.
 
-For more complete Field configuration parameters and usage, please refer to
+For more complete parameters and usage of `Field`, you can read [Field API References](/references/field)
 
 !!! note
+	Field only take effect in a dataclass attribute or function paramaters with `@utype.parse`, for an isolated variable, it won't work
 
-### Declare `@property` properties
+### Declare `@property`
 
-We know that in Python classes, you can use `@property` decorators to declare properties, and then use functions to control access, assignment, and deletion of properties.
+In Python classes, you can use `@property` decorators to declare properties, and then use functions to control access, assignment, and deletion of properties.
 
-The utype also supports the use of `@property` declarative property fields for more in-depth control of property behavior, starting with a simple example.
-
+utype also supports the use of `@property` to gain more control of property behavior, let's start with a simple example.
 ```python
 from utype import Schema
 from datetime import datetime
@@ -218,10 +218,11 @@ user = UserSchema(username='test', signup_time='2021-10-11 11:22:33')
 assert isinstance(user.signup_days, int)
 ```
 
-The property `signup_days` counts the number of days registered by the field `signup_time` and is declared as the `int` property type, so that utype will convert it to `int` output when it gets the property value.
+The property `signup_days` counts the number of registered days using the field `signup_time` and is declared as type `int`,  so that utype will convert the result of getter function to `int` when accessing the property
 
-#### Using setters to control assignment behavior
-With `@property` attributes, you can also assign the ability to enter and assign values to attribute fields by specifying `setter`, which is also a common way to make associative updates, or to hide certain private fields from exposure, such as
+#### Control assignment using setter
+
+With `@property` attributes, you can also control the assignment by declare `setter`, which is also a common practice to make dependencies updates, or to hide certain private fields from exposure, such as
 ```python
 from utype import Schema, Field  
 
@@ -245,13 +246,16 @@ class ArticleSchema(Schema):
   
 ```
 
-In the data class ArticleSchema in the example, we use `title` the setter of the attribute to complete `slug` the update of the field association, that is to say, the user of the class does not need to operate `slug` directly. Instead, the field is affected `slug` by the assignment `title`
+In the example, we use the setter of `title` to update `slug` property. so user of the class do not need to operate `slug` directly.
 
-If the property attribute does not declare a setter, it is not assignable, so it is more native to declare an immutable field.
+If the property does not declare a setter, it is not assignable (immutable), so it is more native to declare an immutable field.
 
-#### Configure Field for Properties
+!!! note
+	In dataclasses, all params in initialization will be assigned to the corresponding attribute, which will trigger the setter for property
 
-The attribute field still supports configuring the Field to regulate the behavior of the attribute field, such as
+#### Configure Field for properties
+
+utype supports configuring the `Field` to `@property`, such as
 ```python
 from utype import Schema, Field  
 
@@ -275,19 +279,22 @@ class ArticleSchema(Schema):
         return self._slug  
 ```
 
-Field instances can be configured on the getter and setter of the property, and their respective usages are
+`Field` can be configured on the getter and setter of the property, and their usages are
 
-**getter**: By using the Field instance as a function under the decorator decoration `@property`, the common configurations are
+**getter**: use `Field` instance as a decorator to decorate the underlying function for `@property`, common params are
 
-*  `no_output=True`: Do not output the calculation result
-*  `dependencies`: Specify the dependency field of the attribute calculation. The calculation will be performed only when all the dependencies of the attribute field are provided.
-*  `alias`: Specifies the field alias for the output
+* `no_output=True`: do not output the calculated property value
+* `dependencies`: specify the dependency fields for getter calculation. The calculation will be performed only when all the dependencies of the attribute field are provided.
+* `alias`: specifies the field alias for the output
 
-**setter**: By specifying the Field instance in the default value of the input field of the setter function, common configurations are
+**setter**: use `Field` instance as default value for the input param of setter function,  common params are
 
-*  `no_input=True`: indicates that input is not accepted during initialization, and only attribute assignment can be used for control.
-*  `immutable=True`: indicates that the attribute assignment is not accepted and can only be entered at initialization time.
-*  `alias_from`: Specify a list of field aliases for the input sources
+* `no_input=True`: indicates that input is not accepted during initialization, and only can be assigned by attribute assignment
+* `immutable=True`: indicates that the attribute assignment is not accepted and can only be entered at initialization time.
+* `alias_from`: specify a list of field aliases
+
+!!! warning
+	if you specify both `no_input=True` and `immutable=True` will make the setter useless
 
 Let’s take a look at the behavior of these properties
 ```python
@@ -317,21 +324,15 @@ except exc.ParseError as e:
 	"""
 ```
 
-As you can see, after the is `slug` specified `dependencies=title`, when `title` the assignment is updated, `slug` the field is also updated synchronously
-
-The functions of field configuration in each phase of the data class declaration cycle are as follow
-
-* Data Entry `no_input`: This field does not participate in data entry
-* Instance operation `immutable`: This field cannot be operated on in the instance (cannot be assigned or deleted)
-* Data output `no_output`: This field does not participate in data output
+After specified `dependencies=title` for `slug`, when `title` is assigned, `slug` is also updated
 
 ### Field Restrictions
 
-Not all attributes declared on a Schema are converted to fields that can be parsed and verified, and utype’s data class fields have certain admission rules.
+Not all attributes declared on a Schema are converted to fields that can be parsed and validated, and utype’s data class fields have certain restrictions
 
-* Attributes that begin with an underscore ( `'_'`) are not treated as fields. Attributes that begin with an underscore tend to be reserved for classes and are not treated as fields by utype
-* All methods declared in the `@classmethod`, `@staticmethod`, and classes will not be treated as fields
-* If you use a `ClassVar` type hint as a property, it means that the property is a class variable, not an instance variable, so a property declared as such is not treated as a field by utype.
+* Attributes that begin with an underscore (`'_'`) are not treated as fields. which tend to be reserved for classes and are not treated as fields by utype
+* All  `@classmethod`, `@staticmethod`, and instance methods will not be treated as fields
+* If you use a `ClassVar` to annotate an attribute, it means that the attribute is a class variable, not an instance variable, which will aslo not treated as a field.
 
 ```python
 from utype import Schema
@@ -353,12 +354,12 @@ print(dict(static))
 # > {}
 ```
 
-In the example, several properties in the Static data class are not qualified to be fields, so the values of these properties in the instance are not affected by the input data, and non-field properties are not output.
+In the example, several attributes in the Static dataclass are not qualified to be fields, so the values of these properties in the instance are not affected by the input data, thus the output data
 
 #### Restrictions
-When field names and declarations meet the admission rules, there are also some declaration restrictions to be aware of
+When field names and declarations meet the naming restrictions, there are also some declaration restrictions to be aware of
 
-* If a property name corresponds to a method or class function in a base class, you cannot declare it as a data field in a subclass.
+* If field name corresponds to a method or class function in a base class, you cannot declare it as a data field in a subclass.
 ```python
 from utype import Schema, Field
 
@@ -369,7 +370,7 @@ except TypeError as e:
 	pass
 ```
 
-For example, because Schema inherits from the dict dictionary class, the method name in the dictionary cannot be declared as a field name. If you need to declare the same property name, you can use a property alias `alias`, such as
+	For example, Schema inherits from the `dict`, the method name in the `dict` cannot be declared as a field name. If you need to declare the same property name, you can use `alias`, such as
 ```python
 from utype import Schema, Field
 
@@ -385,7 +386,7 @@ print(data.items)
 # > <built-in method items of ItemsSchema object>
 ```
 
-* If a field is `Final` declared in a parent class, it means that it cannot be overridden or assigned again, so a subclass cannot declare a field of the same name
+* If a field declared `Final` annotation in a parent class, it means that it cannot be overridden or assigned again, so a subclass cannot declare a field of the same name
 ```python
 from utype import Schema
 from typing import Final
@@ -400,12 +401,15 @@ except TypeError as e:
 	pass
 ```
 
+!!! note
+	Using `Final` as type annotation also marks the field `immutable=True`, if a value assigned to `Final` field, then it is also `no_input=True`, which meets the declaration of `Final`
+
 ## Usage of data classes
 
-In this section, we’ll focus on how data classes are used.
+In this section, we’ll focus on how dataclasses are used.
 
 ### Nesting and compounding
-We have already seen the declaration of nested types, and a data class is itself a type, so we can use the same syntax to define nested and conforming data structures, as shown in
+dataclass is itself a type, so we can use the same syntax to define nested data structures, as shown in
 
 ```python
 from utype import Schema, Field
@@ -421,7 +425,7 @@ class GroupSchema(Schema):
 	members: List[MemberSchema] = Field(default_factory=list)
 ```
 
-We use another data class, MemberSchema, in the declared data class Group Schema as a type hint for the field, indicating that the incoming data needs to conform to the structure of the declared data class (often a dictionary, or JSON), such as
+We use `MemberSchema` as a type annotation for the field in the `GroupSchema`, indicating that the incoming data needs to conform to the structure of the declared data class (often a dictionary, or JSON), such as
 ``` python
 alice = {'name': 'Alice', 'level': '3'}   # dict format
 bob = b'{"name": "Bob"}'                  # json format
@@ -434,9 +438,9 @@ print(group.creator)
 assert group.members[1].name == 'Bob'
 ```
 
-As you can see, both dictionary data and JSON data can be directly converted into data class instances for parsing and validation.
+As you can see, both `dict` and JSON data can be directly converted into data class instances for parsing and validation.
 
-#### Private data class
+#### Private dataclass
 Sometimes, a data class we need to define will only appear in a specific class and will not be referenced by other data. In this case, the required structure can be directly defined as a class in the data class to facilitate code organization and namespace isolation, such as
 
 ```python

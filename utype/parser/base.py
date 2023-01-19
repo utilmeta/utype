@@ -30,7 +30,7 @@ class BaseParser:
         return None
 
     @classmethod
-    def apply_for(cls, obj, no_cache: bool = False, **kwargs) -> "BaseParser":
+    def apply_for(cls, obj, no_cache: bool = False, options=None, **kwargs) -> "BaseParser":
         if isinstance(obj, cls):
             return obj
         parser = getattr(obj, "__dict__", {}).get("__parser__")
@@ -41,12 +41,14 @@ class BaseParser:
         global __parsers__
         # key = (cls, obj)
         key = obj
+        if not options:
+            options = getattr(obj, '__options__', None)
         if not no_cache and key in __parsers__:
             cached: "BaseParser" = __parsers__[key]
             # if options is not identical, make a new one
-            if not kwargs or kwargs == cached.init_kwargs:
+            if not options or options == cached.options:
                 return cached
-        inst = cls(obj, **kwargs)
+        inst = cls(obj, options=options, **kwargs)      # noqa
         if not no_cache:
             __parsers__[key] = inst
         return inst

@@ -312,6 +312,9 @@ class Options:
             new_cls.__name__ = fn.__name__
             new_cls.__qualname__ = fn.__qualname__
             return new_cls
+        elif fn:
+            setattr(fn, '__options__', self)
+        return fn
 
 
 class RuntimeContext:

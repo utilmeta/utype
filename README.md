@@ -34,8 +34,8 @@ utype requires Python >= 3.7
 
 ### Usage Example
 
-### Types & Constraints
-utype easily support to impose constraints on types, and you can use common constraints to construct arbitrary constraint types.
+### Types and constraints
+The utype support to add constraints on types, such as
 ```Python
 from utype import Rule, exc
 
@@ -49,13 +49,16 @@ try:
 except exc.ParseError as e:
     print(e)
     """
-    Constraint: <gt>: 0 violated
+    Constraint: 0 violated
     """
 ``` 
-Data that conforms to the type and constraint declaration will complete the conversion successfully, data that does not will throw a parse error indicating what went wrong
 
-### Parse classes
-utype supports the resolution of fields declared in classes in a manner similar to `pydantic` and `attrs`
+
+Data that conforms to the type and constraints will complete the conversion, otherwise will throw a parse error indicating what went wrong
+
+### Parsing dataclasses
+
+utype supports the "dataclass" usage that convert a dict or JSON to a class instance, similar to `pydantic` and `attrs`
 ```python
 from utype import Schema, Field, exc
 from datetime import datetime
@@ -64,20 +67,31 @@ class UserSchema(Schema):
     username: str = Field(regex='[0-9a-zA-Z]{3,20}')
     signup_time: datetime
 
-print(UserSchema(username='bob', signup_time='2022-10-11 10:11:12'))
+# 1. Valid input
+data = {'username': 'bob', 'signup_time': '2022-10-11 10:11:12'}
+print(UserSchema(**data))
 #> UserSchema(username='bob', signup_time=datetime.datetime(2022, 10, 11, 10, 11, 12))
 
+# 2. Invalid input
 try:
     UserSchema(username='@invalid', signup_time='2022-10-11 10:11:12')
 except exc.ParseError as e:
     print(e)
     """
+    parse item: ['username'] failed: 
     Constraint: <regex>: '[0-9a-zA-Z]{3,20}' violated
     """
 ```
-### Parse functions
 
-utype provides a function parsing mechanism. You only need to declare the type and configuration of the function parameter, and then you can get the type-safe and constraint-guaranteed parameter value in the function, and the caller can also get the result that meets the declared return type
+After a simple declaration, you can get
+
+* Automatic `__init__` to take input data, perform validation and attribute assignment
+* Providing  `__repr__` and `__str__` to get the clearly print output of the instance
+* parse and protect attribute assignment and deletion to avoid dirty data
+
+### Parsing functions
+
+utype can also parse function params and result
 ```python
 import utype
 from typing import Optional
@@ -122,9 +136,9 @@ except utype.exc.ParseError as e:
 ```
 
 !!! success
-    Using this usage, you can easily get type checking and code completion of IDEs (such as Pycharm, VS Code) during development
+    You can easily get type checking and code completion of IDEs (such as Pycharm, VS Code) during development
 
-utype supports not only the parsing of normal functions, but also generator functions, asynchronous functions, and asynchronous generator functions. Their usage is the same, and only the corresponding type annotations need to be declared correctly.
+utype supports not only normal functions, but also generator functions, asynchronous functions, and asynchronous generator functions with the same usage
 ```python
 import utype  
 import asyncio  
@@ -157,13 +171,13 @@ if __name__ == '__main__':
 ```
 
 !!! note
-    The `AsyncGenerator` type is used to annotate the return value of the asynchronous generator, which has two parameters, the first represents the type of the value output by `yield`, and the second represents the type of the value sent by `asend`
+    The `AsyncGenerator` type is used to annotate the return value of the asynchronous generator, which has two parameters: the type of the value output by `yield`, type of the value sent by `asend`
 
-As you can see, even though we used types such as character in passing parameters and `yield`, they were all converted to the expected numeric type as declared (of course, an error was thrown if the conversion could not be completed).
+As you can see, the parameters passed to the function and the value received from `yield` were all converted to the expected type as declared
 
 
 ### Logical operation of type
-Utype supports logical operations on types and data structures using Python-native logical operators
+utype supports logical operations on types and data structures using Python-native logical operators
 ```python
 from utype import Schema, Field
 from typing import Tuple
@@ -181,10 +195,10 @@ print(one_of_user([b'test', '1']))
 # > ('test', 1)
 ```
 
-The example uses the `^` exclusive or symbol to logically combine the utype data class and the typing nested type, and the new logical type gains the ability to convert data to one of these declarations
+The example uses the `^` exclusive or symbol to logically combine  `User` and `Tuple[str, int]`, and the new logical type gains the ability to convert data to one of those
 
 ### Register transformer for type
-Type transformation and validation strictness required by each project may be different, so in utype, all types support self-registration and extended conversion functions, such as
+Type transformation and validation strictness required by each project may be different, so in utype, all types support registraton, extension and override, such as
 ```python
 from utype import Rule, Schema, register_transformer
 from typing import Type
@@ -200,14 +214,13 @@ def to_slug(transformer, value, t: Type[Slug]):
 
 
 class ArticleSchema(Schema):
-    slug: Slug
+	slug: Slug
 
 print(dict(ArticleSchema(slug=b'My Awesome Article!')))
 # > {'slug': 'my-awesome-article'}
 ```
 
 You can register transformers not only for custom types, but also for basic types (such as `str`, `int`, etc.) Or types in the standard library (such as `datetime`, `Enum`, etc.) To customize the conversion behavior
-
 
 ## RoadMap and Contribution
 The utype is still growing, and the following features are planned for implementation in the new version

@@ -1,4 +1,4 @@
-# Rule - constraint type
+# Rule - constrain type
 In utype, the role of Rule is to impose constraints on types, and we will explain its use in detail in this document.
 
 ## Built-in constraints

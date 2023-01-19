@@ -72,8 +72,8 @@ class DataClass(metaclass=LogicalMeta):
         pass
 
     def __init_subclass__(cls, **kwargs):
-        options = getattr(cls, "__options__", None)
-        cls.__parser__ = parser = cls.__parser_cls__.apply_for(cls, options=options)
+        # options = getattr(cls, "__options__", None)
+        cls.__parser__ = parser = cls.__parser_cls__.apply_for(cls)
         cls.__options__ = cls.__parser__.options
 
         parser.make_init(
@@ -137,8 +137,8 @@ class Schema(dict, metaclass=LogicalMeta):
     # __mode__: str = None
 
     def __init_subclass__(cls, **kwargs):
-        options = getattr(cls, "__options__", None)
-        cls.__parser__ = parser = cls.__parser_cls__.apply_for(cls, options=options)
+        # options = getattr(cls, "__options__", None)
+        cls.__parser__ = parser = cls.__parser_cls__.apply_for(cls)
         cls.__options__ = cls.__parser__.options
 
         parser.make_init(
