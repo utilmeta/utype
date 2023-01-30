@@ -95,7 +95,7 @@ The declared fields are
 However, in addition to the type and default value, a field often needs to be configured with other behaviors, so the following usage is needed.
 
 ### Configure Field
-in utype, `Field` can be used to configure the behaviors for a field. The following examples show the usage of some common Field configurations.
+in utype, `Field` can be used to configure behaviors for a field. The following examples show the usage of some common `Field` configurations.
 ```python
 from utype import Schema, Field  
 from datetime import datetime  
@@ -198,7 +198,7 @@ For more complete parameters and usage of `Field`, you can read [Field API Refer
 
 ### Declare `@property`
 
-In Python classes, you can use `@property` decorators to declare properties, and then use functions to control access, assignment, and deletion of properties.
+In Python classes, you can use `@property` decorator to declare properties, and then use functions to control access, assignment, and deletion of properties.
 
 utype also supports the use of `@property` to gain more control of property behavior, let's start with a simple example.
 ```python
@@ -328,7 +328,7 @@ After specified `dependencies=title` for `slug`, when `title` is assigned, `slug
 
 ### Field Restrictions
 
-Not all attributes declared on a Schema are converted to fields that can be parsed and validated, and utype’s data class fields have certain restrictions
+Not all attributes declared on a Schema are converted to fields that can be parsed and validated, utype’s dataclass fields have certain restrictions
 
 * Attributes that begin with an underscore (`'_'`) are not treated as fields. which tend to be reserved for classes and are not treated as fields by utype
 * All  `@classmethod`, `@staticmethod`, and instance methods will not be treated as fields
@@ -354,10 +354,10 @@ print(dict(static))
 # > {}
 ```
 
-In the example, several attributes in the Static dataclass are not qualified to be fields, so the values of these properties in the instance are not affected by the input data, thus the output data
+In the example, several attributes in the `Static` dataclass are not qualified to be fields, so the values of these properties in the instance are not affected by the input data, thus the output data
 
 #### Restrictions
-When field names and declarations meet the naming restrictions, there are also some declaration restrictions to be aware of
+When field names and declarations meet the restrictions, there are also some declaration restrictions to be aware of
 
 * If field name corresponds to a method or class function in a base class, you cannot declare it as a data field in a subclass.
 ```python
@@ -370,7 +370,7 @@ except TypeError as e:
 	pass
 ```
 
-	For example, Schema inherits from the `dict`, the method name in the `dict` cannot be declared as a field name. If you need to declare the same property name, you can use `alias`, such as
+	For example, Schema inherits from `dict`, the method names in the `dict` class cannot be declared as a field name in Schema. If you need to declare the same field name, you can use `alias`, such as
 ```python
 from utype import Schema, Field
 
@@ -404,7 +404,7 @@ except TypeError as e:
 !!! note
 	Using `Final` as type annotation also marks the field `immutable=True`, if a value assigned to `Final` field, then it is also `no_input=True`, which meets the declaration of `Final`
 
-## Usage of data classes
+## Usage of dataclasses
 
 In this section, we’ll focus on how dataclasses are used.
 
@@ -425,7 +425,7 @@ class GroupSchema(Schema):
 	members: List[MemberSchema] = Field(default_factory=list)
 ```
 
-We use `MemberSchema` as a type annotation for the field in the `GroupSchema`, indicating that the incoming data needs to conform to the structure of the declared data class (often a dictionary, or JSON), such as
+We use `MemberSchema` as a type annotation for the field in the `GroupSchema`, indicating that the incoming data needs to conform to the structure of the declared data class (often a `dict` or JSON), such as
 ``` python
 alice = {'name': 'Alice', 'level': '3'}   # dict format
 bob = b'{"name": "Bob"}'                  # json format
@@ -440,8 +440,11 @@ assert group.members[1].name == 'Bob'
 
 As you can see, both `dict` and JSON data can be directly converted into data class instances for parsing and validation.
 
+!!! warning
+	You CANNOT put JSON string / bytes directly to inititialize the dataclass, such as  `MemberSchema(b'{"name": "Bob"}')`. but dataclass provided a method called  `__from__`  to absorb such data, so you can use `MemberSchema.__from__(b'{"name": "Bob"}')`  to transform the non-dict input
+
 #### Private dataclass
-Sometimes, a data class we need to define will only appear in a specific class and will not be referenced by other data. In this case, the required structure can be directly defined as a class in the data class to facilitate code organization and namespace isolation, such as
+Sometimes, a dataclass will only appear in a specific class and will not be referenced by other data. In this case, the required structure can be directly defined as a class in the data class to facilitate code organization and namespace isolation, such as
 
 ```python
 from utype import Schema, Field
@@ -463,11 +466,11 @@ print(user.access_keys)
 # > [UserSchema.KeyInfo(access_key='KEY', last_activity=None)]
 ```
 
-In this example, we `UserSchema` have declared a data class named `KeyInfo` in, but because the admission rules for the field are not met, `KeyInfo` the class is not treated as a field, but remains as it is
+In this example, `UserSchema` have declared a dataclass named `KeyInfo` in it's attributes, `KeyInfo`  is not treated as a field for not meeting the field restrictions
 
 
 ### Inheritance and reuse
-Inheritance is an important means of reusing data structures and methods in object-oriented programming. It is also applicable to data classes. You can inherit all fields of the parent class only by declaring the subclass of the data class in the way of class inheritance, such as
+Inheritance is an important means of reusing data structures and methods in object-oriented programming. It is also applicable to dataclasses in utype. You can inherit all fields of the parent class only by class inheritance, such as
 ```python
 from utype import Schema, Field
 from datetime import datetime
@@ -480,7 +483,7 @@ class UserSchema(LoginSchema):
     signup_time: datetime = Field(readonly=True)  
 ```
 
-The data class `LoginSchema` used to handle the login is `UserSchema` inherited so that the `username` `password` fields defined in it are part of the fields `UserSchema` in.
+`UserSchema` is inherit from `LoginSchema` so that `username`, `password` fields in  `LoginSchema` become a part of `UserSchema`
 
 You can also use multiple inheritance to reuse data structures, or use the idea of Mixin to atomize common parts of a data structure and combine them in the desired structure, for example
 ```python
@@ -503,10 +506,10 @@ class PasswordAlterSchema(PasswordMixin):
 	old_password: str
 ```
 
-We declare corresponding mixin data classes for `username` and `password`, so any data class that needs them can inherit from the mixin class to get the corresponding fields.
+We declare corresponding mixin data classes for `username` and `password` fields, so any data class that needs them can inherit from the mixin class to get the corresponding fields.
 
 ### Logic operation
-Like constraint types, data classes that inherit from Schema have the ability to participate in type logic operations, as shown in
+Like constraint types, data classes that inherit from Schema have the ability to participate in logic operation of types, as shown in
 ```python
 from utype import Schema, Field
 from typing import Tuple
@@ -524,10 +527,10 @@ print(one_of_user([b'test', '1']))
 # > ('test', 1)
 ```
 
-We logically combine the data class `User` with the Tuple nested type (yes, you can do this, although `Tuple[str, int]` it’s not a type, utype will convert it at the time of operation), so that the input can either accept dictionary or JSON data. You can also accept list or tuple data, as long as you can convert to the declared type.
+We logically combine the dataclass `User` with the Tuple nested type (yes, you can do that, although `Tuple[str, int]` it’s not a type, utype will convert it at the time of the operation), so that the input can either accept dictionary or JSON data (convert to `User`). or list / tuple data (convert to `Tuple[str, int]` )
 
 ### For functions
-Data classes can also be used in functions, as type hints for function arguments or returned results, simply requiring the function to use `@utype.parse` decorators
+Dataclasses can also be used in functions, as type annotations for function params or returns, simply requiring the function to use `@utype.parse` decorators
 
 ```python
 from utype import Schema, Field, parse
@@ -555,15 +558,18 @@ print(user)
 # > UserInfo(username='alice')
 ```
 
-In the example, we declare a login function, which uses LoginForm to accept the login form. If the login is successful, the user name information will be returned and will be converted to the UserInfo data class instance.
+In the example, we declared a login function, which uses `LoginForm` to accept the login form data. If the login is successful, the user name information will be returned and will be converted to the `UserInfo` instance.
+
+!!! note
+	More about function parsing: [Function parsing](/en/guide/func)
 
 
 ## Data parse and validation
 
-In this section, we focus on how to control and adjust the parsing and validation behavior of the data class.
+In this section, we focus on how to control and adjust the parsing and validation behavior of the dataclass.
 
 ### Configure Options
-Utype provides an Options class to mediate the parsing behavior of data classes and functions, which is used in the data class as follows
+utype provides an Options class to tune the parsing behavior of data classes and functions, which is used in the dataclass as follows
 
 ```python
 from utype import Schema, Options
@@ -581,18 +587,30 @@ print(user.age)
 # > 19
 ```
 
-We declare a property named `__options__` in the data class and assign it using an instance of Options. The resolution options are passed in as parameters.
+We declare an attribute named `__options__` in the data class and assign it using an instance of Options. The resolution options are passed in as parameters.
 
-In the example, the option we configured is `addition=True` to express the input data outside the reserved field range. The commonly used options in the parsing configuration include:
+In the example, we configured `Options(addition=True)` to preserve the additional input data outside the dataclass fields. so that  `age` and `invite_code` are reserved in the output data, the commonly used options in the parsing configuration are:
 
-* **Data processing options**: `addition`, `max_params`, `min_params`, `max_depth` etc. Limit the length, depth, etc. Of the input data and specify the behavior of the data beyond the range of the field.
-* **Error handling options**:  `max_errors` `collect_errors` Configure error-handling behavior, such as whether to collect all parse errors.
-* **Illegal data option**: `invalid_items`, `invalid_keys`, `invalid_values`, Configure the processing behavior of illegal data, whether to discard, keep, or throw an error.
-* **tuning options**: A series of options for adjusting parsing behavior and field behavior, such as `ignore_required`, `no_default`, `ignore_constraints`, etc.
-* **alias options**: `alias_generator`, `case_insensitive` etc., to generate aliases for fields, or to specify options that are case-sensitive or not
+* **Data processing**: `addition`, `max_params`, `min_params`, `max_depth` etc. to limit the length, depth of the input data and specify the behavior of the additional data.
+* **Error handling**:  `max_errors` `collect_errors`. configure error-handling behavior, such as whether to collect all parse errors or "fail-fast"
+* **invalid data**: `invalid_items`, `invalid_keys`, `invalid_values`, Configure the processing behavior of illegal/invalid data, whether to discard, keep, or throw an error.
+* **parse tuning**: A series of options for adjusting parsing behavior and field behavior, such as `ignore_required`, `no_default`, `ignore_constraints`, etc.
+* **alias generation**: `alias_generator`, `case_insensitive` etc., to generate aliases for fields, or to specify options that are case-sensitive or not
 
+!!! note
+	Options control the parsing and transformation for types, dataclasses and functions in utype, for more info, you can refer to [Options API References](/en/references/options)
 
-The following is an example of a usage scenario for the parse option
+You can also decalre Options for class by class decorator, such as
+```python
+from utype import Schema, Options
+
+@Options(addition=True)  
+class UserPreserve(Schema):  
+    name: str  
+    level: int = 0
+```
+
+The following is an example of a usage for the parsing Options
 ```python
 from utype import Schema, Options, Field, exc
 
@@ -623,13 +641,18 @@ except exc.CollectedParseError as e:
 	"""
 ```
 
-Let’s look at the parsing options in the example one by one.
+Let’s take a look at the options in the above example
 
-*  `case_insensitive=True` Indicates to accept data in a case-insensitive way, as in the example where the input data is `'UserName'` used to pass `'username'` the value of the field.
-*  `addition=False`: Indicates that input data outside the field is not accepted. In the example, we entered an extra parameter `'Token'` that is not in the field, which will be detected and thrown as an error.
-*  `collect_errors=True`: In general, when utype detects that there is an error in the input data, it will throw it directly. However, opening `collect_errors` utype allows utype to collect all the errors in the data and throw them together, which is more convenient for debugging. We can use `exc.CollectedParseError` it to catch the packaging error thrown, for example, in the example, we catch the error information of all parameters together.
+* `case_insensitive=True`: accept input data case-insensitive, as in the example where the input data pass `'UserName'` for the value of `'username'`.
+* `addition=False`: Indicates that any additional data will raises an error. In the example, we input an additional parameter `'Token'`, which will be detected and thrown as an error.
+* `collect_errors=True`: collect all the errors in the data and throw them together, which is more convenient for debugging. We can use `exc.CollectedParseError` it to catch the packaging error thrown, for example, in the example, we catch the error information of all parameters together. (`collect_errors` is False by default)
 
-In addition to configuring resolution options by declaring an instance of Options, you can also use a class approach, such as
+!!! note
+	`addition` is None by default, means ignores additional input, `addition=True` means preserve additional input, `addition=False` means throw an error for additional input
+
+Options also supports other declaration methods. such as
+
+**Class inheritance**
 ```python
 from utype import Schema, Options, Field
 
@@ -643,9 +666,18 @@ class LoginForm(Schema):
     password: str = Field(min_length=6, max_length=20)
 ```
 
+**Class decorator**
+```python
+from utype import Schema, Options
+
+@Options(addition=True)  
+class UserPreserve(Schema):  
+    name: str  
+    level: int = 0
+```
 
 #### Runtime parsing option
-In addition to specifying parsing options in the class declaration, utype also supports passing in a parsing option at data class initialization (at parsing time) to tune the parsing behavior at run time
+utype supports passing in a parsing option at dataclass initialization (at parsing time) to tune the parsing behavior at runtime
 
 ```python
 from utype import Schema, Options, Field, exc
@@ -676,11 +708,11 @@ except exc.CollectedParseError as e:
 	"""
 ```
 
-By passing `options` parameters in the function of `__from__` the data class, you pass a runtime parsing option that utype will parse the data according to.
+By passing `options` parameters in the function `__from__` of the data class, you can pass a runtime Options that utype will parse the data according to.
 
 
 #### Inheritance and Extend
-When you inherit a data class, you also inherit its parsing options, so you can also declare global parsing options.
+When you inherit a dataclass, you also inherit its parsing options, so you can also declare global parsing options.
 
 ```python
 import utype
@@ -699,7 +731,7 @@ print(LoginForm.__options__)
 # > Options(collect_errors=True, case_insensitive=True)
 ```
 
-As you can see, if the subclass does not declare additional resolution options, it will directly follow the parent class. Another way to state this example is
+As you can see, if the subclass does not declare options, it will directly inherit the parent class. Another way is
 
 ```python
 import utype
@@ -755,15 +787,17 @@ except exc.ParseError as e:
 	"""
 ```
 
-In the example, we perform joint verification on the parameters before calling the initialization method of the parent class for parsing verification, so as to avoid the situation that the power operation produces a complex result.
+In the example, we perform verification before calling the initialization method of the parent class (by `super()`) in custom `__init__`, so as to avoid the situation that the power operation produces a complex result.
 
 As you can see, the custom `__init__` function in the data class will get the ability of type resolution by default, that is, you can declare the type and field configuration in the `__init__` function, and the syntax is identical to [Function](/en/guide/func) . When the function is called `__init__`, it will be parsed according to the parameter declaration of the function, and then execute your initialization logic.
 
-And only if you define the `__init__` function, you can use the order parameter method to initialize as in the example.
+And only if you define the `__init__` function, you can pass positional parameters to initialize dataclass as in the example.
 
+!!! note
+	after customize  `__init__` , if you still want to support runtime Options, you should accept and pass `__options__` to `super().__init__` , otherwise (like in the example) dataclass will no longer support runtime options
 
 ### Post-parse function
-In addition to customizing the processing logic before parsing through user-defined `__init__` functions, utype also supports declaring the check function `__validate__` after parsing. The usage is as follows
+utype also supports declaring the post-parse function `__validate__` to call after parsing. The usage is as follows
 ```python
 from utype import Schema, Field
 from urllib.parse import urlparse
@@ -783,92 +817,13 @@ class RequestSchema(Schema):
 			raise ValueError('URL schema not specified')
 		self.secure = parsed.scheme in ['https', 'wss']
 ```
-We declare a Schema class that carries HTTP request information, define `__validate__` functions in it, and perform some checksum assignment logic in it.
-
-### Register the transformer
-In utype, all types can register converter functions to define the conversion logic from input data to the initialization function of the calling type, and the data class as a type is no exception.
-
-The default data class conversion function is as follows
-
-```python
-@register_transformer(
-    attr="__parser__",
-    detector=lambda cls: isinstance(getattr(cls, "__parser__", None), ClassParser),
-)
-def transform(transformer, data, cls):
-    if not isinstance(data, Mapping):
-        # {} dict instance is a instance of Mapping too  
-        if transformer.no_explicit_cast:
-            raise TypeError(f"invalid input type for {cls}, should be dict or Mapping")
-        else:
-            data = transformer(data, dict)
-    if not transformer.context.vacuum:
-        parser: ClassParser = cls.__parser__
-    if parser.context.allowed_runtime_options:
-        # pass the runtime options  
-        data.update(__options__=transformer.context)
-    return cls(**data)
-```
-
-Its logic is mainly
-1. If the input data is not of dictionary or Mapping type, it will be converted first (for example, the conversion from JSON string to dictionary data can be completed).
-2. If the data class allows run-time parsing options to be passed in, they are passed
-3. Finally, the converted data is used to call the initialization function of the data class
-
-such as in the following examples
-```python
-from utype import Schema
-
-class MemberSchema(Schema):
-    name: str
-    level: int = 0
-
-class GroupSchema(Schema):
-	name: str
-	creator: MemberSchema
-  
-group = GroupSchema(name='test', creator='{"name": "Bob"}')  
-```
-
-When GroupSchema detects that the data type (`str`) passed in the creator field does not conform to the declared type Member Schema, it will look for the converter function of the expected type Member Schema, and input the data as a parameter to the converter function after finding it. Finally, get the desired type instance.
-
-You can register conversion functions for your data classes to customize how nonconforming data is converted. For example, you can choose to reject all input that is not an instance of the data class.
-```python
-from utype import Schema, exc, register_transformer
-
-class StrictUser(Schema):
-    name: str
-    level: int = 0
-
-@register_transformer(StrictUser)  
-def transform(transformer, data, cls):  
-	raise TypeError('type mismatch')
-
-class GroupSchema(Schema):
-	name: str
-	creator: StrictUser
-
-try:
-	GroupSchema(name='test', creator='{"name": "Bob"}')  
-except exc.ParseError as e:
-	print(e)
-	"""
-	parse item: ['creator'] failed: type mismatch
-	"""
-```
-
-The parameters of the converter function are, in order,
-
-1. Type converter TypeTransformer instance
-2. the input data
-3. the type class
-
+We declare a Schema class that carries HTTP request information, define `__validate__` functions in it, and perform some validation and assignment logic in it.
 
 ## Other declaration methods
 
 In the previous example, we only introduced the use of inheritance Schema to define data classes, in fact, there are two ways to declare data classes in utype.
 
-1. Inherit the base class of the predefined data class
+1. Inherit the base class of the predefined dataclass
 2. Make your own using `@utype.dataclass` decorators
 
 Among them, utype currently provides the following predefined data base classes
@@ -878,9 +833,9 @@ Among them, utype currently provides the following predefined data base classes
 
 Let’s look at the way data classes are manufactured using `@utype.dataclass` decorators. Other predefined data base classes can be thought of as manufacturing with some decorator parameters fixed.
 
-###  `@utype.dataclass` Decorator
+### `@utype.dataclass` Decorator
 
-We can use `@utype.dataclass` decorators to decorate a class to make it a data class, such as
+We can use `@utype.dataclass` decorators to decorate a class to make it a dataclass, such as
 
 ```python
 import utype
@@ -895,11 +850,11 @@ print(user)
 # > User(name='bob', age=18)
 ```
 
-There are a series of parameters in `@utype.dataclass` the decorator to customize the generation behavior of the data class, including
+`@utype.dataclass` has some params to customize the generation behavior of the data class, including
 
-*  `no_parse`: When enabled, data will not be parsed and verified, and only the input data will be mapped and assigned to the attribute. The default value is False.
-*  `post_init`: a function is passed in and called after the `__init__` function is completed. It can be used to write custom validation logic.
-*  `set_class_properties`: Whether to reassign the class attribute corresponding to the field to one `property`, so as to obtain the parsing capability and protection of the field configuration during attribute assignment and deletion at runtime. The default is False.
+* `no_parse`: When enabled, data will not be parsed and verified, but only be mapped and assigned to the attribute. The default value is False.
+* `post_init`: a function is passed in and called after the `__init__` function is completed. It can be used to write custom validation logic.
+* `set_class_properties`: Whether to reassign the class attribute corresponding to the field to one `property`, so as to obtain the parsing capability and protection of the field configuration during attribute assignment and deletion at runtime. The default is False.
 
 We can intuitively compare the difference between whether it is enable `set_class_properties` or not.
 ```python
@@ -932,24 +887,31 @@ print(UserB.age)
 # > <property object>
 ```
 
-The attribute of the default `set_class_properties=False` data class will not be affected. If you access it directly, you will get the corresponding attribute value. If the attribute value is not defined, an AttributeError will be thrown directly, which is consistent with the behavior of the ordinary class.
+`UserA` with `set_class_properties=False` will not be affected. If you access it directly, you will get the corresponding attribute value. If the attribute value is not defined, an AttributeError will be thrown directly, which is consistent with the behavior of the ordinary class.
 
-After it is enabled `set_class_properties=True`, the class attributes corresponding to all fields will be re-assigned as an `property` instance, so that the update and deletion of the field attributes in the instance become controllable. The parameters controlling the attribute assignment include
+But when enabled `set_class_properties=True`, the class attributes will be re-assigned as an `property` instance, so that the assignment and deletion of the field attributes in the instance become controllable (perform type parsing at assignment, perform protection at deletion)
 
-*  `post_setattr`: This function is called after the field attribute of the instance is assigned ( `setattr`), and some custom processing behaviors can be performed.
-*  `post_delattr`: This function is called after the delete ( `delattr`) operation of the field property of the instance, and some custom processing behaviors can be performed.
+`@utype.dataclass` also provides some hook function params for attribute assignment and deletion
 
-*  `repr`: Are the classes `__repr__` and `__str__` methods modified so that you get a highly readable output when you use `print(inst)` or `str(inst)` `repr(inst)`, Display the fields and corresponding values in the data class instance. The default value is True.
-* A `__contains__` `contains` function you can use `name in instance` to determine whether a field is in the data class.
-*  `eq` Whether to generate a function of the data class `__eq__` so that two instances of the data class whose data are equal are `inst1 == inst2` judged to be equal.
+* `post_setattr`: This function is called after the field attribute of the instance is assigned ( `setattr`), and some custom processing behaviors can be performed.
+* `post_delattr`: This function is called after the delete ( `delattr`) operation of the field property of the instance, and some custom processing behaviors can be performed.
+
+!!! note
+	you can only pass `post_setattr` or `post_delattr` when setting `set_class_properties=True`
+
+`@utype.dataclass` also provides some dataclass function generation params, including
+
+* `repr`: provide `__repr__` and `__str__` methods so that you get a highly readable output when you use `print(inst)` or `str(inst)` `repr(inst)`, displaying the fields and corresponding values. default is True.
+* `contains`: provide `__contains__` function so that you can use `name in instance` to determine whether a field is in the dataclass, default is False
+* `eq`: provide `__eq__` function so that two instances of the dataclass with identical data can use `inst1 == inst2` to determine, default is False
 
 There are also parameters that control the parser and parsing options.
 
-*  `parser_cls`: Specifies the core parser class responsible for parsing class declarations and parsing data. The default is.
-*  `options`: Specify an Options to control parsing behavior
+* `parser_cls`: Specifies the core parser class responsible for parsing class declarations and parsing data. The default is `utype.parser.ClassParser`.
+* `options`: Specify a `Options` instance to control parsing behavior
 
 #### Logic operation
-If you need to declare a data class to support logical operations, you need to use `utype.LogicalMeta` as the metaclass
+If you need to declare a dataclass to support logical operations, you need to use `utype.LogicalMeta` as the metaclass
 ```python
 import utype
 from typing import Tuple
@@ -967,3 +929,6 @@ print(one_of_user({'name': 'test', 'age': '1'}))
 print(one_of_user([b'test', '1']))
 # > ('test', 1)
 ```
+
+!!! note
+	dataclass that inherit from `Schema` or `DataClass` will directly gain the logicla operation ability, because their metaclass is  `utype.LogicalMeta` already

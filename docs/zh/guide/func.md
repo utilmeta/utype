@@ -25,9 +25,11 @@ def login(
 	# 你可以直接开始编写逻辑了
 	return username, password
 
+# - 有效输入
 print(login(b'alice', 123456))
 ('alice', '123456')
 
+# - 非法输入
 try:
 	login('@invalid', 123456)
 except utype.exc.ParseError as e:
@@ -40,7 +42,7 @@ except utype.exc.ParseError as e:
 
 可以看到，utype 会自动完成参数的类型转化，对于无法完成类型转化或不满足约束条件的输入值，utype 会抛出一个清晰的错误，包含着数据中的定位信息和出错原因
 
-所以本篇文档我们来详细介绍解析函数的声明和用法
+所以本篇文档我们来详细介绍函数解析的声明和用法
 
 ## 声明函数参数
 
@@ -96,13 +98,13 @@ article = get_article_info(
 )
 
 print(article)
-# > ArticleInfo(id=1, slug='my-article', info={'alice': 1, 'bob': 2})
+# > ArticleInfo(id=1, slug='my-article', likes={'alice': 1, 'bob': 2})
 ```
 
 但是使用原生的函数语仅支持声明参数的类型和默认值，如果你需要更多的参数配置，可以使用 utype 提供 Param 类对函数参数进行配置
 
 ### 配置 Param 参数
-Param 类可以为函数参数配置丰富的行为，包括默认值，说明，约束，别名，输入行为等，只需要将 Field 类的实例作为函数参数的默认值，就可以获得其中声明的字段配置
+Param 类可以为函数参数配置丰富的行为，包括默认值，说明，约束，别名，输入行为等，只需要将 Param 类的实例作为函数参数的默认值，就可以获得其中声明的字段配置
 
 下面示例一些常用的配置的用法，我们来编写一个创建用户的函数
 ```python
@@ -132,6 +134,8 @@ def create_user(
     }
 ```
 
+例子中的函数 `create_user` 声明了如下参数
+
 * `username`：用户名参数，声明了 str 字符串类型，在参数配置中使用 `regex` 为字段指定了正则约束，还使用 `example` 参数进行了示例值的说明
 * `password`：密码参数，声明了 str 字符串类型，在参数配置中使用 `min_length` 和 `max_length` 指定了最小长度和最大长度的约束
 * `avatar`：头像参数，声明了 `Optional[str]`，表示可以传入字符串或者 None，使用了 Param 类的首个参数指定了默认值为 `None`， 并使用 `description` 对字段的格式和用途进行了文档说明，并且使用 `alias_from` 指定了一些可以从中转化的别名，可以用于兼容旧版本参数
@@ -146,6 +150,7 @@ print(bob)
 
 from utype import exc
 
+# - 非法输入
 try:
 	create_user('@invalid$input', '1234567')
 except exc.ParseError as e:
@@ -189,7 +194,7 @@ def add(a: int, b: int) -> int:
 add(1, 2)      # positional
 add(a=1, b=2)  # keyword
 add(1, b=2)    # mixed
-# > 7
+# > 3
 ```
 在 Python 中，可以使用两种方式传递函数参数
 
@@ -214,18 +219,15 @@ def example(
 ```
 每类参数的性质为
 
-* `pos_only`：在符号 `/` 前声明的参数，只能使用顺序方式传递
+* `pos_only`：在符号 `/` 前声明的参数，只能使用顺序方式传递 (仅 Python >=3.8 支持)
 * `pos_or_kw`：默认的参数类别，既可以支持顺序方式传递，也支持名称方式传递
-* `*args`：使用顺序传递的变长参数，即超出了声明参数外的顺序参数会被这个参数接收
+* `*args`：使用顺序传递的变长参数，即超出了声明参数外的顺序参数会被这个参数接收（`args` 会得到一个 `tuple`）
 * `kw_only`：在 `*args` 或者单个 `*` 符号之后的参数只能使用名称方式传递
-* `**kwargs`：使用名称传递的变长参数，如果传入的参数名称超出了你声明的范围就会被这个参数接收
-
-!!! note
-	声明只使用顺序方式传递的参数需要 Python >=3.8
+* `**kwargs`：使用名称传递的变长参数，如果传入的参数名称超出了你声明的范围就会被这个参数接收（`kwargs` 会得到一个 `Dict[str, Any]`）
 
 接下来我们来介绍具体的参数声明限制，不同类别的参数的限制可能会有所不同
 
-**可选参数的声明限制**
+**必传参数的声明限制**
 
 在 Python 函数中，不能将支持顺序方式传递的必传参数声明在可选参数后面，如
 
@@ -295,7 +297,7 @@ def ok_example(
 
 **某些条件下无效的 Param 配置**
 
-对只支持顺序传入的参数中，有一些参数是无效的，如
+对只支持顺序传入的参数中，有一些 `Param` 配置是无效的，如
 
 * `alias_from`
 * `case_insensitive`
@@ -305,7 +307,7 @@ def ok_example(
 ### `*args` 与 `**kwargs`
 
 在 Python 函数中，类似 `*args` 与 `**kwargs` 的参数分别表示的是顺序变长参数和键值变长参数
-utype 中的解析函数也支持位 `*args` 或 `**kwargs` 中的值声明类型，并正确识别并完成解析，如
+utype 中的解析函数也支持为 `*args` 或 `**kwargs` 中的值声明类型，并正确识别并完成解析，如
 
 ```python
 from utype import Rule, parse, exc
@@ -316,6 +318,8 @@ class Index(int, Rule):
 
 @parse  
 def call(*series: int, **mapping: Index | None) -> Dict[str, int]:  
+	print('series:', series)
+	print('mapping:', mapping)
     result = {}  
     for key, val in mapping.items():  
         if val is not None and val < len(series):  
@@ -328,10 +332,13 @@ mp = {
     'k3': '0'  
 }
 res = call(-1.1, '3', 4, **mp)
+# > series: (-1, 3, 4)
+# > mapping: {'k1': 1, 'k2': None, 'k3': 0}
 
 print(res)
 # > {'k1': 3, 'k3': -1}
 
+# - 非法输入
 try:
 	call('a', 'b')
 except exc.ParseError as e:
@@ -340,6 +347,7 @@ except exc.ParseError as e:
 	parse item: ['*series:0'] failed: could not convert string to float: 'a'
 	"""
 
+# - 非法输入
 try:
 	call(1, 2, key=-3)
 except exc.ParseError as e:
@@ -358,14 +366,14 @@ except exc.ParseError as e:
 
 ### 私有参数
 
-在函数参数中，以下划线开头的函数参数称为私有参数，私有参数的特征是
+在 utype 中，以下划线（`_`）开头的解析函数参数称为私有参数，私有参数的特征是
 
 * 不参与函数解析
 * 不能被以键值方式传参
 * 不会出现在函数生成的 API 文档中（对客户端不可见）
 
 这种情况常用于
-* 当函数提供外部进行调用，如被 HTTP / RPC 客户端调用时，往往需要客户端指明参数的名称进行传入，所以私有参数做到了对外不可见，而且页无法以名称方式传入
+* 当函数提供外部进行调用，如被 HTTP / RPC 客户端调用时，往往需要客户端指明参数的名称进行传入，所以私有参数做到了对外不可见，而且也无法以名称方式传入
 * 函数在内部代码中调用时，可以直接进行顺序传参，此时可以传入私有参数
 
 例如 
@@ -407,35 +415,11 @@ def get_info(
 !!! note
 	这样的效果其实与声明 `no_input=True` 配置相同
 
-**获取原函数**
-
-对于使用 `@utype.parse` 装饰的解析函数，如果你确实需要在代码中传入私有参数或者 `no_input=True` 的参数，虽然直接调用函数无法完成，但是可以通过 `utype.raw` 获取解析函数的原函数，如
-
-```python
-import utype
-from datetime import datetime
-
-@utype.parse
-def get_info(
-	id: int, *, 
-	_ts: float = utype.Param(default_factory=lambda :datetime.now().timestamp())
-):
-	return id, _ts
-
-raw_get_info = utype.raw(get_info)
-
-print(raw_get_info('1', None))
-# > ('1', None)
-```
-
-!!! warning
-	原函数就是在你的 `@utype.parse` 下声明的 Python 函数，直接调用原函数不会应用 utype 中的任何功能，所以不提供任何类型安全保障，请谨慎使用这个特性
-
 
 ## 解析函数返回值
-utype 不仅可以对函数的参数进行解析，也能够将函数的返回值解析到声明的类型
+utype 不仅可以解析函数参数，也能够按照声明的类型解析函数的返回值
 
-函数的返回值声明的语法都是 `def (...) -> <type>:`，其中 `<type>`  是你为返回值指定的类型，这个类型可以是任意的普通类型，约束类型，嵌套类型，逻辑类型，数据类等
+函数的返回值的类型注解的语法是 `def (...) -> <type>:`，其中 `<type>`  是你为返回值指定的类型，这个类型可以是任意的普通类型，约束类型，嵌套类型，逻辑类型，数据类等
 
 但不同种类的函数对于返回值的声明方式可能有所不同，下面将分别讨论 Python 中的每种函数的返回值声明方式
 
@@ -470,6 +454,7 @@ def get_article(id: PositiveInt = None, title: str = '') -> ArticleSchema:
 print(get_article('3', title=b'My Awesome Article!'))
 #> ArticleSchema(id=3, title='My Awesome Article!', slug='my-awesome-article')
 
+# - 非法参数
 try:
 	get_article('-1')
 except utype.exc.ParseError as e:
@@ -478,6 +463,7 @@ except utype.exc.ParseError as e:
 	parse item: ['id'] failed: Constraint: <gt>: 0 violated
 	"""
 
+# - 非法返回值
 try:
 	get_article(title='*' * 101)
 except utype.exc.ParseError as e:
@@ -590,10 +576,9 @@ except StopIteration as e:
 2. `generator.send(value)` 中值 `value` 的类型，即发送的数据类型，如果不支持数据发送，则传入 None
 3. `return value`  中值 `value` 的类型，即返回的数据类型，如果没有返回值，则传入 None
 
-对于生成器函数的 `return` 返回值，我们通过在生成器结束迭代后抛出 StopIteration 错误实例的 `value` 属性进行获取，因为 `read_csv` 函数会把读取的行数返回，所以上面的例子中我们使用 `int` 类型作为生成器函数的返回类型
+对于生成器函数的 `return` 返回值，我们通过在生成器结束迭代后抛出的 StopIteration 错误实例的 `value` 属性进行获取，因为 `read_csv` 函数会把读取的行数返回，所以上面的例子中我们使用 `int` 类型作为生成器函数的返回类型
 
-
-但对于常用的生成器函数，我们可能只需要 `yield` 出结果，并不需要支持外部发送或者返回值，此时可以使用以下类型作为返回提示
+但对于常用的生成器函数，我们可能只需要使用 `yield` 迭代结果，并不需要支持外部发送或者返回值，此时可以使用以下类型作为返回类型注解
 
 * `Iterator[<type>]`
 * `Iterable[<type>]`
@@ -665,7 +650,7 @@ except StopIteration as e:
     # echo count: 3
 ```
 
-我们在例子中声明了一个支持发送值的 `echo_round`，能够对发送的值得出其四舍五入的结果，同时函数中记录了发送的次数 `cnt`，并作为结果返回
+我们在例子中声明了一个支持发送值的 `echo_round` 函数，能够对发送的值得出其四舍五入的结果，同时函数中记录了发送的次数 `cnt`，并作为结果返回
 
 我们为 `send()` 发送值指定的类型为 `float`，所以发送的数据都会被转化为 float 类型，在函数中用于接收的 `sent` 变量得到的就是一个浮点数，可以直接进行后续操作
 
@@ -841,6 +826,7 @@ article = get_article(**query)
 print(article)
 # > {'id': 3, 'title': 'Big shot', 'slug': 'big-shot'}
 
+# > 非法参数
 try:
 	get_article(**query, addon='test')
 except utype.exc.ExceedError as e:
@@ -857,10 +843,9 @@ except utype.exc.ExceedError as e:
 !!! note
 	默认情况下  `@utype.parse`  会忽略额外的参数，这样与数据类的行为保持一致，你可以通过声明 `**kwargs` 参数的方式表示接受额外参数，也可以使用 `Options(addition=False)` 来禁止额外参数
 
-
 * `eager`：对于生成器函数，异步函数和异步生成器函数，是否在调用函数时就直接对参数进行解析，而不是等到使用 `await`，`next()`，`for`，`async for` 等方法时才进行解析，默认为 False
 
-我们可以来看一下默认情况下异步函数对于异常输入的行为
+我们可以来看一下默认情况（`eager=False`）下异步函数对于异常输入的行为
 ```python
 import asyncio  
 import utype
@@ -957,7 +942,7 @@ except utype.exc.ParseError as e:
 
 ## 在类中的应用
 
-我们有很多函数都是声明在类中的方法，比如
+我们有很多函数都是声明在类中的方法，它们也都可以使用 utype 进行解析参数和结果，比如
 
 ### 实例方法
 声明在类中的函数默认就是实例方法，其中第一个参数接受的是类的实例，`@utype.parse` 也支持对实例方法的解析，包括进行初始化的 `__init__` 方法，如
@@ -988,6 +973,7 @@ print(p.power())
 print(p.power('5'))
 # > 2
 
+# > 非法参数
 try:
 	p.power(-5)
 except utype.exc.ParseError as e:
@@ -998,7 +984,7 @@ except utype.exc.ParseError as e:
 ```
 
 ### `@staticmethod` 
-在类中，使用  `@staticmethod` 装饰器的函数称为静态方法，其中不包含实例参数或类参数，utype 也支持解析静态访问，无论  `@utype.parse` 装饰器与 `@staticmethod` 的先后顺序如何，如
+在类中，使用  `@staticmethod` 装饰器的函数称为静态方法，其中不包含实例参数或类参数，utype 也支持解析静态方法，无论  `@utype.parse` 装饰器与 `@staticmethod` 的先后顺序如何，如
 
 ```python
 import utype

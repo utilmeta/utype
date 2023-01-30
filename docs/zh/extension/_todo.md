@@ -26,6 +26,91 @@ utype 已经内置了一些转化偏好选项，通过解析选项 Options 声�
 
 # CLS
 
+
+### 注册转化器
+在 utype 中，所有类型都可以注册转化器函数，来定义从输入数据到调用类型的初始化函数间的转化逻辑，数据类作为一种类型也不例外
+
+默认的数据类转化函数如下
+
+```python
+@register_transformer(
+    attr="__parser__",
+    detector=lambda cls: isinstance(getattr(cls, "__parser__", None), ClassParser),
+)
+def transform(transformer, data, cls):
+    if not isinstance(data, Mapping):
+        # {} dict instance is a instance of Mapping too  
+        if transformer.no_explicit_cast:
+            raise TypeError(f"invalid input type for {cls}, should be dict or Mapping")
+        else:
+            data = transformer(data, dict)
+    if not transformer.context.vacuum:
+        parser: ClassParser = cls.__parser__
+    if parser.context.allowed_runtime_options:
+        # pass the runtime options  
+        data.update(__options__=transformer.context)
+    return cls(**data)
+```
+
+它的逻辑主要是
+1. 如果输入的数据不是字典或映射（Mapping）类型，则会先进行转化（比如可以完成 JSON 字符串到字典数据的转化）
+2. 如果数据类允许传入运行时解析选项，则会进行传递
+3. 最后使用转化好的数据调用数据类的初始化函数
+
+比如在如下的例子中
+```python
+from utype import Schema
+
+class MemberSchema(Schema):
+    name: str
+    level: int = 0
+
+class GroupSchema(Schema):
+	name: str
+	creator: MemberSchema
+  
+group = GroupSchema(name='test', creator='{"name": "Bob"}')  
+```
+
+GroupSchema 检测到 creator 字段传入的数据类型（字符串）并不符合声明的类型 MemberSchema 时，就会寻找期望类型 MemberSchema 的转化器函数，在找到后会将数据作为参数输入转换器函数，最终得到期望的类型实例
+
+!!! note
+	如果无法找到满足条件的转换器，这个类型将会按照解析选项 Options 中配置的 `unresolved_types` 策略处理，默认是直接抛出错误
+
+你可以为自己的数据类注册转化函数，来自定义不符合类型的数据是如何进行转化的。比如你可以选择拒绝所有不是该数据类实例的输入
+```python
+from utype import Schema, exc, register_transformer
+
+class StrictUser(Schema):
+    name: str
+    level: int = 0
+
+@register_transformer(StrictUser)  
+def transform(transformer, data, cls):  
+	raise TypeError('type mismatch')
+
+class GroupSchema(Schema):
+	name: str
+	creator: StrictUser
+
+try:
+	GroupSchema(name='test', creator='{"name": "Bob"}')  
+except exc.ParseError as e:
+	print(e)
+	"""
+	parse item: ['creator'] failed: type mismatch
+	"""
+```
+
+其中，转换器函数的的参数依序分别是
+
+1. 类型转换器 TypeTransformer 实例
+2. 输入数据
+3. 类型
+
+!!! note
+	转换器函数需要在解析发生前注册，才能在解析中生效
+
 ### Schema 类
 
 * `__parser_cls__`：

@@ -7,7 +7,7 @@ from decimal import Decimal
 from enum import Enum, EnumMeta
 from functools import partial
 from typing import (Any, AsyncGenerator, Callable, Dict, Generator, List,
-                    Mapping, Optional, Tuple, Type, TypeVar, Union)
+                    Mapping, Optional, Tuple, Type, TypeVar, Union, Iterator)
 
 from ..utils import exceptions as exc
 from ..utils.compat import (ForwardRef, Literal, evaluate_forward_ref,
@@ -22,7 +22,7 @@ OTHER = TypeVar("OTHER")
 ORIGIN = TypeVar("ORIGIN")
 
 NUM_TYPES = (int, float, Decimal)
-SEQ_TYPES = (list, tuple, set, frozenset, deque)
+SEQ_TYPES = (list, tuple, set, frozenset, deque, Iterator)
 MAP_TYPES = (dict, Mapping)
 TYPE_EXACT_TOLERANCE = ({int, float},)
 OPERATOR_NAMES = {

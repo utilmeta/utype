@@ -1,6 +1,6 @@
 # Functions
 
-Currently, Python does not have a mechanism to resolve types and check constraints at runtime, so when we write a function, we often need to perform type assertion, constraint checking and other operations on the parameters before we can start writing the real logic. Otherwise, an exception may occur at runtime, such as
+Currently, Python does not have the mechanism to guarantee types at runtime, so when we write a function, we often need to perform type assertion and constraint checking on parameters before we can start writing the actual logic. such as
 ```python
 def login(username, password):  
     import re  
@@ -13,7 +13,7 @@ def login(username, password):
     # below is your actual logic
 ```
 
-So utype provides a function parsing mechanism. You just need to declare the type, constraint and configuration of the function parameter, and then use `@utype.parse` the decorator to get the type-safe and constraint-guaranteed parameter value in the function, such as
+So utype provides a function parsing mechanism. You just need to declare the type, constraint and configuration of the function parameter, and use `@utype.parse` to decorate the function, then the function will be type-safe and constraint-guaranteed at runtime
 ```python
 import utype
 
@@ -25,9 +25,11 @@ def login(
 	# you can directly start coding
 	return username, password
 
+# - Valid input
 print(login(b'alice', 123456))
 ('alice', '123456')
 
+# - Invalid input
 try:
 	login('@invalid', 123456)
 except utype.exc.ParseError as e:
@@ -38,13 +40,13 @@ except utype.exc.ParseError as e:
 	"""
 ```
 
-It can be seen that utype will automatically complete the type conversion of parameters. For input values that cannot complete the type conversion or do not meet the constraint conditions, utype will throw a clear error, which contains the positioning information in the data and the reason for the error.
+as you can see, utype will automatically convert the types for input parameters. For input values that cannot complete the type conversion or violate the constraints, utype will throw a clear error, which contains the position and reason of the error
 
-So in this document, we will introduce the declaration and usage of parsing function in detail.
+So in this document, we will introduce the declaration and usage of function parsing in detail.
 
-## Declare function parameters
+## Declare parameters
 
-Utype supports native function syntax, which means that in the simplest case, you just need to add a `@utype.parse` decorator to your function to get the ability to parse
+utype supports native function syntax, which means that in the simplest case, you just need to add a `@utype.parse` decorator to your function to get the ability of parsing
 
 ```python
 import utype
@@ -58,8 +60,9 @@ print(add('3', 4.1))
 ```
 
 !!! note
+	Function parsing requires type annotation for parameters, if a param is not type-annotated, any type of value can be passed in
 
-You can use not only primitive types in functions, but also constraint types, nested types, logical types, data classes, etc. In utype for type annotation, and utype can correctly identify and complete parsing.
+You can use not only primitive types in functions, but also constraint types, nested types, logical types, dataclasses, etc. and utype can correctly identify and complete parsing.
 
 ```python
 import utype  
@@ -95,13 +98,13 @@ article = get_article_info(
 )
 
 print(article)
-# > ArticleInfo(id=1, slug='my-article', info={'alice': 1, 'bob': 2})
+# > ArticleInfo(id=1, slug='my-article', likes={'alice': 1, 'bob': 2})
 ```
 
-However, using the native function language only supports declaring the type and default value of the parameter. If you need more parameter configuration, you can use utype to provide the Param class to configure the function parameter.
+However, using the native function syntax only supports declaring the type and default value of the parameter. If you need more parameter configuration, you can use `utype.Param` to configure the function parameter.
 
-### Configure the Param parameters
-The Param class can configure rich behaviors for function parameters, including default values, descriptions, constraints, aliases, input behaviors, etc. You only need to use an instance of the Field class as the default value of a function parameter to obtain the field configuration declared in it
+### Configure Param
+The `Param` class can configure a series behaviors for function parameters, including default values, descriptions, constraints, aliases, input behaviors, etc. You only need to use an instance of the `Param` class as the default value of a function parameter to obtain the field configuration declared in it
 
 Here are some examples of common configuration usage. Let’s write a function to create a user.
 ```python
@@ -131,10 +134,12 @@ def create_user(
     }
 ```
 
-*  `username`: The user name parameter declares the str string type, specifies the regular constraint `regex` for the field in the parameter configuration, and uses `example` the parameter to describe the example value.
-*  `password`: password parameter, str string type is declared, and minimum length and maximum length constraints are used `min_length` and `max_length` specified in the parameter configuration
-*  `avatar`: The avatar parameter is declared `Optional[str]`, indicating that a string or None can be passed in. The first parameter of the Param class is used to specify the default value of `None`, and `description` the format and use of the field are documented. And the use `alias_from` specifies some aliases that can be converted from, which can be used for compatibility with old version parameters.
-*  `signup_time`: The time parameter is registered and the date type is declared `datetime`. It is configured `no_input=True` in the parameter configuration, which means that the user input is not accepted. That is to say, the default value of the `default_factory` manufacturing will be directly filled when it is called, that is, the current time. Registration time as a new user
+Function `create_user` in above example declared the following params
+
+* `username`: declares `str` type, specifies `regex` constraint for regex validation, and uses `example` describe the example value.
+* `password`:  declares `str` type, specifies `min_length` and `max_length` constraints for length validation
+* `avatar`: declares `Optional[str]` type, indicating that a string or None can be passed in. the first parameter of the `Param` is used to specify the default value of `None`, and `description` is used to document the field,  `alias_from` specifies some aliases that can be converted from, which can be used for compatibility with legacy parameters.
+* `signup_time`: declares `datetime` type. specifies `no_input=True`, which means that the user input is not accepted, that is to say, the default value function `default_factory`  will be directly called and filled at function calling, which fills in the current time to be the registration time of the new user
 
 Let’s call this function and see how it works.
 
@@ -145,6 +150,7 @@ print(bob)
 
 from utype import exc
 
+# - Invalid input
 try:
 	create_user('@invalid$input', '1234567')
 except exc.ParseError as e:
@@ -165,19 +171,19 @@ print(alice)
 # }
 ```
 
-You can see
+As you can see
 1. The type of the input data is converted to the type of the corresponding function parameter declaration
-2. If the input data does not satisfy the constraints of the function arguments, an error is thrown containing the positioning information and the reason for failure.
-3. Because `avatar` the parameter specified `alias_from` in the field contains `'headImg'`, we can also correctly identify and convert it into a `avatar` parameter by using `'headImg'` it as a parameter name.
-4. Since `signup_time` is specified `no_input=True`, even if the corresponding field is passed in, it will be ignored and the current time will be filled in according to `default_factory` the configuration of
+2. If the input data does not satisfy the constraints of the function arguments, an error is thrown containing position and reason of the error.
+3. Because `avatar` specified `alias_from` containing `'headImg'`, we can also correctly identify and convert it into a `avatar` parameter by using `'headImg'` as a parameter name.
+4. Since `signup_time` is specified `no_input=True`, even if the corresponding field is passed in, it will be ignored and the current time will be filled in according to `default_factory`
 
 !!! note
+	`Param` is actually a subclass of `Field` with more simplify and convenient params for function, so you can still get the detail usage of `Param` in [Field API References](/en/references/field)
 
+### Parameter restrictions
+Characteristics of the function brings more restrictions to declare the field configuration in the function than in the dataclass. Let’s take a look.
 
-### Parameter declaration restrictions
-Because of the characteristics of the function, there are more restrictions to declare the field configuration in the function than in the data class. Let’s take a look.
-
-Parameter passing mode ** of ** Python function
+**Parameter passing for Python function**
 
 Before introducing the declaration restrictions of fields, let’s review the parameter types of Python functions and how they are passed.
 ```python
@@ -187,14 +193,14 @@ def add(a: int, b: int) -> int:
 add(1, 2)      # positional
 add(a=1, b=2)  # keyword
 add(1, b=2)    # mixed
-# > 7
+# > 3
 ```
-In Python, you can pass function arguments in two ways
+In Python, you can pass function params in two ways
 
-* Pass in order. The function parameters are passed in the order in which they are declared
-* Pass by name. Pass by the name of the function parameter.
+* Positonal: Passed in the order in which parameter are declared
+* Keyword: Pass by the name of the function parameter.
 
-Different types of parameters support different ways of passing parameters. The following is an example that covers all types of parameters.
+Different types of parameters support different ways of passing. The following is an example that covers all types of parameters.
 ```python
 def example(  
     # positional only  
@@ -212,17 +218,17 @@ def example(
 ```
 The properties of each class of parameters are
 
-*  `pos_only`: Parameters declared before the symbol `/` can only be passed in sequential mode
-*  `pos_or_kw`: The default parameter category, which supports both sequential and name passing
-* Variable length parameters that are passed in order are `*args` used, that is, sequential parameters beyond the declared parameter are received by this parameter.
-* Parameters after `*args` `kw_only` or a single `*` symbol can only be passed by name
-* Variable length parameter passed `**kwargs` by name. If the passed parameter name is outside the scope of your declaration, it will be accepted by this parameter.
+* `pos_only`: Parameters declared before the symbol `/` can only be passed in positional way (supported Python >=3.8 only)
+* `pos_or_kw`: The default parameter category, which supports both positional and keyword passing
+* `*args`: Variable positional parameters, that is, postional parameters beyond the declared parameter are received by this parameter. (`args` will get a `tuple` instance)
+* `kw_only`: Parameters after `*args`  or a single `*` symbol can only be passed by keyword
+* `**kwargs`: Variable keyword parameters. If the passed parameter name is outside the scope of your declaration, it will be accepted by this parameter.  (`kwargs` will get a `Dict[str, Any]`)
 
 Next, we’ll look at specific parameter declaration restrictions, which may vary for different categories of parameters
 
-Declared restrictions ** on ** optional parameters
+**Restrictions for required parameters**
 
-Required parameters that support sequential passing cannot be declared after optional parameters in Python functions, such as
+Required parameters that support positional passing cannot be declared after optional parameters in Python functions, such as
 
 ```python
 try:
@@ -235,7 +241,7 @@ except SyntaxError:
 	"""
 ```
 
-In utype, because the parameter using Param configuration as the default value may also be a required parameter, there is also such a restriction, such as the following is an inappropriate declaration.
+In utype, because the parameter using `Param` as the default value may also be a required parameter, there is also such a restriction, such as the following is an inappropriate declaration.
 
 ```python
 import utype
@@ -247,7 +253,7 @@ def bad_example(opt: int = utype.Param(None), req: str = utype.Param()):
 # UserWarning: non-default argument: 'req' follows default argument: 'opt'
 ```
 
-That is, if a parameter supports passing in order, do not declare a required parameter after an optional parameter, which makes the optional parameter meaningless. If such a parameter supports passing by key, utype will only warn, but if such a parameter only supports passing in order, it will throw an error directly, as shown in
+That is, if a parameter supports passing in order, do not declare a required parameter after an optional parameter, which makes the optional parameter meaningless. If such a parameter supports passing by keyword, utype will only warn, but if such a parameter only supports passing in positional, it will throw an error directly, as shown in
 ```python
 import utype
 
@@ -279,26 +285,24 @@ def ok_example(
 ```
 
 
-** Restricted Param Configuration **
+**Restricted Param Configuration**
 
 Because function parameters must pass in a meaningful value (either an input value or a default value), the use of some parameters in the Param configuration is restricted, and/must be specified if they are used.
 
 * `required=False`
 * Use `no_input`
-* Use `mode`//
+* Use `mode` / `readonly` / `writeonly`
 
-Invalid Param configuration ** under ** certain conditions
+**Invalid Param configuration**
 
-Some of the parameters that support only sequential input are invalid, such as
+For params that only support positional passing, some `Param` configuration is invalid, such as
 
 * `alias_from`
 * `case_insensitive`
 
-Because these are all working on the name of the parameter support.
-
 ###  `*args` & `**kwargs`
 
-In Python functions, arguments like `*args` and `**kwargs` represent sequential and key variable-length arguments, respectively. The parsing functions in utype also support value declaration types in bits `*args` or `**kwargs`, And correctly identify and complete the parsing, such as
+In Python functions, arguments like `*args` and `**kwargs` represent positional and keyword variable-length arguments. utype also support value declaration types for `*args` and `**kwargs`, and correctly identify and complete the parsing, such as
 
 ```python
 from utype import Rule, parse, exc
@@ -309,6 +313,8 @@ class Index(int, Rule):
 
 @parse  
 def call(*series: int, **mapping: Index | None) -> Dict[str, int]:  
+	print('series:', series)
+	print('mapping:', mapping)
     result = {}  
     for key, val in mapping.items():  
         if val is not None and val < len(series):  
@@ -321,10 +327,13 @@ mp = {
     'k3': '0'  
 }
 res = call(-1.1, '3', 4, **mp)
+# > series: (-1, 3, 4)
+# > mapping: {'k1': 1, 'k2': None, 'k3': 0}
 
 print(res)
 # > {'k1': 3, 'k3': -1}
 
+# - Invalid Input for `*series`
 try:
 	call('a', 'b')
 except exc.ParseError as e:
@@ -333,6 +342,7 @@ except exc.ParseError as e:
 	parse item: ['*series:0'] failed: could not convert string to float: 'a'
 	"""
 
+# - Invalid Input for `**mapping`
 try:
 	call(1, 2, key=-3)
 except exc.ParseError as e:
@@ -343,22 +353,24 @@ except exc.ParseError as e:
 ```
 
 
-By default, a sequential variable-length argument ( `*args`) will receive a tuple ( `tuple`) whose elements are of unknown type, and when you use a type declaration on it, you’ll get a tuple whose elements are all of that type (that is `Tuple[<type>,...]`,). For example, in the `series` example, the parameter will get a tuple whose element is an integer int, and the key value variable length parameter ( `**kwargs`) will receive a dictionary ( `Dict[str, Any]`) whose key is a string type and whose value type is unknown by default. You will get a dictionary with a fixed value type ( `Dict[str, <type>]`), such as the example where the `mapping` parameter gets a dictionary with an integer value greater than or equal to zero or None.
+By default, `*args` will receive a tuple ( `tuple`) whose elements are of unknown type, but when you use a type annotation on it, you’ll get a tuple whose elements are all of that type (that is `Tuple[<type>,...]`,). In the above example, `series` will be `Tuple[int, ...]` in the function
 
-And in the example, we see that when the incoming variable length parameter fails to complete the corresponding type conversion, it will throw a parsing error, which contains specific positioning information and failure reasons.
+`**kwargs` will receive a dictionary ( `Dict[str, Any]`) by default. but when you use a type annotation on it, you will get a dictionary with a fixed value type ( `Dict[str, <type>]`), in the above example, `mapping` will gets a dictionary with an integer value greater than or equal to zero or `None`.
+
+And in the example, we see that when the input variable parameter fails to complete the corresponding type conversion, it will throw a parsing error, which contains specific positioning information and failure reasons.
 
 
-### Private parameter
+### Private parameters
 
-In function arguments, function arguments that begin with an underscore are called private arguments, which are characterized by
+In utype, function param that begin with an underscore ( `_` ) are called private parameter, which has following features
 
-* Does not participate in function resolution
-* Cannot be passed as a key
+* Does not participate in function parsing
+* Cannot be passed as a keyword
 * Will not appear in the API document generated by the function (not visible to the client)
 
-This condition is often used for
-* When a function is provided for external calling, such as being called by an HTTP/RPC client, the client is often required to specify the name of the parameter to pass in, so the private parameter is invisible to the outside, and the page cannot be passed in by name
-* When the function is called in the internal code, parameters can be passed directly in sequence. In this case, private parameters can be passed in
+This feature is often used for
+* When a function is provided for external calling, such as being called by an HTTP/RPC client, the client is often required to specify the name of the parameter to pass in, so the private parameter is invisible to the outside, and cannot be passed in by name
+* When the function is called in the internal code, parameters can be passed directly in positional. In this case, private parameters can be passed in
 
 For example
 ```python
@@ -380,7 +392,7 @@ print(fib('10', 5, 8))
 # > 610
 ```
 
-As you can see, a private parameter passed in as a name is ignored, but a private parameter passed in as a sequential parameter is accepted and processed
+As you can see, a private parameter passed in as a name is ignored, but a private parameter passed in positional is accepted and processed
 
 If you need to prevent private parameters from being passed in at all, you can declare that they are only allowed to be passed by name, as shown in
 ```python
@@ -397,37 +409,14 @@ def get_info(
 ```
 
 !!! note
+	this way is same as declaring `no_input=True`
 
-** Get the primitive function **
+## Parse return value
+utype also supports parse the return value of function
 
-For parsing functions that use `@utype.parse` decorations, if you really need to pass private parameters or `no_input=True` parameters in the code, although it cannot be done by calling the function directly, you can `utype.raw` get the original function of the parsing function, such as
+The syntax for annotate the return value type of a function is `def (...) -> <type>:`, where `<type>` is the type you specify for the return value, which can be any normal type, constrained type, nested type, logical type, dataclass, etc.
 
-```python
-import utype
-from datetime import datetime
-
-@utype.parse
-def get_info(
-	id: int, *, 
-	_ts: float = utype.Param(default_factory=lambda :datetime.now().timestamp())
-):
-	return id, _ts
-
-raw_get_info = utype.raw(get_info)
-
-print(raw_get_info('1', None))
-# > ('1', None)
-```
-
-!!! warning
-
-
-## The analytic function returns a value
-The utype can not only parse the parameters of the function, but also parse the return value of the function to the declared type.
-
-The syntax for declaring the return value of a function is `def (...) -> <type>:`, where `<type>` is the type you specify for the return value, which can be any normal type, constraint type, nested type, logical type, data class, etc.
-
-However, different kinds of functions may have different ways to declare the return value, and the return value declaration of each function in Python will be discussed separately below.
+However, different kinds of functions may have different ways to declare the return type
 
 ### Normal function
 
@@ -454,12 +443,13 @@ def get_article(id: PositiveInt = None, title: str = '') -> ArticleSchema:
 	}
 ```
 
-In the example, we use the ArticleSchema data class as the return type hint of the function `get_article`, and utype will automatically convert the return value of the function into an instance of ArticleSchema, such as
+In the example, we use `ArticleSchema` as the return type of the function `get_article`, and utype will automatically convert the return value of the function into an instance of `ArticleSchema`
 
 ```python
 print(get_article('3', title=b'My Awesome Article!'))
 #> ArticleSchema(id=3, title='My Awesome Article!', slug='my-awesome-article')
 
+# - Invalid params
 try:
 	get_article('-1')
 except utype.exc.ParseError as e:
@@ -468,6 +458,7 @@ except utype.exc.ParseError as e:
 	parse item: ['id'] failed: Constraint: : 0 violated
 	"""
 
+# - Invalid return
 try:
 	get_article(title='*' * 101)
 except utype.exc.ParseError as e:
@@ -479,10 +470,10 @@ except utype.exc.ParseError as e:
 	"""
 ```
 
-As you can see, whether the parameter fails to complete the conversion or the returned result fails to complete the conversion, an error is thrown
+As you can see, whether the parameter fails to parse or the returned result fails to parse, an error is thrown
 
 ### Asynchronous function
-Utype also supports the type resolution of asynchronous functions, which are declared in the same way as synchronous functions. Let’s use an asynchronous HTTP client code as an example.
+utype also supports parsing asynchronous functions, which are declared in the same way as synchronous functions. Let’s use an asynchronous HTTP client code as an example.
 
 ```python
 import aiohttp  
@@ -531,13 +522,13 @@ if __name__ == "__main__":
 
 In the example, we used the `aiohttp` library to make asynchronous HTTP requests, and used `fetch_urls` to aggregate several asynchronous request tasks to avoid network I/O blocking.
 
-The interface of our request `'https://httpbin.org/get'` will return the parameter information of the request in JSON. In the `fetch()` function, we only convert the result to a string, but in the `fetch_urls()` function, we use `Dict[str, dict]` to annotate the result type. The JSON string in the response will be converted to the Python dictionary, and finally we can directly use the key value to access the corresponding element for output.
+API `'https://httpbin.org/get'` will return the parameter information of the request in JSON. In the `fetch()` function, we only convert the result to a string, but in the `fetch_urls()` function, we use `Dict[str, dict]` to annotate the result type. The JSON string in the response will be converted to the Python dictionary, and finally we can directly use the key value to access the corresponding items for output.
 
 That is to say, whether it is a synchronous function or an asynchronous function, the use of `@utype.parse` + type declaration can guarantee the type safety of function calls.
 
 ### Generator function
 
-The utype also supports the use `yield` of the generator function. The generator can temporarily store the execution state of the function, optimize memory usage, and implement many mechanisms that cannot be implemented by ordinary functions, such as constructing an infinite loop list. Let’s first use an example to see how the return value of the generator function is declared.
+utype also supports generator function using `yield`. The generator can temporarily store the execution state of the function, optimize memory usage, and implement many mechanisms that cannot be implemented by ordinary functions, such as constructing an infinite loop list. Let’s first use an example to see how the return value of the generator function is declared.
 
 ```python
 import utype  
@@ -573,22 +564,21 @@ except StopIteration as e:
 	# total lines: 3
 ```
 
-In this example, we read a CSV file in string format, split it by line, and `split(',')` iterate over the results. We know that the `split` string method will return a list of strings, but because of our return type declaration, When you use `next(csv_gen)` to iterate, you get an integer tuple directly, which is what utype does with your declaration.
+In this example, we read a CSV file in string format, split it by line, and iterate over the splited results. We know that the `split` string method will return a list of strings, but because of our return type declaration, When you use `next(csv_gen)` to iterate, you get an integer tuple directly
 
-Generic generators use a `Generator` type for the return annotation, where three order parameters are passed in.
-1. The type of the `yield value` median `value`, that is, the element type of the iteration
-2. The type of the `generator.send(value)` value `value`, that is, the type of data to be sent. If data sending is not supported, None is passed in
-3. The type of the `return value` value `value`, that is, the data type returned. If no value is returned, None is passed in
+Generator functions often use a `Generator` type for the return annotation, where three positional parameters are passed in.
+1. The type `value` of `yield value`, that is, the element type of the iteration
+2. The type `value` of `generator.send(value)`, that is, the type of data to be sent. you can pass None if no data will be sent
+3. The type `value` of `return value`, you can pass None if no value is returned
 
-For the return value of the generator function `return`, we get it by throwing the property of the StopIteration error instance `value` after the generator iterates, because `read_csv` the function returns the number of rows read. So in the example above, we used `int` type as the return type of the generator function.
+For the return value of the generator function `return`, we get it by access the `value` attribute of the `StopIteration` error after the generator iterates, In the example above, we used `int` type as the return type of the generator function to covert the return value (number of lines read) to `int`
 
-
-However, for common generator functions, we may only need to `yield` output results, and do not need to support external sending or return values. In this case, the following types can be used as return prompts
+However, for common generator functions, we may only need to `yield` results, and do not need to support external sending or return values. In this case, the following types can be used as return annotation
 
 * `Iterator[<type>]`
 * `Iterable[<type>]`
 
-Only one parameter needs to be passed in, which is `yield` the type of the value, such as
+Only one parameter needs to be passed in, which is the type `value` of `yield value`, such as
 
 ```python
 import utype
@@ -617,11 +607,12 @@ while True:
 		"""
 ```
 
-In this example, we split each element `split(',')` of a string list and return the result `yield` without returning a value, so we use `Iterator[Tuple[int, int]]` the type declaration of to indicate that `yield` the type of the value is an integer tuple. When the data cannot complete the corresponding transformation, we can use `exc.ParseError` to receive the error, which will contain the positioning information, accurate to the iteration index in the generator.
+In this example, we use `split(',')` to split each item of a string list and `yield` the result, so we use `Iterator[Tuple[int, int]]` as return annotation
+When the data cannot complete parsing, we can use `exc.ParseError` to receive the error, which will contain the positioning information, accurate to the iteration index in the generator.
 
-#### The generator sends the value
+#### Generator.send(value)
 
-The generator can not only accept `yield` the value iterated out, but also send the value to the generator by using `send()` the method. You can use the second parameter in the Generator type to specify `send()` the type of the value passed by the method, such as
+you can send the value into the generater by using `send(value)`, and annotate the type of the `value` by using the second parameter in the `Generator`, such as
 
 ```python
 import utype  
@@ -655,9 +646,9 @@ except StopIteration as e:
     # echo count: 3
 ```
 
-In our example, we declare a function that supports sending values `echo_round`, which can round the value sent, and record the number of `cnt` times sent in the function and return it as the result.
+In our example, we declare a generator function `echo_round` that supports sending values , which can round the value sent, and record the number of times sent in the function and return it as the result.
 
-The type we specify for `send()` the sent value is `float`, so the data sent will be converted to float type, and the variable used to receive `sent` in the function will be a floating point number, which can be directly used for subsequent operations.
+The type we specify for `send(value)` 's value is `float`, so the data sent will be converted to float type, which can be directly used for subsequent operations.
 
 
 #### Tail recursive optimization
@@ -679,6 +670,7 @@ print(res % 100007)
 ```
 
 !!! note
+	Ordinary Python function does not support tail-recursion, so if the call stack depth exceed certain limit (default to 1000 or so), execution will be failed and a `RecursiveError` is raised, but using generator-stype tail-recursion can solve this problem
 
 If your tail-recursive generator uses `@utype.parse` decoration, you can simplify the call by declaring the final return type. When utype recognizes that the iterator yield is still a generator, it will continue to iterate until it gets the result, so the above example can be simplified to
 
@@ -699,7 +691,7 @@ print(res)
 # > 354224848179261915075
 ```
 
-As you can see, for the tail recursion optimized generator, we can directly use one `next()` to get the result, but you will find that if the number of calls exceeds 1000, the stack will still burst and throw an error. Why?
+As you can see, for the tail recursion optimized generator, we can directly use one `next()` to get the result, but you will find that if the `n` exceeds 1000, the stack will still overflow and throw an error. Why?
 
 ```python
 try:
@@ -712,7 +704,7 @@ except Exception as e:
 	"""
 ```
 
-Because we use a decorated `fib` function when we call recursively, each recursion will parse parameters in utype, so stack burst will still occur, but because we have been able to guarantee the type safety of the call after the first call has been parsed. So we can directly use `fib` the original function to call. We can get the original function of the parsing function through `utype.raw` the method. The optimized code is as follows.
+Because we use a decorated `fib` function when we call recursively, each recursion will parse parameters in utype, so stackoverflow will still occur, but because we have been able to guarantee the type safety of the call after the first call has been parsed. So we can directly use `fib` the original function to call. We can get the original function of the parsing function through `utype.raw` the method. The optimized code is as follows.
 
 ```python
 import utype
@@ -737,9 +729,9 @@ print(res % 100007)
 
 This not only ensures the type safety of the call, but also optimizes the tail recursion generator and the performance of multiple calls.
 
-### Asynchronous generator function
+### Asynchronous generator
 
-Utype also supports asynchronous generator functions, which are typically `AsyncGenerator` annotated with return types, such as
+utype also supports asynchronous generator functions, which are typically `AsyncGenerator` annotated with return types, such as
 ```python
 import utype  
 import asyncio  
@@ -784,15 +776,15 @@ If your asynchronous generator doesn’t need to accept `asend()` data, you can 
 Only one type needs to be passed in, which is the type of the value generated by the asynchronous generator `yield`.
 
 !!! note
-
+	in Python, asynchronous generator does not support return value
 
 ## Configure function parsing
 
-You can put some arguments in the `@utype.parse` decorator’s arguments to control the parsing of the function, including
+There are some params in `@utype.parse` decorator to control the parsing of the function, including
 
-*  `ignore_params`: Whether to ignore the resolution of function parameters. The default is False. If it is enabled, utype will not perform type conversion and constraint verification on function parameters.
-*  `ignore_result`: Whether to ignore the parsing of function results. The default is False. If it is enabled, utype will not perform type conversion and constraint verification on function results.
-*  `options`: Pass in a parsing option to control the parsing behavior. Please refer to the specific usage.
+* `ignore_params`: Whether to ignore the parsing of function parameters. The default is False. If it is enabled, utype will not perform type conversion and constraint validation on function parameters.
+* `ignore_result`: Whether to ignore the parsing of function return values. The default is False. If it is enabled, utype will not perform type conversion and constraint validation on function return values.
+* `options`: Pass in a parsing option to control the parsing behavior. Please refer to the specific usage in  [Options API References](/en/references/options).
 
 The following is an example of the use of the parse configuration
 ```python
@@ -828,6 +820,7 @@ article = get_article(**query)
 print(article)
 # > {'id': 3, 'title': 'Big shot', 'slug': 'big-shot'}
 
+# > Invalid params
 try:
 	get_article(**query, addon='test')
 except utype.exc.ExceedError as e:
@@ -837,16 +830,16 @@ except utype.exc.ExceedError as e:
 	"""
 ```
 
-We declare the parsing configuration in `get_article` the function’s `@utype.parse` decorator, specifying an instance of the parsing option Options, where using `addition=False` indicates that errors will be reported directly for additional parameters, and `case_insensitive=True` that case-insensitive acceptance of parameters is allowed.
+We declare the parsing configuration in `get_article` the function’s `@utype.parse` decorator, specifying an instance of the parsing `Options`, where using `addition=False` indicates that additional parameters is not allowed, and `case_insensitive=True` to indicates that case-insensitive parameters is allowed.
 
-So we see that data that uses an uppercase parameter name can be passed in for processing normally, and because it is `ignore_result=True` specified, the result is not converted, and if an extra parameter is passed in, an `exc.ExceedError` error is thrown directly.
+So we see that data that uses an uppercase parameter name can be passed in and mapped to param correctly, and because `ignore_result=True` is specified, the result is not converted, and if an extra parameter is passed in, an `exc.ExceedError` error is thrown directly.
 
 !!! note
+	By default, utype will ignore the additional params to stay identical to dataclass, you can absorb the additional params by declare  `**kwargs`, or use `Options(addition=False)`  to ban any additional params
 
+* `eager`: For generator functions, async functions and async generator functions, whether the parameters are parsed directly when the function is called, rather than when methods such as `await`, `next()`, `for`, `async for`. The default is False
 
-*  `eager`: For generator functions, async functions and async generator functions, whether the parameters are resolved directly when the function is called, rather than when methods such as, `next()`, `for`, `async for` are used `await`. The default is False
-
-Let’s take a look at the default behavior of asynchronous functions for abnormal input.
+Let’s take a look at the default behavior ( `eager=False` ) of asynchronous functions for abnormal input.
 ```python
 import asyncio  
 import utype
@@ -869,7 +862,7 @@ except utype.exc.ParseError as e:
 	"""
 ```
 
-The input of the exception does not throw an error directly when the function is called, but rather when it is used `await`. However, when it is opened `eager=True`, an error will be thrown directly when the parameter is passed, instead of waiting for the call `await`, such as
+The invalid input does not throw an error directly when the function is called, but rather when it is used `await`. However, when `eager=True`, an error will be thrown directly when the parameter is passed, instead of waiting for the `await` statement, such as
 
 ```python
 import asyncio  
@@ -891,7 +884,7 @@ except utype.exc.ParseError as e:
 	"""
 ```
 
-For the generator function, when it is turned on `eager=True`, it will also be resolved directly when it is called, such as
+For the generator function, when `eager=True`, params will also be parsed directly when it is called, such as
 
 ```python
 import utype
@@ -930,22 +923,22 @@ except utype.exc.ParseError as e:
 	"""
 ```
 
- `eager=True` The principle is to convert the generator function, asynchronous function and asynchronous generator function into a synchronous function, parse it when it is called, and then return the corresponding generator object/coroutine object/asynchronous generator object for the user to operate.
+the underlying principle of `eager=True` is to convert the generator function, asynchronous function and asynchronous generator function into a synchronous function, parse params when it is called, and then return the corresponding generator object/coroutine object/asynchronous generator object for the user to operate.
 
-So the nature of the function actually changes after it is opened `eager=True`, but for the user, there is no difference except to advance the parameter parsing behavior.
+So the category of the function actually changes after the `eager=True` decorate, but for the user, there is no difference except to advance the parameter parsing behavior.
 
 !!! note
+	`eager=True` has no meaning for synchronous function
 
-
-*  `parser_cls`: Pass in your custom parsing class. By default `utype.parser.FunctionParser`, you can implement your custom function parsing by inheriting and extending it.
+* `parser_cls`: pass in your custom parsing class. By default `utype.parser.FunctionParser`, you can implement your custom function parsing by inheriting and extending it.
 
 
 ## Application in Class
 
-Many of our functions are methods declared in classes, such as
+Many of functions are methods declared in classes, they can also use utype to parse params and returns, such as
 
 ### Instance method
-Functions declared in a class are instance methods by default, where the first parameter accepts an instance of the class. `@utype.parse` It also supports the resolution of instance methods, including initialization `__init__` methods, such as
+Functions declared in a class are instance methods by default, where the first parameter accepts an instance of the class. `@utype.parse` also supports to parse instance methods, including initialization `__init__` methods, such as
 
 ```python
 import utype
@@ -973,6 +966,7 @@ print(p.power())
 print(p.power('5'))
 # > 2
 
+# > Invalid params
 try:
 	p.power(-5)
 except utype.exc.ParseError as e:
@@ -982,8 +976,8 @@ except utype.exc.ParseError as e:
 	print(e)
 ```
 
-###  `@staticmethod`
-In a class, functions that use `@staticmethod` decorators are called static methods, which contain no instance or class parameters. Utype also supports resolving static access, regardless `@utype.parse` of the order of the decorators and `@staticmethod`, as shown in
+### `@staticmethod`
+In a class, functions that use `@staticmethod` decorators are called static methods, which contain no instance or class parameters. utype also supports to parse staticmethods, regardless the order of `@utype.parse`  and`@staticmethod`, as shown in
 
 ```python
 import utype
@@ -1034,7 +1028,7 @@ print(Power.cls_power('123', '321'))
 ```
 
 ### `@property`
-In the class, `@property` the decorator can be used to define the access, assignment, deletion and other operations of attributes in the form of functions, and utype also supports the access of attributes and the parsing of assignment functions.
+In the class, `@property` can be used to define the access, assignment, deletion and other operations of attributes in the form of functions, and utype also supports the access of attributes and the parsing of assignment functions.
 
 ```python
 import utype
@@ -1072,13 +1066,14 @@ except utype.exc.ParseError as e:
 	"""
 ```
 
-It can be seen that the attribute will be parsed according to the return type annotation of the attribute function during access, and will also be parsed according to the type of the first parameter of the assignment function during assignment. If the parsing cannot be completed during assignment or value taking, an error will be thrown.
+the property will be parsed according to the return type annotation of getter, and will also be parsed during assignment. If the parsing cannot be completed during assignment or getter calculation, an error will be thrown.
 
 !!! note
+	`@utype.parse` must under `@property` decorator
 
 ### Apply to entire class
 
- `@utype.parse` In addition to acting separately on the functions of a class, it can also decorate a class directly, with the effect of turning all non-private functions in the class (functions whose names do not begin with an underscore, excluding `@property`) into analytic functions, such as
+`@utype.parse` can also decorate a class directly, with the effect of turning all non-private functions in the class (functions whose names do not begin with an underscore, excluding `@property`) into analytic functions, such as
 
 ```python
 import utype
@@ -1111,29 +1106,30 @@ print(next(pow_iter))
 # > 2
 ```
 
-In `@utype.parse` a decorated class, all functions with names that do not begin with `_` will be used with the same parsing configuration, such as the generator function in `iter_int` the example.
+In `@utype.parse` decorated class, all functions with names that do not begin with `_` will be used with the same parsing configuration, such as the generator function in `iter_int` the example.
 
 !!! note
+	you can manually decorate the private function, just like the above example has decorated `__init__` manually
 
-Class decorators ** ** in utype
+**Class decorators in utype**
 
 Many of the decorators provided by utype can be applied to classes, but their roles are different.
 
-*  `@utype.apply`: Enforce constraints for custom types
-*  `@utype.parse`: Turn all public methods in the class (functions that do not begin with an underscore, not including `@property` properties) into parsing functions
-*  `@utype.dataclass` Generates key internal methods in the class (such as `__init__`, `__repr__` `__eq__`, etc.) That give the class the ability to parse initialized data, map initialized data, and assign values. And provide type resolution for the properties of a class, both normal and `@property` attributes
+* `@utype.apply`: Enforce constraints for custom types
+* `@utype.parse`: Turn all public methods in the class into parsing functions
+* `@utype.dataclass` Generates key internal methods in the class (such as `__init__`, `__repr__` `__eq__`, etc.) That give the class the ability to parse, map initialized data, and assign values. And provide type parsing for the properties of a class
 
 Since these decorators are independent of each other, you can use them in any combination you want.
 
 ### Applicable scenarios
 
-Compared with ordinary functions, utype performs additional type conversion, constraint checking and parameter mapping in the call of parsing functions, so it will certainly cause slight call delay, which can be ignored for a single call, but if you need to make a large number of frequent calls, the performance impact of parsing can not be ignored. So utype’s analytic functions are better suited to act on
+Compared with ordinary functions, utype performs additional type conversion, constraint validation and parameter mapping in the call of parsing functions, so it will certainly cause slight latency, which can be ignored for a single call, but if you need to make a large number of frequent calls, the performance impact of parsing can not be ignored. So utype’s analytic functions are better suited to be used at
 
 * Entry function of class library
-* API interface function of network programming
+* API function in network programming
 * Functions that integrate third-party interfaces or class libraries
 
 Because of the uncertainty of data from users, networks, or third parties, you can use utype in this layer as a guarantee of input validation and type safety. For internal functions in your system or class library that pass parameters more stably and call more frequently, you generally do not need to use utype’s parsing syntax.
 
- `@utype.parse` When decorating a class, the parsing capability is not applied to all methods, but only to public methods. The purpose of the mechanism is to allow developers to build such a mental model, that is, to suggest that public methods provided to users use the parsing capability provided by utype, while internal methods are judged according to actual needs.
+When  `@utype.parse` decorating a class, the parsing ability is not applied to all methods, but only to public methods. The purpose of the mechanism is to allow developers to build such a mental model, that is, to suggest that public methods provided to users use the parsing capability provided by utype, while internal methods are judged according to actual needs.
 

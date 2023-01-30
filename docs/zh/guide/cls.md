@@ -542,10 +542,10 @@ print(one_of_user([b'test', '1']))
 # > ('test', 1)
 ```
 
-我们将数据类 `User` 与 Tuple 嵌套类型进行了异或（XOR）逻辑运算（是的，你可以这么做，尽管 `Tuple[str, int]` 并不是一个类型，utype 会在运算时将其进行转化），使得输入既可以接受字典或 JSON 数据，也可以接受列表或元组数据，只要能够转化到声明的类型
+我们将数据类 `User` 与 Tuple 嵌套类型进行了异或（XOR）逻辑运算（是的，你可以这么做，尽管 `Tuple[str, int]` 并不是一个类型，utype 会在运算时将其进行转化），使得输入既可以接受字典或 JSON 数据（转化到 `User`），也可以接受列表或元组数据（转化到 `Tuple[str, int]` ）
 
 ### 用于函数
-数据类还可以用于函数中，作为函数参数或返回结果的类型提示，只需要函数使用 `@utype.parse` 装饰器
+数据类还可以用于函数中，作为函数参数或返回结果的类型注解，只需要函数使用 `@utype.parse` 装饰器
 
 ```python
 from utype import Schema, Field, parse
@@ -604,7 +604,7 @@ print(user.age)
 
 我们在数据类中声明了一个名为 `__options__` 的属性，并使用一个 Options 的实例进行赋值，参数中传入的就是解析选项
 
-在例子中我们配置的选项是 `addition=True`，表达的是保留字段范围之外的输入数据，解析配置中常用的选项包括：
+在例子中我们配置的选项是 `addition=True`，含义是保留数据类字段范围之外的额外输入，所以例子中不属于类字段的 `age` 和 `invite_code` 键值保留到了输出数据中，解析配置中常用的选项包括：
 
 * **数据处理选项**：`addition`，`max_params`，`min_params`，`max_depth` 等对输入数据的长度，深度等进行限制，并且指定超出字段范围的数据的行为
 * **错误处理选项**：`collect_errors`，`max_errors`，配置错误处理行为，比如是否收集所有的解析错误
@@ -655,7 +655,9 @@ except exc.CollectedParseError as e:
 !!! note
 	`addition` 选项默认为 None，表示忽略超出字段的输入，当 `addition=True` 时表示保留超出数据， `addition=False` 时表示遇到超出字段的输入会直接抛出错误
 
-除了声明 Options 实例的方式配置解析选项外，你还可以使用类的方式，如
+Options 还支持以下声明方式
+
+**类继承声明**
 ```python
 from utype import Schema, Options, Field
 
@@ -669,6 +671,15 @@ class LoginForm(Schema):
     password: str = Field(min_length=6, max_length=20)
 ```
 
+**类装饰器声明**
+```python
+from utype import Schema, Options
+
+@Options(addition=True)  
+class UserPreserve(Schema):  
+    name: str  
+    level: int = 0
+```
 
 #### 运行时解析选项
 除了在类声明中指定解析选项外，utype 还支持在数据类初始化（解析时）时传入一个解析选项来调节运行时的解析行为
@@ -788,7 +799,7 @@ except exc.ParseError as e:
 而且只有当你自定义了  `__init__` 函数，才能使用像例子中一样的顺序参数方式进行初始化
 
 !!! note
-	在自定义   `__init__` 函数后，是否支持运行时解析选项就由你的函数参数和逻辑决定了，只有当你在调用 `super().__init__` 方法时传入了 `__options__` 参数才能够支持运行时解析选项，所以在上面的例子中，PowerSchema 并不支持任何运行时解析选项
+	在自定义  `__init__` 函数后，是否支持运行时解析选项就由你的函数参数和逻辑决定了，只有当你在调用 `super().__init__` 方法时传入了 `__options__` 参数才能够支持运行时解析选项，所以在上面的例子中，PowerSchema 并不支持任何运行时解析选项
 
 ### 解析后的校验函数
 utype 除了支持通过自定义 `__init__` 函数来定制解析前的处理逻辑，还支持声明解析完成后的校验函数 `__validate__`，用法如下
@@ -813,89 +824,6 @@ class RequestSchema(Schema):
 ```
 我们声明了一个携带 HTTP 请求信息的 Schema 类，在其中定义了  `__validate__` 函数，其中执行了一些校验和赋值的逻辑
 
-### 注册转化器
-在 utype 中，所有类型都可以注册转化器函数，来定义从输入数据到调用类型的初始化函数间的转化逻辑，数据类作为一种类型也不例外
-
-默认的数据类转化函数如下
-
-```python
-@register_transformer(
-    attr="__parser__",
-    detector=lambda cls: isinstance(getattr(cls, "__parser__", None), ClassParser),
-)
-def transform(transformer, data, cls):
-    if not isinstance(data, Mapping):
-        # {} dict instance is a instance of Mapping too  
-        if transformer.no_explicit_cast:
-            raise TypeError(f"invalid input type for {cls}, should be dict or Mapping")
-        else:
-            data = transformer(data, dict)
-    if not transformer.context.vacuum:
-        parser: ClassParser = cls.__parser__
-    if parser.context.allowed_runtime_options:
-        # pass the runtime options  
-        data.update(__options__=transformer.context)
-    return cls(**data)
-```
-
-它的逻辑主要是
-1. 如果输入的数据不是字典或映射（Mapping）类型，则会先进行转化（比如可以完成 JSON 字符串到字典数据的转化）
-2. 如果数据类允许传入运行时解析选项，则会进行传递
-3. 最后使用转化好的数据调用数据类的初始化函数
-
-比如在如下的例子中
-```python
-from utype import Schema
-
-class MemberSchema(Schema):
-    name: str
-    level: int = 0
-
-class GroupSchema(Schema):
-	name: str
-	creator: MemberSchema
-  
-group = GroupSchema(name='test', creator='{"name": "Bob"}')  
-```
-
-GroupSchema 检测到 creator 字段传入的数据类型（字符串）并不符合声明的类型 MemberSchema 时，就会寻找期望类型 MemberSchema 的转化器函数，在找到后会将数据作为参数输入转换器函数，最终得到期望的类型实例
-
-!!! note
-	如果无法找到满足条件的转换器，这个类型将会按照解析选项 Options 中配置的 `unresolved_types` 策略处理，默认是直接抛出错误
-
-你可以为自己的数据类注册转化函数，来自定义不符合类型的数据是如何进行转化的。比如你可以选择拒绝所有不是该数据类实例的输入
-```python
-from utype import Schema, exc, register_transformer
-
-class StrictUser(Schema):
-    name: str
-    level: int = 0
-
-@register_transformer(StrictUser)  
-def transform(transformer, data, cls):  
-	raise TypeError('type mismatch')
-
-class GroupSchema(Schema):
-	name: str
-	creator: StrictUser
-
-try:
-	GroupSchema(name='test', creator='{"name": "Bob"}')  
-except exc.ParseError as e:
-	print(e)
-	"""
-	parse item: ['creator'] failed: type mismatch
-	"""
-```
-
-其中，转换器函数的的参数依序分别是
-
-1. 类型转换器 TypeTransformer 实例
-2. 输入数据
-3. 类型
-
-!!! note
-	转换器函数需要在解析发生前注册，才能在解析中生效
 
 ## 其他声明方式与参数
 
@@ -938,7 +866,7 @@ print(user)
 ```python
 import utype
 
-@utype.dataclass
+@utype.dataclass(set_class_properties=False)
 class UserA:  
     name: str = utype.Field(max_length=10)  
     age: int
@@ -965,9 +893,11 @@ print(UserB.age)
 # > <property object>
 ```
 
-默认 `set_class_properties=False` 的数据类的属性不会被影响，直接访问它会得到对应的属性值，如果属性值没有被定义，则会直接抛出一个 AttributeError，与普通的类的行为一致
+设置 `set_class_properties=False` 的数据类 UserA 的属性不会被影响，直接访问它会得到对应的属性值，如果属性值没有被定义，则会直接抛出一个 AttributeError，与普通的类的行为一致
 
-而在开启了 `set_class_properties=True` 后，所有的字段对应的类属性都会被重新赋值为一个 `property` 实例，使得实例中的字段属性的更新与删除变得可控，控制属性赋值的参数包括
+而在开启了 `set_class_properties=True` 后，所有的字段对应的类属性都会被重新赋值为一个 `property` 实例，使得实例中的字段属性的更新与删除变得可控（在属性赋值能够按照声明进行类型解析，在删除时能够按照 `required` 与 `immutable` 属性进行保护）
+
+除了上述默认的属性行为外，在 `@utype.dataclass` 装饰器中还提供了能够传入调控属性赋值与删除的钩子函数的参数，如
 
 * `post_setattr`：在实例的字段属性发生赋值（`setattr`）操作后调用这个函数，可以进行一些自定义的处理行为
 * `post_delattr`：在实例的字段属性发生删除（`delattr`）操作后调用这个函数，可以进行一些自定义的处理行为
@@ -975,9 +905,11 @@ print(UserB.age)
 !!! note
 	只有在开启 `set_class_properties=True` 时，传入 `post_setattr` 和 `post_delattr` 才有意义
 
-* `repr`：是否对类的 `__repr__` 与 `__str__` 方法进行改造，使得当你使用 `print(inst)` 或 `str(inst)`, `repr(inst)` 时，能够得到一个高可读性的输出，将数据类实例中的字段和对应值展示出来，默认为 True
-* `contains`：是否生成数据的  `__contains__` 函数，你可以使用 `name in instance` 来判断一个字段是否是在数据类中
-* `eq`：是否生成数据类的 `__eq__` 函数，使得数据相等的两个数据类实例会被 `inst1 == inst2`  判定相等
+装饰器还提供了一些调节类行为的函数生成选项
+
+* `repr`：是否生成类的 `__repr__` 与 `__str__` 方法，使得当你使用 `print(inst)` 或 `str(inst)`, `repr(inst)` 时，能够得到一个高可读性的输出，将数据类实例中的字段和对应值展示出来，默认为 True
+* `contains`：是否生成数据的  `__contains__` 函数，你可以使用 `name in instance` 来判断一个字段是否是在数据类中，默认为 False
+* `eq`：是否生成数据类的 `__eq__` 函数，使得数据相等的两个数据类实例会被 `inst1 == inst2`  判定相等，默认为 False
 
 另外还有控制解析器和解析选项的参数
 

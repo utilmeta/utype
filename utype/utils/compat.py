@@ -45,7 +45,11 @@ else:
         return _typing_get_origin(tp) or getattr(tp, "__origin__", None)
 
     def get_args(t) -> Tuple[Type[Any], ...]:
-        return _typing_get_args(t) or getattr(t, "__args__", ())
+        args = getattr(t, "__args__", ())
+        if args == ():
+            # typing.get_args(typing.Callable) will throw an error
+            return args
+        return _typing_get_args(t) or args
 
 
 try:

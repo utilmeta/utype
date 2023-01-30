@@ -239,9 +239,16 @@ class Second(Int):
     le = 59
 
 
-class SecondRule(Rule):
-    ge = 0
-    le = 59
+class Datetime(datetime, Rule):
+    pass
+
+
+class Date(date, Rule):
+    pass
+
+
+class Timedelta(timedelta, Rule):
+    pass
 
 
 class EmailStr(Str):

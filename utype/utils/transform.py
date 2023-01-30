@@ -2,7 +2,7 @@ import inspect
 import json
 import re
 from collections import deque
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from enum import Enum
@@ -251,7 +251,7 @@ class TypeTransformer:
 
     # register this metaclass earlier, because str/list/... is all subclass of Iterable
     # this is just a FALLBACK for the iterable/sequence that does not get resolved
-    @register_transformer(Sequence, Iterable)
+    @register_transformer(Sequence, Iterable, Iterator)
     def to_iter_types(self, data, t):
         if isinstance(data, t):
             # we will follow the type
