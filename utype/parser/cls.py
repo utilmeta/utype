@@ -9,7 +9,7 @@ from ..utils import exceptions as exc
 from ..utils.compat import is_classvar, is_final
 from ..utils.datastructures import unprovided
 from ..utils.functional import pop
-from ..utils.transform import TypeTransformer, register_transformer
+from ..utils.transform import TypeTransformer
 from .base import BaseParser
 from .field import ParserField
 from .func import FunctionParser
@@ -21,7 +21,7 @@ __all__ = ["ClassParser", "init_dataclass"]
 
 
 class ClassParser(BaseParser):
-    IGNORE_ATTR_TYPES = (staticmethod, classmethod, FunctionType, type)
+    # IGNORE_ATTR_TYPES = (staticmethod, classmethod, FunctionType, type)
     # if these type not having annotation, we will not recognize them as field
     function_parser_cls = FunctionParser
     fields: Dict[str, ParserField]
@@ -128,16 +128,17 @@ class ClassParser(BaseParser):
             if key in annotations:
                 continue
             if (
-                # attr is ...
                 # if this attr is a field in bases, this means to exclude this field in current class
                 # otherwise this attr declared that this field is never take from input
                 # or isinstance(attr, property)
                 self.is_class_internals(attr, attname=key, class_qualname=self.obj_name)
-                or isinstance(attr, self.IGNORE_ATTR_TYPES)
+                # or isinstance(attr, self.IGNORE_ATTR_TYPES)
                 # check class field name at last
                 # because this will check bases internals trying to find illegal override
                 or not self.validate_class_field_name(key)
             ):
+                # key is not consider a valid field
+                # and not
                 exclude_vars.add(key)
                 continue
             if key in exclude_vars:
@@ -524,7 +525,7 @@ def init_dataclass(
     return inst
 
 
-@register_transformer(
+@TypeTransformer.registry.register(
     attr="__parser__",
     detector=lambda cls: isinstance(getattr(cls, "__parser__", None), ClassParser),
 )

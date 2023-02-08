@@ -405,7 +405,7 @@ class Schema(dict, metaclass=LogicalMeta):
             )
         return super().popitem()
 
-    def pop(self, key: str):
+    def pop(self, key: str, default=unprovided):
         if self.__options__.immutable:
             raise exc.DeleteError(
                 f"{self.__class__}: "
@@ -422,7 +422,8 @@ class Schema(dict, metaclass=LogicalMeta):
             raise exc.DeleteError(
                 f"{self.__name__}: Attempt to delete required schema key: {repr(key)}"
             )
-        return super().pop(field.name)
+        args = () if unprovided(default) else (default,)
+        return super().pop(field.name, *args)
 
     def update(self, __m=None, **kwargs):
         if self.__options__.immutable:

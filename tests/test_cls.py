@@ -382,6 +382,7 @@ class TestClass:
 
         assert set(TestSchema.__parser__.fields) == {
             'r1', 'r2', 'r3', 'r4', 'r8', 'r9', 'r12', 'r13',
+            'r14', 'r15', # 'r16',  # new
             'r19', 'r20', 'r21', 'r22'
         }
 
@@ -437,6 +438,19 @@ class TestClass:
         with pytest.raises(Exception):
             class s(Schema):    # noqa
                 update: str = ""
+
+    def test_types(self):
+        class s(Schema):
+            a: Type[int]
+
+        with pytest.raises(exc.ParseError):
+            s(a=1)
+
+        with pytest.raises(exc.ParseError):
+            s(a=str)
+
+        assert s(a=bool).a == bool
+        assert s(a=int).a == int
 
     def test_functional_initialize_and_aliases(self, dfs):
         # test omit init

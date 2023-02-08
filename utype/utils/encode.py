@@ -1,57 +1,48 @@
 import decimal
-import inspect
 import uuid
 from collections.abc import Mapping
 from datetime import date, datetime, time, timedelta
 from enum import Enum
 from typing import Union
-
-DEFAULT_DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
-DEFAULT_DATE_FORMAT = "%Y-%m-%d"
-DEFAULT_TIME_FORMAT = "%H:%M:%S"
-
-__encoders__ = {}
+from .base import TypeRegistry
+import json
+from .datastructures import unprovided
 
 
-def register_encoder(*classes, attr=None, detector=None, allow_subclasses: bool = True):
-    signature = (*classes, attr, detector)
+encoder_registry = TypeRegistry('encoder', cache=True, shortcut='__encoder__')
+register_encoder = encoder_registry.register
 
-    if not detector:
-        if not classes and not attr:
-            raise ValueError(
-                f"register_transformer must provide any of classes, attr, detector"
-            )
 
-        for c in classes:
-            assert inspect.isclass(
-                c
-            ), f"register_transformer classes must be class, got {c}"
+class JSONEncoder(json.JSONEncoder):
+    def default(self, o):
+        encoder = encoder_registry.resolve(type(o))
+        if encoder:
+            return encoder(o)
+        return super().default(o)
 
-        if attr:
-            assert isinstance(
-                attr, str
-            ), f"register_transformer classes must be str, got {attr}"
 
-        def detector(_cls):
-            if classes:
-                if allow_subclasses:
-                    if not issubclass(_cls, classes):
-                        return False
-                else:
-                    if _cls not in classes:
-                        return False
-            if attr and not hasattr(_cls, attr):
-                return False
-            return True
+class JSONSerializer:
+    """
+    Simple wrapper around json to be used in signing.dumps and
+    signing.loads.
+    """
+    encoder_cls = JSONEncoder
+    charset = 'utf-8'
+    separators = (',', ':')
+    ensure_ascii = False
+    skipkeys = True
 
-    def decorator(f):
-        __encoders__[signature] = (detector, f)
-        return f
+    def dumps(self, obj):
+        return json.dumps(
+            obj,
+            separators=self.separators,
+            cls=self.encoder_cls,
+            ensure_ascii=self.ensure_ascii,
+            skipkeys=self.skipkeys
+        ).encode(self.charset)
 
-    # before runtime, type will be compiled and applied
-    # if transformer is defined after the validator compiled
-    # it will not take effect
-    return decorator
+    def loads(self, data: bytes):
+        return json.loads(data.decode(self.charset))
 
 
 def duration_iso_string(duration: timedelta):
@@ -78,34 +69,32 @@ def duration_iso_string(duration: timedelta):
 
 
 @register_encoder(Mapping)
-def from_mapping(encoder, data):
+def from_mapping(data):
     return dict(data)
 
 
+@register_encoder(unprovided.__class__)
+def from_unprovided(data):
+    return None
+
+
 @register_encoder(bytes)
-def from_bytes(encoder, data: bytes):
+def from_bytes(data: bytes):
     return data.decode("utf-8", errors="replace")
 
 
 @register_encoder(date)
-def from_datetime(encoder, data: Union[datetime, date]):
-    # time_config = get_config(Time)
-    # if isinstance(data, datetime):
-    #     if time_config.datetime_format:
-    #         return data.strftime(DA)
-    # else:
-    #     if time_config.date_format:
-    #         return data.strftime(time_config.date_format)
+def from_datetime(data: Union[datetime, date]):
     return data.isoformat()
 
 
 @register_encoder(timedelta)
-def from_duration(encoder, data: timedelta):
+def from_duration(data: timedelta):
     return duration_iso_string(data)
 
 
 @register_encoder(time)
-def from_time(encoder, data: time):
+def from_time(data: time):
     r = data.isoformat()
     if data.microsecond:
         r = r[:12]
@@ -113,20 +102,20 @@ def from_time(encoder, data: time):
 
 
 @register_encoder(uuid.UUID)
-def from_uuid(encoder, data: uuid.UUID):
+def from_uuid(data: uuid.UUID):
     return str(data)
 
 
 @register_encoder(decimal.Decimal)
-def from_decimal(encoder, data: decimal.Decimal):
+def from_decimal(data: decimal.Decimal):
     return float(data) if data.is_normal() else str(data)
 
 
 @register_encoder(Enum)
-def from_enum(encoder, en: Enum):
+def from_enum(en: Enum):
     return en.value
 
 
-@register_encoder(attr="__iter__")
-def from_iterable(encoder, data):
-    return list(data)
+# @register_encoder(attr="__iter__")
+# def from_iterable(encoder, data):
+#     return list(data)

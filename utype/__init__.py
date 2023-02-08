@@ -5,8 +5,10 @@ from .parser.rule import Lax, Rule
 from .schema import DataClass, LogicalMeta, Schema
 from .utils import exceptions as exc
 from .utils.encode import register_encoder
-from .utils.transform import (TypeTransformer, register_transformer,
-                              type_transform)
+from .utils.transform import (TypeTransformer, type_transform)
+
+register_transformer = TypeTransformer.registry.register
+
 
 VERSION = (0, 2, 1, None)
 

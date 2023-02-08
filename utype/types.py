@@ -64,8 +64,8 @@ class Str(str, Rule):
     pass
 
 
-class Bool(str, Rule):
-    pass
+class Bool(Rule):
+    __origin__ = bool
 
 
 class Null(Rule):

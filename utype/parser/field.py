@@ -1120,6 +1120,12 @@ class ParserField:
 
             else:
                 no_output = True
+        else:
+            if unprovided(default) and isinstance(annotation, type):
+                # if field use @field to decorate a type
+                # and using this type like <var: t> without a default
+                # then the __field__ prop will be detected and used as the field
+                field = getattr(annotation, '__field__', None)
 
         final = is_final(annotation)
         if final:

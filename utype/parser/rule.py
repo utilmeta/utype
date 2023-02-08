@@ -14,7 +14,7 @@ from ..utils.compat import (ForwardRef, Literal, evaluate_forward_ref,
                             get_args, get_origin)
 from ..utils.datastructures import unprovided
 from ..utils.functional import multi, pop
-from ..utils.transform import TypeTransformer, register_transformer
+from ..utils.transform import TypeTransformer
 from .options import RuntimeContext
 
 T = typing.TypeVar("T")
@@ -1145,6 +1145,7 @@ class Rule(metaclass=LogicalType):
             cls.__abstract__ = bool(
                 getattr(cls.__origin__, "__abstractmethods__", None)
             )
+
             cls.__origin_transformer__ = cls.transformer_cls.resolver_transformer(
                 cls.__origin__
             )
@@ -1601,6 +1602,8 @@ class Rule(metaclass=LogicalType):
             if issubclass(cls.__origin__, tuple) and not cls.__ellipsis_args__:
                 return cls._parse_tuple_args
             return cls._parse_seq_args
+        elif cls.__origin__ == type:
+            return cls._parse_type_arg
         return None
 
     @classmethod
@@ -1714,21 +1717,31 @@ class Rule(metaclass=LogicalType):
             result[key] = value
         return result
 
+    @classmethod
+    def _parse_type_arg(cls, value, context: RuntimeContext):
+        type_cls = cls.__args__[0]
+        if issubclass(value, type_cls):
+            return value
+        context.handle_error(exc.InvalidSubclass(
+            type=type_cls, value=value
+        ))
+        return value
+
 
 if isinstance(Callable, type):
-    @register_transformer(Callable, allow_subclasses=False)
+    @TypeTransformer.registry.register(Callable, allow_subclasses=False)
     def transform_callable(transformer: TypeTransformer, value, t):
         if not callable(value):
             raise TypeError
         return value
 
 if isinstance(Any, type):
-    @register_transformer(Any, allow_subclasses=False)
+    @TypeTransformer.registry.register(Any, allow_subclasses=False)
     def transform_callable(transformer: TypeTransformer, value, t):
         # accept any value
         return value
 
 
-@register_transformer(metaclass=LogicalType)
+@TypeTransformer.registry.register(metaclass=LogicalType)
 def transform_rule(transformer: TypeTransformer, value, t: LogicalType):
     return t(value, context=transformer.context)

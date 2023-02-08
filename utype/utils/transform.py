@@ -1,4 +1,3 @@
-import inspect
 import json
 import re
 from collections import deque
@@ -12,72 +11,12 @@ from uuid import UUID
 from .compat import ForwardRef
 from .exceptions import TypeMismatchError
 from .functional import multi
+from .base import TypeRegistry
 
 if TYPE_CHECKING:
     from ..parser.options import RuntimeContext
 
 T = TypeVar("T")
-
-__transformers__ = []
-__cache__ = {}
-
-
-def register_transformer(
-    *classes,
-    attr=None,
-    detector=None,
-    metaclass=None,
-    to=None,  # register to a specific type transformer class
-    allow_subclasses: bool = True,
-    priority: int = 0,
-):
-    # detect class by issubclass or hasattr
-    # this method can override
-    # the latest function will have the final effect
-    # signature = (*classes, attr, detector)
-
-    if not detector:
-        if not classes and not attr and not metaclass:
-            raise ValueError(
-                f"register_transformer must provide any of classes, metaclass, attr, detector"
-            )
-
-        for c in classes:
-            assert inspect.isclass(
-                c
-            ), f"register_transformer classes must be class, got {c}"
-
-        if attr:
-            assert isinstance(
-                attr, str
-            ), f"register_transformer classes must be str, got {attr}"
-
-        def detector(_cls):
-            if classes:
-                if allow_subclasses:
-                    if not issubclass(_cls, classes):
-                        return False
-                else:
-                    if _cls not in classes:
-                        return False
-            if metaclass:
-                if not isinstance(_cls, metaclass):
-                    return False
-            if attr and not hasattr(_cls, attr):
-                return False
-            return True
-
-    def decorator(f):
-        global __transformers__
-        __transformers__.insert(0, (detector, f, to, priority))
-        if priority:
-            __transformers__.sort(key=lambda v: -v[3])
-        return f
-
-    # before runtime, type will be compiled and applied
-    # if transformer is defined after the validator compiled
-    # it will not take effect
-    return decorator
 
 
 class DateFormat:
@@ -98,7 +37,10 @@ class DateFormat:
 
 
 class TypeTransformer:
-    CACHE_TRANSFORMERS = True
+    registry = TypeRegistry('transformer', shortcut='__transformer__', cache=True)
+    
+    # ----- preferences
+    # can be override
     DATETIME_FORMATS = [
         v for k, v in DateFormat.__dict__.items() if k.startswith("DATE")
     ]
@@ -167,28 +109,7 @@ class TypeTransformer:
 
     @classmethod
     def resolver_transformer(cls, t: type) -> Optional[Callable]:
-        # resolve to it's subclass if both subclass and baseclass is provided
-        # like Schema type will not resolve to dict
-        if hasattr(t, "__transformer__") and callable(t.__transformer__):
-            # this type already got a callable transformer, do not resolve then
-            return t.__transformer__
-        global __cache__
-        if cls.CACHE_TRANSFORMERS and t in __cache__:
-            return __cache__[t]
-        for detector, trans, to, priority in __transformers__:
-            if to and not issubclass(cls, to):
-                # like user want to subclass the TypeTransformer and register a function that only applies
-                # to that subclass (not affecting the other types who use base class)
-                # @register_transformer(to=CustomTypeTransformer)
-                continue
-            try:
-                if detector(t):
-                    if cls.CACHE_TRANSFORMERS:
-                        __cache__[t] = trans
-                    return trans
-            except (TypeError, ValueError):
-                continue
-        return None
+        return cls.registry.resolve(t)
 
     def _attempt_from(self, value):
         if self.no_explicit_cast:
@@ -238,7 +159,7 @@ class TypeTransformer:
     # if isinstance(data, *_type_classes):
     #     return t(data)
 
-    @register_transformer(type(None), allow_subclasses=False)
+    @registry.register(type(None), allow_subclasses=False)
     def to_null(self, data, t=type(None)) -> None:
         if data is None:
             return None
@@ -251,7 +172,7 @@ class TypeTransformer:
 
     # register this metaclass earlier, because str/list/... is all subclass of Iterable
     # this is just a FALLBACK for the iterable/sequence that does not get resolved
-    @register_transformer(Sequence, Iterable, Iterator)
+    @registry.register(Sequence, Iterable, Iterator)
     def to_iter_types(self, data, t):
         if isinstance(data, t):
             # we will follow the type
@@ -262,7 +183,7 @@ class TypeTransformer:
         # if type is still abstracted, just returning the list result
         return value
 
-    @register_transformer(Mapping)
+    @registry.register(Mapping)
     def to_mapping(self, data, t):
         if isinstance(data, t):
             # we will follow the type
@@ -272,7 +193,7 @@ class TypeTransformer:
             return t(value)
         return value
 
-    @register_transformer(str)
+    @registry.register(str)
     def to_str(self, data, t: Type[str] = str) -> str:
         if isinstance(data, str):
             return t(data)
@@ -281,7 +202,7 @@ class TypeTransformer:
             raise TypeError
         return t(data)
 
-    @register_transformer(bytes, bytearray, memoryview)
+    @registry.register(bytes, bytearray, memoryview)
     def to_bytes(self, data, t: Type[bytes] = bytes):
         data = self._attempt_from(data)
 
@@ -298,7 +219,7 @@ class TypeTransformer:
 
         return t(str(data).encode())
 
-    @register_transformer(list, tuple, set, frozenset, deque)
+    @registry.register(list, tuple, set, frozenset, deque)
     def to_array_types(self, data, t=list):
         if isinstance(data, t):
             return data
@@ -354,7 +275,7 @@ class TypeTransformer:
         return t([data])
         # return t(data)
 
-    @register_transformer(dict)
+    @registry.register(dict)
     def to_dict(self, data, t=dict) -> dict:
         if isinstance(data, t):
             return data
@@ -431,7 +352,7 @@ class TypeTransformer:
         return t(data)
 
     # bool is a subclass of int
-    @register_transformer(float)
+    @registry.register(float)
     def to_float(self, data, t: Type[float] = float) -> float:
         if isinstance(data, float):
             return t(data)
@@ -444,7 +365,7 @@ class TypeTransformer:
 
         return t(data)
 
-    @register_transformer(int)
+    @registry.register(int)
     def to_integer(self, data, t: Type[int] = int) -> int:
         if isinstance(data, int):
             # including bool:
@@ -471,7 +392,7 @@ class TypeTransformer:
 
         return t(data)
 
-    @register_transformer(Decimal)
+    @registry.register(Decimal)
     def to_decimal(self, data, t: Type[Decimal] = Decimal) -> Decimal:
         if isinstance(data, Decimal):
             return t(data)  # noqa
@@ -485,7 +406,7 @@ class TypeTransformer:
 
         return t(str(data).strip())  # noqa
 
-    @register_transformer(complex)
+    @registry.register(complex)
     def to_complex(self, data, t=complex) -> complex:
         if isinstance(data, t):
             return data
@@ -502,7 +423,7 @@ class TypeTransformer:
 
         return t(data)
 
-    @register_transformer(bool)  # after int
+    @registry.register(bool)  # after int
     def to_bool(self, data, t=bool) -> bool:
         if isinstance(data, bool):
             return t(data)
@@ -525,7 +446,7 @@ class TypeTransformer:
             raise TypeError
         return bool(data)
 
-    @register_transformer(
+    @registry.register(
         date, allow_subclasses=False
     )  # datetime is a subclass of date
     def to_date(self, data, t: Type[date] = date) -> date:
@@ -542,7 +463,7 @@ class TypeTransformer:
                 raise ValueError(f"Invalid date: {data}, got time part: {dt.time()}")
         return dt.date()
 
-    @register_transformer(datetime)
+    @registry.register(datetime)
     def to_datetime(self, data, t: Type[datetime] = datetime) -> datetime:
         if isinstance(data, t):
             return data
@@ -557,7 +478,7 @@ class TypeTransformer:
         else:
             while abs(num) > self.MS_WATERSHED:
                 num /= 1000
-            return t.fromtimestamp(num).replace(tzinfo=timezone.utc)
+            return t.utcfromtimestamp(num).replace(tzinfo=timezone.utc)
 
         data = self._from_byte_like(data)
 
@@ -572,7 +493,7 @@ class TypeTransformer:
 
         raise TypeError
 
-    @register_transformer(timedelta)
+    @registry.register(timedelta)
     def to_timedelta(self, data, t: Type[timedelta] = timedelta) -> timedelta:
         if isinstance(data, t):
             return data
@@ -614,7 +535,7 @@ class TypeTransformer:
             )
         raise TypeError
 
-    @register_transformer(time)
+    @registry.register(time)
     def to_time(self, data, t: Type[time] = time) -> time:
         if isinstance(data, t):
             return data
@@ -629,7 +550,7 @@ class TypeTransformer:
             return t.fromisoformat(data)
         raise TypeError
 
-    @register_transformer(UUID)
+    @registry.register(UUID)
     def to_uuid(self, data, t: Type[UUID] = UUID) -> UUID:
         if isinstance(data, t):
             return data
@@ -656,7 +577,7 @@ class TypeTransformer:
 
     # enum should be the last of current types
     # because Enum subclass may inherit other base
-    @register_transformer(Enum)
+    @registry.register(Enum)
     def to_enum(self, data, t: Type[Enum]) -> Enum:
         if isinstance(data, t):
             return data
@@ -670,6 +591,12 @@ class TypeTransformer:
             if type(data) != member_type:
                 data = self(data, member_type)
         return t(data)  # noqa
+
+    @registry.register(type, allow_subclasses=False)
+    def to_type(self, data, t=type) -> type:
+        if not isinstance(data, type):
+            raise TypeError('data is not a type')
+        return data
 
     def handle_unresolved(self, data, t):
         if isinstance(t, type) and isinstance(data, t):

@@ -5,13 +5,13 @@ from decimal import Decimal
 from enum import Enum
 from typing import Iterable
 from uuid import UUID
-
 import pytest
 
 import utype
 from utype import Options
-from utype.utils.transform import (DateFormat, TypeTransformer,
-                                   register_transformer)
+from utype import TypeTransformer, register_transformer
+from utype.utils.encode import JSONEncoder, JSONSerializer
+from utype.utils.transform import DateFormat
 
 
 class TestType:
@@ -261,22 +261,25 @@ class TestType:
                           ("2022-01-02", datetime(2022, 1, 2), True, True),
                           # ('10:20:30', datetime(1900, 1, 1, 10, 20, 30), True, True),       # no standard behaviour
                           (dt.date(), datetime(2022, 1, 2), True, True),
-                          (dt.timestamp(), dt.replace(tzinfo=timezone.utc), True, True),
-                          (int(dt.timestamp()), dt.replace(tzinfo=timezone.utc), True, True),
+                          (dt.timestamp(), dt.astimezone(timezone.utc), True, True),
+                          (int(dt.timestamp()), dt.astimezone(timezone.utc), True, True),
                           # str / bytes timestamp to datetime in consider explicit cast
                           # this behaviour leave to further discussion
                           (
                               str(dt.timestamp() * 1000),
-                              dt.replace(tzinfo=timezone.utc),
+                              dt.astimezone(timezone.utc),
                               False,
                               True,
                           ),
                           (
                               str(dt.timestamp() * 1000).encode(),
-                              dt.replace(tzinfo=timezone.utc),
+                              dt.astimezone(timezone.utc),
+                              # !!!! NOT REPLACE, BUT AS TIMEZONE
+                              # dt.replace(tzinfo=timezone.utc),
                               False,
                               True,
                           ),
+                          (0, datetime.utcfromtimestamp(0).replace(tzinfo=timezone.utc), True, True)
                       ],
             timedelta: [
                 (0, timedelta(seconds=0), True, True),
@@ -496,7 +499,21 @@ class TestType:
         pass
 
     def test_encode(self):
-        pass
+        class en(Enum):
+            c = 1
+            d = 2
+
+        data = {
+            'dt': datetime(2000, 1, 1, 12, 13, 14, 1234),
+            'date': date(2000, 1, 1),
+            'time': time(12, 13, 14, 1234),
+            'dur': timedelta(days=1, seconds=10, microseconds=123),
+            'dc': Decimal('10.23'),
+            'en': en(2)
+        }
+        res = JSONSerializer().dumps(data)
+        assert res == b'{"dt":"2000-01-01T12:13:14.001234","date":"2000-01-01",' \
+                      b'"time":"12:13:14.001","dur":"P1DT00H00M10.000123S","dc":10.23,"en":2}'
 
     # def test_vendor(self):
     #     from utype import register_transformer
