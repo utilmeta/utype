@@ -156,7 +156,7 @@ class File:
 
 === "Python 3.10 以上"
 	```python
-	password_dict: Dict[str, str] = {}
+	password_dict: dict[str, str] = {}
 	# pretend this is a database that stores user passwords
 	
 	def login(username: str, password: str) -> dict[str, str] | None:

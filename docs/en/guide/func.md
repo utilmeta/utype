@@ -172,13 +172,14 @@ print(alice)
 ```
 
 As you can see
+
 1. The type of the input data is converted to the type of the corresponding function parameter declaration
 2. If the input data does not satisfy the constraints of the function arguments, an error is thrown containing position and reason of the error.
 3. Because `avatar` specified `alias_from` containing `'headImg'`, we can also correctly identify and convert it into a `avatar` parameter by using `'headImg'` as a parameter name.
 4. Since `signup_time` is specified `no_input=True`, even if the corresponding field is passed in, it will be ignored and the current time will be filled in according to `default_factory`
 
 !!! note
-	`Param` is actually a subclass of `Field` with more simplify and convenient params for function, so you can still get the detail usage of `Param` in [Field API References](/en/references/field)
+	`Param` is actually a subclass of `Field` with more simplify and convenient params for function, so you can still get the detail usage of `Param` in [Field API References](/references/field)
 
 ### Parameter restrictions
 Characteristics of the function brings more restrictions to declare the field configuration in the function than in the dataclass. Let’s take a look.
@@ -784,7 +785,7 @@ There are some params in `@utype.parse` decorator to control the parsing of the 
 
 * `ignore_params`: Whether to ignore the parsing of function parameters. The default is False. If it is enabled, utype will not perform type conversion and constraint validation on function parameters.
 * `ignore_result`: Whether to ignore the parsing of function return values. The default is False. If it is enabled, utype will not perform type conversion and constraint validation on function return values.
-* `options`: Pass in a parsing option to control the parsing behavior. Please refer to the specific usage in  [Options API References](/en/references/options).
+* `options`: Pass in a parsing option to control the parsing behavior. Please refer to the specific usage in  [Options API References](/references/options).
 
 The following is an example of the use of the parse configuration
 ```python

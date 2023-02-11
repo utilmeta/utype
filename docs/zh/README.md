@@ -19,7 +19,7 @@
 
 utype 是一个基于 Python 类型注解的数据类型声明与解析库，能够在运行时根据你的声明对类与函数的参数进行解析转化
 
-* 版本：`0.2.1`【测试】
+* 版本：`0.2.2`【测试】
 * 作者：<a href="https://github.com/voidZXL" target="_blank">@voidZXL</a>
 * 协议：Apache 2.0
 * 代码：<a href="https://github.com/utilmeta/utype" target="_blank">https://github.com/utilmeta/utype</a>
@@ -92,7 +92,7 @@ pip install -U utype
 
 ### 类型与约束
 
-utype 支持方便地为类型施加约束，你可以使用常见的约束任意构造约束类型
+utype 支持方便地为类型施加约束，你可以使用常用的约束条件（比如大小，长度，正则等）构造约束类型
 ```Python
 from utype import Rule, exc
 
@@ -114,7 +114,7 @@ except exc.ParseError as e:
 
 ### 解析 JSON 数据
 
-utype 支持将字典或 JSON 数据转化为类实例，类似与 `pydantic` 和 `attrs` ，如
+utype 支持将字典或 JSON 数据转化为类实例，类似于 `pydantic` 和 `attrs` ，如
 ```python
 from utype import Schema, Field, exc
 from datetime import datetime
@@ -194,7 +194,7 @@ except utype.exc.ParseError as e:
 !!! success
 	使用这样的用法你可以在开发中轻松获得 IDE （如  Pycharm, VS Code）的类型检查与代码补全
 
-utype 不仅支持解析普通函数，还支持生成器函数，异步函数和异步生成器函数，它们的用法都是一致的，只需要正确地使用对应的类型注解
+utype 不仅支持解析普通函数，还支持解析生成器函数，异步函数和异步生成器函数，它们的用法都是一致的，只需要正确地进行类型注解
 ```python
 import utype  
 import asyncio  
@@ -251,7 +251,7 @@ print(one_of_user([b'test', '1']))
 # > ('test', 1)
 ```
 
-例子中使用了 `^` 异或符号对 utype 数据类 `User` 和嵌套类型 `Tuple[str, int]` 进行逻辑组合，新的逻辑类型就获得了将数据转换为其中一种类型的能力
+例子中使用了 `^` 异或符号对 utype 数据类 `User` 和嵌套类型 `Tuple[str, int]` 进行逻辑组合，组合得到的逻辑类型就可以转把数据转化为 `User` 或 `Tuple[str, int]` 实例
 
 ### 类型的注册扩展
 由于每个项目需要的类型转化方式和校验严格程度可能不同，在 utype 中，所有的类型都是支持自行注册和扩展转化函数，如

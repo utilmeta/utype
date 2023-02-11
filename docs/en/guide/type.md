@@ -156,7 +156,7 @@ You can also use type annotation for function arguments and return value in the 
 
 === "Python 3.10 and above"
 	```python
-	password_dict: Dict[str, str] = {}
+	password_dict: dict[str, str] = {}
 	# pretend this is a database that stores user passwords
 	
 	def login(username: str, password: str) -> dict[str, str] | None:
@@ -256,7 +256,7 @@ utype supports declarative constraints. including
 * **Array constraints**: constrain element uniqueness, contained types for list values ( `unique_items`, `contains`)
 
 !!! note
-	For more elaborated constraint params, please refer to [Rule - constrain type](/references/rule)
+	For more elaborated constraint params, please refer to [Rule API References](/references/rule)
 
 These built-in constraints can basically cover most use cases, In addition, utype also supports custom constraints and custom verification logic, which we will introduce later.
 

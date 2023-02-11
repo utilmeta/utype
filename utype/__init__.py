@@ -10,7 +10,7 @@ from .utils.transform import (TypeTransformer, type_transform)
 register_transformer = TypeTransformer.registry.register
 
 
-VERSION = (0, 2, 1, None)
+VERSION = (0, 2, 2, None)
 
 
 def _get_version():

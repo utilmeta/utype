@@ -12,13 +12,13 @@
 无显式类型转化的含义是尽量不发生预期之外的类型转化，实现上会将类型按照基本类型分组
 
 1. `null`：None
-2. `boolean`：0，1,  True, False
+2. `boolean`：0, 1, True, False
 3. `number`：int/float/decimal 等数字
 4. `string`：str/bytes/bytearray 等字符串与二进制字节
 5. `array`：list/tuple/set
 6. `object`：dict/mapping
 
-开启这个选项后，同组的类型之间可以互相转化，不同组的类型之间不能相互转化，但存在一定的特例，比如 Decimal（定点数） 允许从 str 转化，因为从浮点数转化会出现失真；datetime 等类型也支持从日期字符串与时间戳转化，因为没有更原生的类型表达方式
+开启 `no_explicit_cast` 后，同组的类型之间可以互相转化，不同组的类型之间不能相互转化，但存在一定的特例，比如 Decimal（定点数） 允许从 str 转化，因为从浮点数转化会出现失真；datetime 等类型也支持从日期字符串与时间戳转化，因为没有更原生的类型表达方式
 
 我们举例来说明以下，默认情况下，utype 允许字符串到列表/字典的转化，前提是满足某些模式，比如
 ```python
@@ -45,10 +45,10 @@ except TypeError:
 	pass
 	
 print(type_transform((1, 2), list, options=Options(no_explicit_cast=True)))
-# [1, 2]
+# > [1, 2]
 ```
 
- * `no_data_loss`：无信息损耗，默认为 False
+ * `no_data_loss`：不允许转化中发生信息损耗，默认为 False
 
 默认情况下我们允许在类型转化中存在信息的损耗，比如
 
@@ -80,7 +80,7 @@ except TypeError:
 只接受没有信息损失的转化，比如
 
  1. `bool`：只接受 `True`, `False`, `0`, `1` 和一些明显表示布尔值的字符串，如 `'true'`，`'f'`，`'no'` 等
- 2. `int`：不接受有有效小数位的 `float` 和 `Decimal`
+ 2. `int`：不接受有有效小数位的 `float` 和 `Decimal`，比如 `3.14`
  3. `date`：不接受从 `datetime` 或包含时分秒部分的字符串进行转化
 
 !!! note
@@ -88,7 +88,7 @@ except TypeError:
 
 ### 未知类型的处理
 
-如果一个类型无法在 utype 中找到匹配的转换器（包括由开发者自行注册的转换器）就会被称为未知类型，对于未知类型的转化处理（与输入数据不匹配），utype 在解析选项 Options 中提供的配置参数位
+如果一个类型无法在 utype 中找到匹配的转换器（包括由开发者自行注册的转换器）就会被称为未知类型，对于未知类型的转化处理（与输入数据不匹配），utype 在解析选项 Options 中提供的配置参数为
 
 * `unresolved_types`：指定处理未知类型的行为，它有几个取值
 
@@ -110,37 +110,21 @@ class MySchema(Schema):
       
     inst: MyClass = None  
   
-data = MySchema(cls=3)
+data = MySchema(inst=3)
 
 print(data.inst.value)
 # > 3
 ```
 
-### 定制转化器类
-
-在 utype 中，有一个负责类型转化的转换器类 TypeTransformer，你可以通过继承它来扩展和定制
-
-```python
-from utype import TypeTransformer
-
-class MyTransformer(TypeTransformer):
-	def __call__(self, data, t: type):
-		# your custom logic
-		pass
-```
-
-Options 提供了一个参数能够指定一个转换器类
-
-* `transformer_cls`：指定一个转换器类，解析选项所作用的函数或数据类都会使用整个类对类型进行转化
 
 ## 数据处理选项
 
-Options 提供了一些选项用于对于函数的参数以及数据类的输入数据进行调控或检测，包括
+Options 提供了一些选项用于对函数的参数以及数据类的输入数据进行整体调控或限制，包括
 
 * `addition`：调控超出声明范围之外的参数，有几个选项可以指定
 
 	1. `None`：默认选项，直接忽略，不进行接收和处理
-	2. `True`：接受额外的参数
+	2. `True`：接受额外的参数作为数据的一部分
 	3. `False`：禁止额外参数，如果输入中包含额外参数，则直接抛出错误
 	4. `<type>`：指定一个类型，表示额外参数的值都需要转化到这个类型
 
@@ -252,18 +236,18 @@ except exc.ParamsExceedError as e:
 
 `max_params` / `min_params` 是在所有的字段解析开始之前对输入数据进行的校验，其中 `max_params` 是为了避免输入数据过大而耗费解析资源。而  `max_length` / `min_length` 在作用于数据类中，是用于在所有字段解析结束后，用于限制 **输出** 的数据的长度
 
-并且 `max_params` / `min_params` 可以用于限制函数参数的输入， `max_length` / `min_length` 只能限制普通类型和数据类
+并且 `max_params` / `min_params` 可以用于限制函数参数的输入，`max_length` / `min_length` 只能限制普通类型和数据类
 
 
 ## 错误处理
 
 Options 提供了一系列错误处理选项，用于控制解析错误的行为，包括
 
-* `collect_errors`：是否收集所有的错误，默认位 False
+* `collect_errors`：是否收集所有的错误，默认为 False
 
 utype 对于数据类和函数的参数在解析时，如果发现出错的数据（无法完成类型转化或者无法满足约束），当 `collect_errors=False` 时，会直接将错误作为 `exc.ParseError` 进行抛出，也就是 ”快速失败“ 策略
 
-但当  `collect_errors=True` 时，utype 会继续解析，并继续收集遇到的错误，当输入数据解析完毕后再将这些错误合并位一个  `exc.CollectedParseError` 进行抛出，从这个合并错误中能够获取到所有的输入数据错误信息
+但当 `collect_errors=True` 时，utype 会继续解析，并继续收集遇到的错误，当输入数据解析完毕后再将这些错误合并位一个  `exc.CollectedParseError` 进行抛出，从这个合并错误中能够获取到所有的输入数据错误信息
 
 ```python
 from utype import Schema, Options, Field, exc
@@ -300,7 +284,7 @@ except exc.CollectedParseError as e:
 	当然，在 `collect_errors=True` 时，应对非法输入的性能会有适当下降，这样的配置更适合在调试期间使用，方便定位输入错误
 
 
-* `max_errors`：在收集错误 `collect_errors=True` 模式下，设置一个错误数量阈值，如果错误数量达到这个阈值，则不再继续收集，而是直接将当前错误合并抛出
+* `max_errors`：在收集错误 `collect_errors=True` 模式下，设置一个错误数量阈值，如果错误数量达到这个阈值，则不再继续收集，而是直接将当前收集到的错误合并抛出
 
 ```python
 from utype import Schema, Options, Field, exc
@@ -335,11 +319,11 @@ except exc.CollectedParseError as e:
 
 ### 非法数据处理
 
-除了整体性的错误错误策略外，Options 还提供了针对不同类型元素的错误处理策略
+除了整体性的错误错误策略外，Options 还提供了针对特定种类元素的错误处理策略
 
-* `invalid_items`：对于列表/集合/元组中的元组，如何处置其中的非法元素
-* `invalid_keys`：对于字典/映射中的键，如何处置其中的非法元素
-* `invalid_values`：对于字典/映射中的值，如何处置其中的非法元素
+* `invalid_items`：如何处置列表/集合/元组中的非法元素
+* `invalid_keys`：如何处置字典/映射中非法的键
+* `invalid_values`：如何处置字典/映射中非法的值
 
 这些配置都有着一样的可选项
 
@@ -387,7 +371,7 @@ print(index)
 
 ## 字段行为调节
 
-Options 提供了一些选项用于调节字段的行为
+Options 提供了一些用于调节字段的行为的选项，包括
 
 * `ignore_required`：忽略必传参数，也就是将所有的参数都变为可选参数
 * `no_default`：忽略默认值，没有提供的参数不会出现在数据中
@@ -405,7 +389,7 @@ Options 提供了一些选项用于调节字段的行为
 
 Options 还提供了一些用于控制字段名称和别名的选项
 
-* `case_insensitive`：是否否大小写不敏感地接收参数，默认为 False
+* `case_insensitive`：是否大小写不敏感地接收参数，默认为 False
 * `alias_generator`：指定一个用于为没有指定 `alias` 的字段生成输出别名的函数
 * `alias_from_generator`：指定一个用于为没有指定 `alias_from` 的字段生成输入别名的函数
 * `ignore_alias_conflicts`：是否忽略输入数据中的别名冲突，默认为 False
@@ -427,17 +411,7 @@ class ArticleSchema(Schema):
 ```
 
 
-但由于 Options 提供了 `alias_generator` 选项，所以你可以为整个数据类指定一个输出别名的转化函数
-utype 为了使得命名风格的转化更加方便，在 `utype.utils.style.AliasGenerator` 中已经提供了一些常用的能够生成各种命名风格字段的别名生成函数
-
-* `camel`：驼峰命名风格，如 `camelCase`
-* `pascal`：帕斯卡命名风格，或称首字母大写的驼峰命名，如 `PascalCase`
-* `snake`：小写下划线命名风格，python 等语言的推荐变量命名风格，如 `snake_case`
-* `kebab`：小写短横线命名风格，如 `kebab-case`
-* `cap_snake`：大写下划线命名风格，常用于常量的命名，如 `CAP_SNAKE_CASE`
-* `cap_kebab`：大写短横线命名风格，如 `CAP-KEBAB-CASE`
-
-你只需要使用这些函数指定  `alias_generator` 或 `alias_from_generator` 即可获得对应的命名风格转化能力，如
+但由于 Options 提供了 `alias_generator` 选项，所以你可以为整个数据类指定一个输出别名的转化函数，如
 
 ```python
 from utype import Schema
@@ -473,6 +447,16 @@ print(dict(article))
 # }
 ```
 
-例子中的解析选项指定的 `alias_from_generator` 为 `[AliasGenerator.kebab, AliasGenerator.pascal]`，表示能够从小写短横线命名风格和首字母大写的驼峰命名风格的输入数据中进行转化，而 `alias_generator=AliasGenerator.camel` 表示会将输出数据转化为驼峰命名风格
+
+utype 为了使得命名风格的转化更加方便，在 `utype.utils.style.AliasGenerator` 中已经提供了一些常用的能够生成各种命名风格字段的别名生成函数
+
+* `camel`：驼峰命名风格，如 `camelCase`
+* `pascal`：帕斯卡命名风格，或称首字母大写的驼峰命名，如 `PascalCase`
+* `snake`：小写下划线命名风格，Python 等语言的推荐变量命名风格，如 `snake_case`
+* `kebab`：小写短横线命名风格，如 `kebab-case`
+* `cap_snake`：大写下划线命名风格，常用于常量的命名，如 `CAP_SNAKE_CASE`
+* `cap_kebab`：大写短横线命名风格，如 `CAP-KEBAB-CASE`
+
+你只需要使用这些函数指定  `alias_generator` 或 `alias_from_generator` 即可获得对应的命名风格转化能力，如在例子中的解析选项指定的 `alias_from_generator` 为 `[AliasGenerator.kebab, AliasGenerator.pascal]`，表示能够从小写短横线命名风格和首字母大写的驼峰命名风格的输入数据中进行转化，而 `alias_generator=AliasGenerator.camel` 表示会将输出数据转化为驼峰命名风格
 
 所以我们看到例子中的输入数据使用的命名风格都能被正确地识别和接受，完成了对应的类型转化，并输出到了目标的别名
