@@ -114,13 +114,14 @@ class ClassParser(BaseParser):
                 annotation = type(None)
                 # to make a difference to annotation=None
             fields.append(
-                self.schema_field_cls.generate(
+                self.parser_field_cls.generate(
                     attname=key,
                     annotation=annotation,
                     default=default,
                     global_vars=global_vars,
                     forward_refs=self.forward_refs,
                     options=self.options,
+                    **self.kwargs
                 )
             )
 
@@ -144,13 +145,14 @@ class ClassParser(BaseParser):
             if key in exclude_vars:
                 continue
             fields.append(
-                self.schema_field_cls.generate(
+                self.parser_field_cls.generate(
                     attname=key,
                     annotation=None,
                     default=attr,
                     global_vars=global_vars,
                     forward_refs=self.forward_refs,
                     options=self.options,
+                    **self.kwargs
                 )
             )
 
@@ -323,7 +325,7 @@ class ClassParser(BaseParser):
                 return False
             if not output_only:
                 return True
-            if field.no_output(
+            if field.is_no_output(
                 _obj_self.__dict__[field.attname], options=parser.options
             ):
                 return False
@@ -377,7 +379,7 @@ class ClassParser(BaseParser):
             field = self.get_field(key)
             attname = key
             if field:
-                if field.no_output(values[key], options=options):
+                if field.is_no_output(values[key], options=options):
                     values.pop(key)
                 if field.property:
                     try:
@@ -399,6 +401,9 @@ class ClassParser(BaseParser):
             # and work on it later if something went wrong
             instance.__dict__[attname] = value
             # set to __dict__ no matter field (maybe addition=True)
+
+    def make_context(self, context=None, force_error: bool = False):
+        return self.options.make_context(self.obj, context=context, force_error=force_error)
 
     def make_init(
         self,
@@ -431,7 +436,7 @@ class ClassParser(BaseParser):
 
                 context = getattr(_obj_self, "__context__", None)
                 if not isinstance(context, RuntimeContext):
-                    context: RuntimeContext = parser.options.make_context(parser.obj)
+                    context: RuntimeContext = parser.make_context()
 
                 if isinstance(_d, dict):
                     kwargs.update(_d)
@@ -491,9 +496,11 @@ def init_dataclass(
     if not isinstance(parser, ClassParser):
         raise exc.TypeMismatchError(f"Invalid dataclass: {cls}")
 
-    new_context: RuntimeContext = (options or parser.options).make_context(
-        cls, context=context
-    )
+    if options:
+        new_context: RuntimeContext = options.make_context(cls, context=context)
+    else:
+        new_context: RuntimeContext = parser.make_context(context=context)
+
     transformer = new_context.transformer
 
     try:

@@ -15,7 +15,7 @@ __parsers__ = {}
 
 class BaseParser:
     options_cls = Options
-    schema_field_cls = ParserField
+    parser_field_cls = ParserField
 
     # DEFAULT_EXCLUDE_VARS = {"__options__", "__class__"}
 
@@ -72,6 +72,13 @@ class BaseParser:
         self.addition_type = None
         self.name = self.get_name()
         self.setup()
+
+    def make_context(self, context=None, force_error: bool = False):
+        return self.options.make_context(context=context, force_error=force_error)
+
+    @property
+    def kwargs(self):
+        return {}
 
     def get_name(self) -> str:
         name = getattr(
@@ -170,7 +177,7 @@ class BaseParser:
 
     @property
     def rule_cls(self):
-        return self.schema_field_cls.rule_cls
+        return self.parser_field_cls.rule_cls
 
     @property
     def module_name(self):
@@ -418,7 +425,7 @@ class BaseParser:
 
             name = field.attname if as_attname else field.name
 
-            if field.no_input(value, options=options):
+            if field.is_no_input(value, options=options):
                 # no input field does not take input from __init__
                 # but can still apply default
                 default = field.get_default(options, defer=False)
@@ -539,7 +546,7 @@ class BaseParser:
 
             used_alias.update(field.all_aliases)
             # even if field is no-input, it can still set default (by developer, no by input)
-            if field.no_input(value, options=options):
+            if field.is_no_input(value, options=options):
                 # no input field does not take input from __init__
                 # but can still apply default
                 default = field.get_default(options, defer=False)

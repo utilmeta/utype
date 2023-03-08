@@ -84,7 +84,7 @@ Only accept conversions without information loss, such as
  3. `date`: does not accept conversions from `datetime` or strings containing hour, minute, and second parts
 
 !!! note
-	These above preferences is only the "flag" for transformer functions, Python itself does not have such mechanism to gurantee these conditions, instead they are implemented in the corresponding transformer functions, if you define or override a type transformer function, you should implement these preferences by youself
+	These above preferences is only the "flag" for transformer functions, Python itself does not have such mechanism to guarantee these conditions, instead they are implemented in the corresponding transformer functions, if you define or override a type transformer function, you should implement these preferences by youself
 
 ### Unknown types
 

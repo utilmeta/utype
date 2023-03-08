@@ -452,6 +452,24 @@ class TestClass:
         assert s(a=bool).a == bool
         assert s(a=int).a == int
 
+    def test_generic_types(self):
+        import sys
+        if sys.version_info >= (3, 8):
+            class Gen(Schema):
+                a: list[int]
+                b: dict[int]
+                c: dict[int, int]
+                d: tuple[int, bool]
+                e: set[str]
+
+            assert dict(Gen(
+                a=('1', b'f', True),
+                b={'1': 2, '2': '3'},
+                c={'1': 2, '2': '3'},
+                d=[b'2', 0],
+                e=['1', 'a', 'a']
+            )) == {'a': [1, 0, 1], 'b': {1: 2, 2: '3'}, 'c': {1: 2, 2: 3}, 'd': (2, False), 'e': {'a', '1'}}
+
     def test_functional_initialize_and_aliases(self, dfs):
         # test omit init
         class OmitSchema(Schema):
@@ -752,6 +770,14 @@ class TestClass:
         assert 'key_sketch' in info
         assert info['key_sketch'] == 'QWERT*****'
 
+        # test generation
+        from utype import JsonSchemaGenerator
+        assert JsonSchemaGenerator(KeyInfo, output=False)() == {'type': 'object', 'properties':
+            {'access_key': {'type': 'string'}}, 'required': ['access_key']}
+        assert JsonSchemaGenerator(KeyInfo, output=True)() == {'type': 'object', 'properties':
+            {'last_activity': {'type': 'string', 'format': 'date-time'},
+             'key_sketch': {'type': 'string'}}, 'required': ['last_activity']}
+
         class ArticleSchema(Schema):
             __options__ = Options(data_first_search=dfs)
 
@@ -766,9 +792,17 @@ class TestClass:
 
         article = ArticleSchema(title='My Awesome Article', slug='ignore')
 
+        assert article.slug == 'my-awesome-article'
+        assert JsonSchemaGenerator(ArticleSchema, output=False)() == \
+               {'type': 'object', 'properties': {'title': {'type': 'string'}}, 'required': ['title']}
+        assert JsonSchemaGenerator(ArticleSchema, output=True)() == {'type': 'object',
+            'properties': {'slug': {'type': 'string'}, 'title': {'type': 'string'},
+                           'updated_at': {'type': 'string', 'format': 'date-time'}},
+            'required': ['title', 'updated_at']}
+
     def test_schema_dict(self, dfs):
         class T(Schema):
-            __options__ = Options(data_first_search=dfs)
+            __options__ = Options(data_first_search=dfs, addition=True)
 
             a: str = Field(max_length=10, default='default')
             b: int = 0
@@ -776,7 +810,7 @@ class TestClass:
             im: str = Field(required=False, default=None, defer_default=True, immutable=True)
             req: int
 
-        t1 = T(a='123', req=True)
+        t1 = T(a='123', req=True, addon=1)
         t1.update({
             'b': '123',
             'c$': b'123',
@@ -788,6 +822,11 @@ class TestClass:
         assert 'c$' in t1
         assert t1.c == 456
         assert 'im' not in t1
+        assert t1['addon'] == 1
+        assert t1.pop('a') == '123'
+        assert 'a' not in t1
+        assert t1.pop('addon') == 1     # pop other field
+        assert 'addon' not in t1
 
         with pytest.raises(exc.ParseError):
             t1['c#'] = b'abc'
@@ -916,3 +955,9 @@ class TestClass:
 
         assert one_of_user({'name': 'test', 'age': '1'}) == LogicalUser(name='test', age=1)
         assert one_of_user([b'test', '1']) == ('test', 1)
+
+        from utype import JsonSchemaGenerator
+        res = JsonSchemaGenerator(one_of_type)()
+        assert res == {'oneOf': [{'type': 'object', 'properties':
+            {'name': {'type': 'string', 'maxLength': 10}, 'age': {'type': 'integer'}}, 'required': ['name', 'age']},
+                                 {'type': 'array', 'prefixItems': [{'type': 'string'}, {'type': 'integer'}]}]}

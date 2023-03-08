@@ -7,7 +7,7 @@ from typing import AsyncIterable, Dict, Generator, Iterator, Optional
 import pytest
 
 import utype
-from utype import Field, Options, Param, exc, parse
+from utype import Field, Options, Param, exc, parse, types
 from utype.utils.compat import Final
 
 
@@ -75,6 +75,33 @@ class TestFunc:
         alice = create_user('alice-001', 'abc1234', headImg='https://fake.avatar', signup_time='ignored')
         assert alice['avatar'] == 'https://fake.avatar'
         assert isinstance(alice['signup_time'], datetime)
+
+    def test_annotated(self):
+        @utype.parse
+        def login(
+            username: types.Annotated[str, utype.Param(regex='[0-9a-zA-Z]{3,20}')],
+            password: types.Annotated[str, utype.Param(min_length=6)]
+        ):
+            # you can directly start coding
+            return username, password
+
+        assert login(username=134, password=b'X' * 6) == ('134', 'X' * 6)
+
+        with pytest.raises(exc.ParseError):
+            login('@', 123456)
+
+        with pytest.raises(exc.ParseError):
+            login('123', '123')
+
+        # test default
+
+        class user(utype.Schema):
+            username: types.Annotated[str, utype.Param(regex='[0-9a-zA-Z]{3,20}')] = None
+
+        assert user().username is None
+
+        with pytest.raises(exc.ParseError):
+            user(username='@')
 
     def test_input(self):
         @utype.parse

@@ -5,7 +5,7 @@ from typing import Iterator, List
 
 import pytest
 
-from utype import Lax, Options, Rule, exc, types
+from utype import Lax, Options, Rule, exc, types, JsonSchemaGenerator
 from utype.parser.rule import LogicalType
 from utype.utils.compat import Literal
 
@@ -41,6 +41,9 @@ class TestRule:
         with pytest.raises(exc.ParseError):
             int_or_dt("a")
 
+        assert JsonSchemaGenerator(int_or_dt)() == {'anyOf': [{'type': 'number', 'exclusiveMinimum': 0},
+                                                              {'type': 'string', 'format': 'date'}]}
+
         int_or_none = types.PositiveInt | None
         assert int_or_none(1) == 1
         assert int_or_none(None) is None
@@ -54,6 +57,9 @@ class TestRule:
         assert null_or_const(True) is True
         assert null_or_const(1) is True
 
+        assert JsonSchemaGenerator(null_or_const)() == {'anyOf': [{'type': 'null'}, {'type': 'integer', 'const': 3},
+                                                                  {'type': 'boolean', 'const': True}]}
+
         with pytest.raises(exc.ParseError):
             null_or_const(False)
 
@@ -65,6 +71,9 @@ class TestRule:
         assert int_or_list(-3) == -3
         assert int_or_list(["a"]) == ["a"]
         assert int_or_list([1]) == ["1"]
+
+        assert JsonSchemaGenerator(int_or_list)() == {'anyOf': [{'type': 'number', 'exclusiveMaximum': 0},
+                                                                {'type': 'array', 'items': {'type': 'string'}}]}
 
         class IntWeekDay(int, Rule):
             gt = 0

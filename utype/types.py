@@ -2,8 +2,9 @@ from decimal import Decimal
 from enum import Enum
 from datetime import datetime, timedelta, date
 from uuid import UUID
-from typing import Union, Optional, Tuple, List, Set, \
-    Dict, Type, Callable, Any, TYPE_CHECKING, Iterator
+from typing import Union, Optional, Tuple, List, Set, Mapping, \
+    Dict, Type, Callable, Any, TYPE_CHECKING, Iterator, ClassVar
+from .utils.compat import Literal, Annotated, Final, ForwardRef
 from .parser.rule import Lax, Rule
 from .utils import exceptions as exc
 
@@ -240,15 +241,18 @@ class Second(Int):
 
 
 class Datetime(datetime, Rule):
-    pass
+    primitive = "string"
+    format = "datetime"
 
 
 class Date(date, Rule):
-    pass
+    primitive = "string"
+    format = "date"
 
 
 class Timedelta(timedelta, Rule):
-    pass
+    primitive = "string"
+    format = "duration"
 
 
 class EmailStr(Str):

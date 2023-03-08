@@ -16,6 +16,11 @@ try:
 except ImportError:
     from typing_extensions import Final
 
+try:
+    from typing import Annotated
+except ImportError:
+    from typing_extensions import Annotated
+
 
 __all__ = [
     "get_origin",
@@ -23,9 +28,11 @@ __all__ = [
     'Literal',
     'Final',
     "ForwardRef",
+    "Annotated",
     "is_final",
     "is_union",
     "is_classvar",
+    "is_annotated",
     "evaluate_forward_ref",
 ]
 
@@ -41,8 +48,8 @@ else:
     from typing import get_args as _typing_get_args
     from typing import get_origin as _typing_get_origin
 
-    def get_origin(tp) -> Optional[Type[Any]]:
-        return _typing_get_origin(tp) or getattr(tp, "__origin__", None)
+    def get_origin(t) -> Optional[Type[Any]]:
+        return _typing_get_origin(t) or getattr(t, "__origin__", None)
 
     def get_args(t) -> Tuple[Type[Any], ...]:
         args = getattr(t, "__args__", ())
@@ -94,6 +101,14 @@ def is_classvar(ann_type) -> bool:
     return _check_classvar(ann_type) or _check_classvar(
         getattr(ann_type, "__origin__", None)
     )
+
+
+_AnnotatedTypeNames = {'AnnotatedMeta', '_AnnotatedAlias'}
+
+
+def is_annotated(ann_type) -> bool:
+    # duck type check for Annotated, name in AnnotatedTypeNames and have __origin__ attribute
+    return type(ann_type).__name__ in _AnnotatedTypeNames and getattr(ann_type, '__origin__', None)
 
 
 def is_final(ann_type) -> bool:

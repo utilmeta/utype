@@ -4,13 +4,15 @@ from .parser.options import Options
 from .parser.rule import Lax, Rule
 from .schema import DataClass, LogicalMeta, Schema
 from .utils import exceptions as exc
-from .utils.encode import register_encoder
+from .utils.encode import register_encoder, JSONEncoder
 from .utils.transform import (TypeTransformer, type_transform)
+from .utils.datastructures import unprovided
+from .specs.json_schema import JsonSchemaGenerator
 
 register_transformer = TypeTransformer.registry.register
 
 
-VERSION = (0, 2, 2, None)
+VERSION = (0, 3, 0, None)
 
 
 def _get_version():

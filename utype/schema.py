@@ -95,7 +95,7 @@ class DataClass(metaclass=LogicalMeta):
         return self.__parser__.name
 
     def __class_getitem__(cls, item):
-        pass
+        raise NotImplemented
 
     def __validate__(self):
         pass
@@ -180,6 +180,10 @@ class Schema(dict, metaclass=LogicalMeta):
             setattr(cls, field.attname, hooked_property)
 
     def __class_getitem__(cls, item):
+        # if isinstance(item, Options):
+        #     class _cls(cls):
+        #         __options__ = item
+        #     return _cls
         raise NotImplemented
 
     def __validate__(self):
@@ -245,7 +249,7 @@ class Schema(dict, metaclass=LogicalMeta):
         if unprovided(value):
             return
 
-        if not field.no_output(value, options=context.options):
+        if not field.is_no_output(value, options=context.options):
             super().__setitem__(field.name, value)
             # values[key] = value
             # do not apply cache here
@@ -282,7 +286,7 @@ class Schema(dict, metaclass=LogicalMeta):
             return self.__dict__[field.attname]
 
         if callable(getter):
-            context = self.__options__.make_context(__class__, force_error=True)
+            context = self.__parser__.make_context(force_error=True)
             value = field.parse_output_value(getter(self), context=context)
             if unprovided(value):
                 raise AttributeError(
@@ -313,7 +317,7 @@ class Schema(dict, metaclass=LogicalMeta):
                 f"Attempt to set immutable attribute: [{repr(field.attname)}]"
             )
 
-        context = self.__options__.make_context(__class__, force_error=True)
+        context = self.__parser__.make_context(force_error=True)
         value = field.parse_value(value, context=context)
 
         if field.property:
@@ -324,7 +328,7 @@ class Schema(dict, metaclass=LogicalMeta):
             # force calculate property
             self.__coerce_property__(field, context=context)
         else:
-            if field.no_output(value, options=self.__options__):
+            if field.is_no_output(value, options=self.__options__):
                 self.__dict__[field.attname] = value
                 # no output
                 if field.name in self:
@@ -352,7 +356,7 @@ class Schema(dict, metaclass=LogicalMeta):
                 raise exc.UpdateError(
                     f"{self.__class__}: Attempt to set excluded attribute: {repr(alias)}"
                 )
-            context = self.__options__.make_context(__class__, force_error=True)
+            context = self.__parser__.make_context(force_error=True)
             addition = self.__parser__.parse_addition(alias, value, context=context)
             if unprovided(addition):
                 # ignore addition
@@ -413,7 +417,7 @@ class Schema(dict, metaclass=LogicalMeta):
             )
         field = self.__parser__.get_field(key)
         if not field:
-            return super().pop(field.name)
+            return super().pop(key)
         if field.immutable:
             raise exc.DeleteError(
                 f"{self.__name__}: Attempt to pop immutable item: [{repr(key)}]"

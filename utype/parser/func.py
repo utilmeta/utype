@@ -396,7 +396,7 @@ class FunctionParser(BaseParser):
                         continue
 
             fields.append(
-                self.schema_field_cls.generate(
+                self.parser_field_cls.generate(
                     attname=name,
                     annotation=annotation,
                     default=param.default
@@ -406,6 +406,7 @@ class FunctionParser(BaseParser):
                     forward_refs=self.forward_refs,
                     options=self.options,
                     positional_only=param.kind == param.POSITIONAL_ONLY,
+                    **self.kwargs
                 )
             )
 
@@ -456,7 +457,7 @@ class FunctionParser(BaseParser):
 
             field = self.get_field(k)
             if field:
-                required = field.field.no_default
+                required = field.no_default
             else:
                 required = v.default != v.empty
 
@@ -523,7 +524,7 @@ class FunctionParser(BaseParser):
             @wraps(self.obj)
             def f(*args, **kwargs):  # noqa
                 # MAKE CONTEXT AT RUNTIME !
-                context = (options or self.options).make_context()
+                context = options.make_context() if options else self.make_context()
                 return self.sync_call(
                     args,
                     kwargs,
@@ -590,7 +591,7 @@ class FunctionParser(BaseParser):
                 field = self.positional_fields.get(i)
                 # if field not exists, maybe it's a excluded var
                 if field:
-                    if field.no_input(arg, options=context.options):
+                    if field.is_no_input(arg, options=context.options):
                         arg = field.get_default(options=context.options)
                     else:
                         parsed_keys.append(field.attname)

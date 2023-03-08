@@ -149,14 +149,18 @@ class LogicalType(type):  # noqa
         if isinstance(arg, ForwardRef):
             return arg
 
-        if isinstance(arg, type):
+        if isinstance(arg, mcs):
             return arg
 
         __origin = get_origin(arg)
         if __origin:
             # like List[str] Literal["value"]
-            _new_args = get_args(arg)
+            _new_args = get_args(arg) or ()
         else:
+            # only if not origin is detected, we let go the class arg
+            # for py>3.8, something like list[int] / dict[str, int] in also a class
+            if isinstance(arg, type):
+                return arg
             __origin = Literal
             _new_args = (arg,)
         return Rule.annotate(__origin, *_new_args)
@@ -1022,6 +1026,7 @@ class Rule(metaclass=LogicalType):
     context_cls = RuntimeContext
 
     __origin__: type = None
+    __applied__: bool = False
     __abstract__: bool = False
     __args__: Tuple[type, ...] = None
     __ellipsis_args__: bool = False
@@ -1353,9 +1358,12 @@ class Rule(metaclass=LogicalType):
                 # directly return
                 return annotation
 
-        if inspect.isclass(annotation):
-            # no constraints, we can directly use it
-            if isinstance(annotation, LogicalType) and annotation.combinator:
+        if annotation is Any:
+            return Rule  # use empty rule as any
+
+        # no constraints, we can directly use it
+        if isinstance(annotation, LogicalType):
+            if annotation.combinator:
                 annotation.register_forward_refs(
                     # we don't need to pass constraints here
                     # as those will be combined in below logics
@@ -1363,35 +1371,38 @@ class Rule(metaclass=LogicalType):
                     forward_refs=forward_refs,
                     forward_key=forward_key,
                 )
-
-            if constraints:
-                return cls.annotate(
-                    annotation,
-                    constraints=constraints,
-                    forward_refs=forward_refs,
-                    global_vars=global_vars,
-                )
-            else:
-                # no constraints, we can directly use it
-                return annotation
-        elif annotation:
-            if annotation is Any:
-                return Rule  # use empty rule as any
+            # do not detect origin for Logical types (including Rule)
+            origin = None
+        else:
             origin = get_origin(annotation)
-            if origin:
-                args = get_args(annotation) or ()
-                constraints = constraints or {}
-                return cls.annotate(
-                    origin,
-                    *args,
-                    constraints=constraints,
-                    forward_refs=forward_refs,
-                    global_vars=global_vars,
-                )
-            else:
-                raise TypeError(
-                    f"{repr(forward_key)}: invalid annotation: {annotation}"
-                )
+
+        if origin:
+            # first resolve origin
+            # generic types like list[int] with origin is still a type
+            args = get_args(annotation) or ()
+            constraints = constraints or {}
+            return cls.annotate(
+                origin,
+                *args,
+                constraints=constraints,
+                forward_refs=forward_refs,
+                global_vars=global_vars,
+            )
+        elif annotation:
+            if isinstance(annotation, type):
+                if constraints:
+                    return cls.annotate(
+                        annotation,
+                        constraints=constraints,
+                        forward_refs=forward_refs,
+                        global_vars=global_vars,
+                    )
+                else:
+                    # no constraints, we can directly use it
+                    return annotation
+            raise TypeError(
+                f"{repr(forward_key)}: invalid annotation: {annotation}"
+            )
         elif constraints:
             return cls.annotate(
                 constraints=constraints,
@@ -1405,6 +1416,45 @@ class Rule(metaclass=LogicalType):
         return True
 
     @classmethod
+    def merge_type(cls, t):
+        if not t or not isinstance(t, type):
+            return cls
+        if not cls.__origin__:
+            return t
+        if cls.combinator:
+            return t & cls
+        if cls.__origin__ and issubclass(cls.__origin__, t):
+            return cls
+        constraints = {}
+        for name, val, func in cls.__validators__:
+            constraints[name] = val
+        # try to find a strong constraint
+        if 'const' in constraints or 'enum' in constraints:
+            return cls
+
+        if isinstance(t, LogicalType):
+            if t.combinator:
+                return t & cls
+            elif issubclass(t, Rule):
+                for name, val, func in t.__validators__:
+                    constraints[name] = val
+                if 'const' in constraints or 'enum' in constraints:
+                    return t
+                return Rule.annotate(
+                    t.__origin__ or cls.__origin__,
+                    *(t.__args__ or cls.__args__ or []),
+                    constraints=constraints
+                )
+        elif issubclass(t, Enum):
+            # do not need to apply constraint to a strong type
+            return t
+        return Rule.annotate(
+            t,
+            *(cls.__args__ or []),
+            constraints=constraints
+        )
+
+    @classmethod
     def parse(cls, value, context: RuntimeContext = None):
         # use __options__ instead of options is to identify much clearer with other subclass init kwargs
         context = context or cls.context_cls()
@@ -1416,6 +1466,13 @@ class Rule(metaclass=LogicalType):
 
         if cls.__origin__:
             # no matter cls.__transformer__ is None or not
+            if cls.__applied__ and isinstance(value, cls.__origin__):
+                # this is final for @utype.apply
+                # since the actual type is hidden, so the value of the "hidden" type
+                # is consider passed the type validation
+                # [this property is not recommended to inherited by developer]
+                return cls.post_validate(value, context)
+
             try:
                 value = context.transformer.apply(
                     value, cls.__origin__, func=cls.__origin_transformer__
@@ -1672,8 +1729,17 @@ class Rule(metaclass=LogicalType):
     @classmethod
     def _parse_map_args(cls, value: dict, context: RuntimeContext):
         result = {}
-        key_type, value_type = cls.__args__
-        key_transformer, value_transformer = cls.__arg_transformers__
+        if not cls.__args__:
+            return value
+
+        key_type = cls.__args__[0]
+        key_transformer = cls.__arg_transformers__[0]
+        value_type = None
+        value_transformer = None
+        if len(cls.__args__) > 1:
+            value_type = cls.__args__[1]
+            value_transformer = cls.__arg_transformers__[1]
+
         options = context.options
 
         for _key, _val in value.items():
@@ -1696,25 +1762,28 @@ class Rule(metaclass=LogicalType):
                         context.handle_error(error)
                         continue
 
-            with context.enter(route=key) as value_context:
-                try:
-                    value = value_context.transformer.apply(
-                        _val, value_type, func=value_transformer
-                    )
-                except Exception as e:
-                    error = exc.ParseError(
-                        item=key, value=_val, type=value_type, origin_exc=e
-                    )
-                    if options.invalid_values == options.EXCLUDE:
-                        context.collect_waring(error.formatted_message)
-                        continue
-                    elif options.invalid_values == options.PRESERVE:
-                        context.collect_waring(error.formatted_message)
-                        value = _val
-                    else:
-                        context.handle_error(error)
-                        continue
-            result[key] = value
+            if value_type:
+                with context.enter(route=key) as value_context:
+                    try:
+                        val = value_context.transformer.apply(
+                            _val, value_type, func=value_transformer
+                        )
+                    except Exception as e:
+                        error = exc.ParseError(
+                            item=key, value=_val, type=value_type, origin_exc=e
+                        )
+                        if options.invalid_values == options.EXCLUDE:
+                            context.collect_waring(error.formatted_message)
+                            continue
+                        elif options.invalid_values == options.PRESERVE:
+                            context.collect_waring(error.formatted_message)
+                            val = _val
+                        else:
+                            context.handle_error(error)
+                            continue
+            else:
+                val = _val
+            result[key] = val
         return result
 
     @classmethod

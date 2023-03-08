@@ -145,8 +145,8 @@ def apply(
     min_contains: int = None,
     unique_items: bool = None,
 ):
-    if rule_cls:
-        pass
+    # if rule_cls:
+    #     pass
 
     if round:
         if decimal_places and decimal_places not in (round, Lax(round)):
@@ -188,6 +188,8 @@ def apply(
         cls.__name__ = getattr(_type, "__name__", cls.__name__)
         cls.__repr__ = getattr(_type, "__repr__", cls.__repr__)
         cls.__str__ = getattr(_type, "__str__", cls.__str__)
+        cls.__applied__ = True
+        # applied Rule only checks constraints if value is not the instance of the __origin__ type
         return cls
         #
         # if init:
