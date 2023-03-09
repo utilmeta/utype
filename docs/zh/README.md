@@ -19,7 +19,7 @@
 
 utype 是一个基于 Python 类型注解的数据类型声明与解析库，能够在运行时根据你的声明对类与函数的参数进行解析转化
 
-* 版本：`0.2.2`【测试】
+* 版本：`0.3.0`【测试】
 * 作者：<a href="https://github.com/voidZXL" target="_blank">@voidZXL</a>
 * 协议：Apache 2.0
 * 代码：<a href="https://github.com/utilmeta/utype" target="_blank">https://github.com/utilmeta/utype</a>
@@ -40,29 +40,56 @@ def login(username, password):
 ```
 
 但如果我们能够把类型和约束都在参数中声明出来，在调用时就进行校验，对非法参数直接抛出错误，如
-```python
-import utype
+=== "使用 Annotated"  
+	```python
+	import utype
+	from utype.types import Annotated
+	
+	@utype.parse
+	def login(
+		username: Annotated[str, utype.Param(regex='[0-9a-zA-Z]{3,20}')],
+		password: Annotated[str, utype.Param(min_length=6)]
+	):
+		# 你可以直接开始编写逻辑了
+		return username, password
+	
+	print(login('alice', 123456))
+	('alice', '123456')
+	
+	try:
+		login('@invalid', 123456)
+	except utype.exc.ParseError as e:
+		print(e)
+		"""
+		parse item: ['username'] failed: 
+		Constraint: <regex>: '[0-9a-zA-Z]{3,20}' violated
+		"""
+	```
 
-@utype.parse
-def login(
-	username: str = utype.Param(regex='[0-9a-zA-Z]{3,20}'),
-	password: str = utype.Param(min_length=6)
-):
-	# 你可以直接开始编写逻辑了
-	return username, password
-
-print(login('alice', 123456))
-('alice', '123456')
-
-try:
-	login('@invalid', 123456)
-except utype.exc.ParseError as e:
-	print(e)
-	"""
-	parse item: ['username'] failed: 
-	Constraint: <regex>: '[0-9a-zA-Z]{3,20}' violated
-	"""
-```
+=== "使用默认值"
+	```python
+	import utype
+	
+	@utype.parse
+	def login(
+		username: str = utype.Param(regex='[0-9a-zA-Z]{3,20}'),
+		password: str = utype.Param(min_length=6)
+	):
+		# 你可以直接开始编写逻辑了
+		return username, password
+	
+	print(login('alice', 123456))
+	('alice', '123456')
+	
+	try:
+		login('@invalid', 123456)
+	except utype.exc.ParseError as e:
+		print(e)
+		"""
+		parse item: ['username'] failed: 
+		Constraint: <regex>: '[0-9a-zA-Z]{3,20}' violated
+		"""
+	```
 
 这样我们就可以获得
 

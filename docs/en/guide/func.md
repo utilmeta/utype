@@ -14,31 +14,56 @@ def login(username, password):
 ```
 
 So utype provides a function parsing mechanism. You just need to declare the type, constraint and configuration of the function parameter, and use `@utype.parse` to decorate the function, then the function will be type-safe and constraint-guaranteed at runtime
-```python
-import utype
+=== "Using Annotated"  
+	```python
+	import utype
+	from utype.types import Annotated
+	
+	@utype.parse
+	def login(
+		username: Annotated[str, utype.Param(regex='[0-9a-zA-Z]{3,20}')],
+		password: Annotated[str, utype.Param(min_length=6)]
+	):
+		# you can directly start coding
+		return username, password
+	
+	print(login('alice', 123456))
+	('alice', '123456')
+	
+	try:
+		login('@invalid', 123456)
+	except utype.exc.ParseError as e:
+		print(e)
+		"""
+		parse item: ['username'] failed: 
+		Constraint: <regex>: '[0-9a-zA-Z]{3,20}' violated
+		"""
+	```
 
-@utype.parse
-def login(
-	username: str = utype.Param(regex='[0-9a-zA-Z]{3,20}'),
-	password: str = utype.Param(min_length=6)
-):
-	# you can directly start coding
-	return username, password
-
-# - Valid input
-print(login(b'alice', 123456))
-('alice', '123456')
-
-# - Invalid input
-try:
-	login('@invalid', 123456)
-except utype.exc.ParseError as e:
-	print(e)
-	"""
-	parse item: ['username'] failed: 
-	Constraint: <regex>: '[0-9a-zA-Z]{3,20}' violated
-	"""
-```
+=== "Using default"
+	```python
+	import utype
+	
+	@utype.parse
+	def login(
+		username: str = utype.Param(regex='[0-9a-zA-Z]{3,20}'),
+		password: str = utype.Param(min_length=6)
+	):
+		# you can directly start coding 
+		return username, password
+	
+	print(login('alice', 123456))
+	('alice', '123456')
+	
+	try:
+		login('@invalid', 123456)
+	except utype.exc.ParseError as e:
+		print(e)
+		"""
+		parse item: ['username'] failed: 
+		Constraint: <regex>: '[0-9a-zA-Z]{3,20}' violated
+		"""
+	```
 
 as you can see, utype will automatically convert the types for input parameters. For input values that cannot complete the type conversion or violate the constraints, utype will throw a clear error, which contains the position and reason of the error
 
@@ -180,6 +205,41 @@ As you can see
 
 !!! note
 	`Param` is actually a subclass of `Field` with more simplify and convenient params for function, so you can still get the detail usage of `Param` in [Field API References](/references/field)
+
+### Using `Annotated`
+You can also use `Annotated` to define `Param` as part of type annotation, like
+
+```python
+import utype
+from datetime import datetime
+from typing import Optional, Annotated
+
+@utype.parse  
+def create_user(  
+    username: Annotated[str, utype.Param(regex='[0-9a-zA-Z_-]{3,20}', example='alice-01')],  
+    password: Annotated[str, utype.Param(min_length=6, max_length=50)],  
+    signup_time: Annotated[datetime, utype.Param(  
+        no_input=True,  
+        default_factory=datetime.now  
+    )],
+    avatar: Annotated[Optional[str], utype.Param(
+        description='avatar url of the new user',  
+        alias_from=['picture', 'headImg'],  
+    )] = None,  
+) -> dict:  
+    return {  
+        'username': username,  
+        'password': password,  
+        'avatar': avatar,  
+        'signup_time': signup_time,  
+    }
+```
+
+By using `Annotated`, you can define the default value of the argument in native way, and get more precise static type checking (such as mypy)
+
+
+!!! warning
+	`Annotated` is supported in Python 3.9+, to compat 3.7/3.8, you should use `from utype.types import Annotated`
 
 ### Parameter restrictions
 Characteristics of the function brings more restrictions to declare the field configuration in the function than in the dataclass. Let’s take a look.

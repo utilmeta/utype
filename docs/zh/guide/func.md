@@ -14,31 +14,56 @@ def login(username, password):
 ```
 
 所以 utype 提供了函数解析的机制，你只需要把函数参数的类型，约束和配置声明出来，然后使用 `@utype.parse` 装饰器，就可以在函数中拿到类型安全，约束保障的参数值了，如
-```python
-import utype
+=== "使用 Annotated"  
+	```python
+	import utype
+	from utype.types import Annotated
+	
+	@utype.parse
+	def login(
+		username: Annotated[str, utype.Param(regex='[0-9a-zA-Z]{3,20}')],
+		password: Annotated[str, utype.Param(min_length=6)]
+	):
+		# 你可以直接开始编写逻辑了
+		return username, password
+	
+	print(login('alice', 123456))
+	('alice', '123456')
+	
+	try:
+		login('@invalid', 123456)
+	except utype.exc.ParseError as e:
+		print(e)
+		"""
+		parse item: ['username'] failed: 
+		Constraint: <regex>: '[0-9a-zA-Z]{3,20}' violated
+		"""
+	```
 
-@utype.parse
-def login(
-	username: str = utype.Param(regex='[0-9a-zA-Z]{3,20}'),
-	password: str = utype.Param(min_length=6)
-):
-	# 你可以直接开始编写逻辑了
-	return username, password
-
-# - 有效输入
-print(login(b'alice', 123456))
-('alice', '123456')
-
-# - 非法输入
-try:
-	login('@invalid', 123456)
-except utype.exc.ParseError as e:
-	print(e)
-	"""
-	parse item: ['username'] failed: 
-	Constraint: <regex>: '[0-9a-zA-Z]{3,20}' violated
-	"""
-```
+=== "使用默认值"
+	```python
+	import utype
+	
+	@utype.parse
+	def login(
+		username: str = utype.Param(regex='[0-9a-zA-Z]{3,20}'),
+		password: str = utype.Param(min_length=6)
+	):
+		# 你可以直接开始编写逻辑了
+		return username, password
+	
+	print(login('alice', 123456))
+	('alice', '123456')
+	
+	try:
+		login('@invalid', 123456)
+	except utype.exc.ParseError as e:
+		print(e)
+		"""
+		parse item: ['username'] failed: 
+		Constraint: <regex>: '[0-9a-zA-Z]{3,20}' violated
+		"""
+	```
 
 可以看到，utype 会自动完成参数的类型转化，对于无法完成类型转化或不满足约束条件的输入值，utype 会抛出一个清晰的错误，包含着数据中的定位信息和出错原因
 
@@ -180,6 +205,41 @@ print(alice)
 !!! note
 	Param 类其实是 utype 的 Field 类的子类，只不过对配置选项进行了精简，使得声明函数参数配置更加方便，所以详细的参数与用法可以参考 [Field 字段配置的 API 参考](/zh/references/field)
 
+### 使用 `Annotated`
+除了使用函数参数的默认值指定 Param 参数外，你还可以使用 Python 的 `Annotated` 注解，将 Param 参数作为类型的一部分，如
+
+```python
+import utype
+from datetime import datetime
+from typing import Optional
+from utype.types import Annotated  # compat 3.7+
+
+@utype.parse  
+def create_user(  
+    username: Annotated[str, utype.Param(regex='[0-9a-zA-Z_-]{3,20}', example='alice-01')],  
+    password: Annotated[str, utype.Param(min_length=6, max_length=50)],  
+    signup_time: Annotated[datetime, utype.Param(  
+        no_input=True,  
+        default_factory=datetime.now  
+    )],
+    avatar: Annotated[Optional[str], utype.Param(
+        description='avatar url of the new user',  
+        alias_from=['picture', 'headImg'],  
+    )] = None,  
+) -> dict:  
+    return {  
+        'username': username,  
+        'password': password,  
+        'avatar': avatar,  
+        'signup_time': signup_time,  
+    }
+```
+
+使用 Annotated 可以更加清晰地指定默认值，区分选填与必填参数，并且获得更好的静态类型检测（比如 mypy）体验
+
+!!! warning
+	Python 3.9+ 版本才支持 `Annotated`，如果你在使用 3.7 或 3.8 版本，你可以使用 `from utype.types import Annotated`
+
 
 ### 参数声明限制
 由于函数的特点，在函数中声明字段配置比在数据类中声明字段多了一定的限制，我们来了解一下
@@ -289,7 +349,7 @@ def ok_example(
 
 **受限的 Param 配置**
 
-由于函数参数必须传入一个有意义的值（无论是输入值还是默认值），所以 Param 配置中的一些参数的使用是受到限制的，如果使用它们则必须指定 `default`  /  `default_factory`
+由于函数参数必须传入一个有意义的值（无论是输入值还是默认值），所以 Param 配置中的一些参数的使用是受到限制的，如果使用它们则必须指定 `default`  /  `default_factory`，比如
 
 * `required=False`
 * 使用 `no_input`

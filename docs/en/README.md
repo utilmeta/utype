@@ -18,7 +18,7 @@
 
 utype is a data type declaration and parsing library based on Python type annotations, enforce types and constraints for classes and functions at runtime
 
-* Version: `0.2.2` [Test]
+* Version: `0.3.0` [Test]
 * Author: <a href="https://github.com/voidZXL" target="_blank">@voidZXL</a>
 * License: Apache 2.0
 * Code Repository: <a href="https://github.com/utilmeta/utype" target="_blank">https://github.com/utilmeta/utype</a>
@@ -39,31 +39,56 @@ def login(username, password):
 ```
 
 However, if we can declare all types and constraints in the parameters, enforce validation at calling, and throw an error directly for invalid input, such as
-```python
-import utype
+=== "Using Annotated"  
+	```python
+	import utype
+	from utype.types import Annotated  # compat 3.7+
+	
+	@utype.parse
+	def login(
+		username: Annotated[str, utype.Param(regex='[0-9a-zA-Z]{3,20}')],
+		password: Annotated[str, utype.Param(min_length=6)]
+	):
+		# # you can directly start coding
+		return username, password
+	
+	print(login('alice', 123456))
+	('alice', '123456')
+	
+	try:
+		login('@invalid', 123456)
+	except utype.exc.ParseError as e:
+		print(e)
+		"""
+		parse item: ['username'] failed: 
+		Constraint: <regex>: '[0-9a-zA-Z]{3,20}' violated
+		"""
+	```
 
-@utype.parse
-def login(
-	username: str = utype.Param(regex='[0-9a-zA-Z]{3,20}'),
-	password: str = utype.Param(min_length=6)
-):
-	# you can directly start coding
-	return username, password
-
-# - Valid input
-print(login('alice', 123456))
-('alice', '123456')
-
-# - Invalid input
-try:
-	login('@invalid', 123456)
-except utype.exc.ParseError as e:
-	print(e)
-	"""
-	parse item: ['username'] failed: 
-	Constraint: <regex>: '[0-9a-zA-Z]{3,20}' violated
-	"""
-```
+=== "Using default"
+	```python
+	import utype
+	
+	@utype.parse
+	def login(
+		username: str = utype.Param(regex='[0-9a-zA-Z]{3,20}'),
+		password: str = utype.Param(min_length=6)
+	):
+		# # you can directly start coding
+		return username, password
+	
+	print(login('alice', 123456))
+	('alice', '123456')
+	
+	try:
+		login('@invalid', 123456)
+	except utype.exc.ParseError as e:
+		print(e)
+		"""
+		parse item: ['username'] failed: 
+		Constraint: <regex>: '[0-9a-zA-Z]{3,20}' violated
+		"""
+	```
 
 we can get
 
