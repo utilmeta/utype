@@ -168,6 +168,8 @@ class Options:
                 raise exc.ConfigError(
                     "Options force_default and no_default can not both specify"
                 )
+            # force default implies ignore_required
+            ignore_required = True
 
         if not collect_errors:
             if max_errors:

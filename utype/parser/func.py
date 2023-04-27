@@ -491,6 +491,7 @@ class FunctionParser(BaseParser):
         parse_params: bool = None,
         parse_result: bool = None,
         eager_parse: bool = False,
+        ignore_methods: bool = False,
     ):
 
         if self.is_async_generator:
@@ -535,10 +536,11 @@ class FunctionParser(BaseParser):
                 )
 
         f.__parser__ = self
-        if self.classmethod:
-            return classmethod(f)
-        elif self.staticmethod:
-            return staticmethod(f)
+        if not ignore_methods:
+            if self.classmethod:
+                return classmethod(f)
+            elif self.staticmethod:
+                return staticmethod(f)
         return f
 
     def parse_pos_type(self, index: int, value, context: RuntimeContext):

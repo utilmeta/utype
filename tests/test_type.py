@@ -258,6 +258,10 @@ class TestType:
                           if k.startswith("DATETIME")
                       ]
                       + [
+                          ('Fri, 10 Mar 2023 17:25:08 +0800',
+                           datetime(2023, 3, 10, 17, 25, 8, tzinfo=timezone(timedelta(seconds=28800))),
+                           True, True
+                           ),
                           ("2022-01-02", datetime(2022, 1, 2), True, True),
                           # ('10:20:30', datetime(1900, 1, 1, 10, 20, 30), True, True),       # no standard behaviour
                           (dt.date(), datetime(2022, 1, 2), True, True),
@@ -509,11 +513,13 @@ class TestType:
             'time': time(12, 13, 14, 1234),
             'dur': timedelta(days=1, seconds=10, microseconds=123),
             'dc': Decimal('10.23'),
-            'en': en(2)
+            'en': en(2),
+            'a': (1, 2),
+            's': {'s'}
         }
         res = JSONSerializer().dumps(data)
         assert res == b'{"dt":"2000-01-01T12:13:14.001234","date":"2000-01-01",' \
-                      b'"time":"12:13:14.001","dur":"P1DT00H00M10.000123S","dc":10.23,"en":2}'
+                      b'"time":"12:13:14.001","dur":"P1DT00H00M10.000123S","dc":10.23,"en":2,"a":[1,2],"s":["s"]}'
 
     # def test_vendor(self):
     #     from utype import register_transformer

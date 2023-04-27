@@ -25,13 +25,14 @@ class DateFormat:
     DATETIME_F = "%Y-%m-%d %H:%M:%S %f"
     DATETIME_P = "%Y-%m-%d %I:%M:%S %p"
     DATETIME_T = "%Y-%m-%dT%H:%M:%S"
-    DATETIME_TZ = "%Y-%m-%dT%H:%M:%SZ"
-    DATETIME_TFZ = "%Y-%m-%dT%H:%M:%S.%fZ"
+    # DATETIME_TZ = "%Y-%m-%dT%H:%M:%SZ"
+    # DATETIME_TFZ = "%Y-%m-%dT%H:%M:%S.%fZ"
     DATETIME_TF = "%Y-%m-%dT%H:%M:%S.%f"
-    DATETIME_ISO = "%Y-%m-%dT%H:%M:%S.%fTZD"
-    DATETIME_GMT = "%a, %d %b %Y %H:%M:%S GMT"
+    # DATETIME_ISO = "%Y-%m-%dT%H:%M:%S.%fTZD"
+    DATETIME_HTTP = "%a, %d %b %Y %H:%M:%S"
+    # DATETIME_GMT = "%a, %d %b %Y %H:%M:%S GMT"
     DATETIME_PS = "%a %b %d %H:%M:%S %Y"
-    DATETIME_GMT2 = "%b %d %H:%M:%S %Y GMT"
+    DATETIME_GMT = "%b %d %H:%M:%S %Y"
     DATE = "%Y-%m-%d"
     # TIME = '%H:%M:%S'
 
@@ -42,7 +43,16 @@ class TypeTransformer:
     # ----- preferences
     # can be override
     DATETIME_FORMATS = [
-        v for k, v in DateFormat.__dict__.items() if k.startswith("DATE")
+        DateFormat.DATETIME,
+        DateFormat.DATETIME_DF,
+        DateFormat.DATETIME_F,
+        DateFormat.DATETIME_P,
+        DateFormat.DATETIME_T,
+        DateFormat.DATETIME_TF,
+        DateFormat.DATETIME_HTTP,
+        DateFormat.DATETIME_PS,
+        DateFormat.DATETIME_GMT,
+        DateFormat.DATE
     ]
     EPOCH = datetime(1970, 1, 1)
     MS_WATERSHED = int(2e10)
@@ -481,17 +491,29 @@ class TypeTransformer:
             return t.utcfromtimestamp(num).replace(tzinfo=timezone.utc)
 
         data = self._from_byte_like(data)
+        is_utc = "GMT" in data or 'UTC' in data or data.endswith("Z") and "T" in data
+        data = data.replace('GMT', '').replace('UTC', '').replace('TZD', '').rstrip('Z').strip()
 
         for f in self.DATETIME_FORMATS:
             try:
                 val = t.strptime(data, f)
-                if data.endswith("GMT") or data.endswith("Z") and "T" in data:
+                if is_utc:
                     val = val.replace(tzinfo=timezone.utc)
                 return val
             except (TypeError, ValueError, re.error):
                 continue
 
-        raise TypeError
+        if '+' in str(data):
+            for f in self.DATETIME_FORMATS:
+                try:
+                    val = t.strptime(data, f + ' %z')
+                    if is_utc:
+                        val = val.replace(tzinfo=timezone.utc)
+                    return val
+                except (TypeError, ValueError, re.error):
+                    continue
+
+        raise TypeError('invalid datetime')
 
     @registry.register(timedelta)
     def to_timedelta(self, data, t: Type[timedelta] = timedelta) -> timedelta:

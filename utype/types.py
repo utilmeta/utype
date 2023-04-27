@@ -6,7 +6,6 @@ from typing import Union, Optional, Tuple, List, Set, Mapping, \
     Dict, Type, Callable, Any, TYPE_CHECKING, Iterator, ClassVar
 from .utils.compat import Literal, Annotated, Final, ForwardRef
 from .parser.rule import Lax, Rule
-from .utils import exceptions as exc
 
 # from typing import TypeVar
 # T = TypeVar('T')
@@ -99,6 +98,7 @@ class NanFloat(Float):
         if not math.isnan(value):
             # do not use const = float('nan')
             # cause NaN can not use equal operator
+            from .utils import exceptions as exc
             raise exc.ConstraintError(constraint="const", constraint_value=float("nan"))
         return value
 

@@ -336,6 +336,12 @@ class TestOptions:
             # 1. when parsing, default value will never be used to fill unprovided key
             # 2. when accessing missing attributes, it will throw AttributeError instead of give a default
 
+        class ForceDefaultRequired(Schema):
+            __options__ = Options(force_default=None)
+            default: str
+
+        assert ForceDefaultRequired().default is None
+
         class ForceDefault(Schema):
             __options__ = Options(force_default=None)
             default: str = 0

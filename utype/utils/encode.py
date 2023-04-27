@@ -73,6 +73,16 @@ def from_mapping(data):
     return dict(data)
 
 
+@register_encoder(set)
+def from_set(data):
+    return list(data)
+
+
+@register_encoder(tuple)
+def from_tuple(data):
+    return list(data)
+
+
 @register_encoder(unprovided.__class__)
 def from_unprovided(data):
     return None

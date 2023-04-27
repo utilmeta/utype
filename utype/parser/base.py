@@ -21,6 +21,10 @@ class BaseParser:
 
     @classmethod
     def resolve_parser(cls, obj):
+        parser = getattr(obj, "__dict__", {}).get("__parser__")
+        # get to the __dict__ first
+        if isinstance(parser, cls):
+            return parser
         global __parsers__
         if obj in __parsers__:
             return __parsers__[obj]

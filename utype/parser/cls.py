@@ -144,6 +144,14 @@ class ClassParser(BaseParser):
                 continue
             if key in exclude_vars:
                 continue
+            if attr is Ellipsis and key in self.fields:
+                # class base(Schema):
+                #     f: int
+                # class sub(base):
+                #     f = ...
+                # means that sub schema has dropped field [f] (not declaring the annotation)
+                self.fields.pop(key)
+                continue
             fields.append(
                 self.parser_field_cls.generate(
                     attname=key,

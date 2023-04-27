@@ -168,6 +168,18 @@ class TestClass:
         with pytest.raises(TypeError):
             DataNoParse(name=1, age='2')
 
+    def test_inherit(self):
+        class base(Schema):
+            a: int
+            b: int
+
+        class sub(base):
+            a = ...
+            c: int = 0
+
+        assert dict(sub(b=1)) == {'b': 1, 'c': 0}
+        assert dict(sub(a=2, b=1)) == {'b': 1, 'c': 0}
+
     def test_setup(self):
         class CustomType:
             def __init__(self, val):
