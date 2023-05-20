@@ -683,7 +683,7 @@ class TestClass:
             level: int = 0
 
             @property
-            @Field(alias='@label', no_output=no_output)
+            @Field(alias='@label', no_output=no_output, dependencies=['level'])
             def label(self) -> bytes:       # test conversion
                 return f"{self.name}<{self.level}>"
 
