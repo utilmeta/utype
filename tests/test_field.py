@@ -356,6 +356,16 @@ class TestField:
             def func(f: str = Field(no_output=True)):
                 return f
 
+        class S(Schema):
+            a: int = Field(no_output=True, mode='r')
+
+            @property
+            def b(self):
+                return self.a + 1
+
+        assert dict(S.__from__({'a': 1}, Options(mode='r', addition=True))) == {'b': 2}
+        # assert no_output in the mode
+
     def test_field_on_error(self, dfs):
         class T(Schema):
             __options__ = Options(data_first_search=dfs)

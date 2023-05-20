@@ -1427,7 +1427,10 @@ class Rule(metaclass=LogicalType):
             return cls
         constraints = {}
         for name, val, func in cls.__validators__:
-            constraints[name] = val
+            constraints[name] = getattr(cls, name, val)
+            # do not lose the mode info
+            # so we get value from cls first
+
         # try to find a strong constraint
         if 'const' in constraints or 'enum' in constraints:
             return cls
@@ -1437,7 +1440,7 @@ class Rule(metaclass=LogicalType):
                 return t & cls
             elif issubclass(t, Rule):
                 for name, val, func in t.__validators__:
-                    constraints[name] = val
+                    constraints[name] = getattr(t, name, val)
                 if 'const' in constraints or 'enum' in constraints:
                     return t
                 return Rule.annotate(

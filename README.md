@@ -10,7 +10,7 @@
 utype is a data types declaration & parsing library based on Python type annotations, 
 enforce types and constraints for classes and functions at runtime
 
-* Version: `0.3.1` [test]
+* Version: `0.3.2` [test]
 * Author: [@voidZXL](https://github.com/voidZXL)
 * License: Apache 2.0
 * Source Code: [https://github.com/utilmeta/utype](https://github.com/utilmeta/utype)

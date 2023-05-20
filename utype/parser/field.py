@@ -788,6 +788,9 @@ class ParserField:
         if isinstance(no_input, (str, list, set, tuple)):
             return options.mode in no_input
 
+        if no_input is True:
+            return True
+
         if self.mode:
             return options.mode not in self.mode
 
@@ -839,6 +842,9 @@ class ParserField:
 
         if isinstance(no_output, (str, list, set, tuple)):
             return options.mode in no_output
+
+        if no_output is True:
+            return True
 
         if self.mode:
             return options.mode not in self.mode
@@ -1129,7 +1135,12 @@ class ParserField:
                     "return"
                 )
 
-                dependencies = inspect.getclosurevars(prop.fget).unbound
+                # dependencies = inspect.getclosurevars(prop.fget).unbound
+                # !!
+                # UNBOUND MAY GET THE WRONG DEPENDENCY AND THUS THE WRONG RESULT (without explicit error)
+                # [SUCH AS self.a.b will make "b" an unbound, which is not the desired dependency]
+                # SO WE SHOULD LET DEVELOPER SPECIFY DEPENDENCIES OR [LET IT FAIL]
+
                 # use the unbound properties as default dependencies of property
                 # you can use @Field(dependencies=[...]) to specify yourself
 

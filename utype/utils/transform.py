@@ -1,3 +1,4 @@
+import io
 import json
 import re
 from collections import deque
@@ -613,6 +614,16 @@ class TypeTransformer:
             if type(data) != member_type:
                 data = self(data, member_type)
         return t(data)  # noqa
+
+    @registry.register(io.BytesIO)
+    def to_filelike(self, data, t):
+        if isinstance(data, t):
+            return data
+        if isinstance(data, (bytes, bytearray, memoryview)):
+            return t(data)
+        if self.no_explicit_cast:
+            raise TypeError
+        return t(str(data).encode())
 
     @registry.register(type, allow_subclasses=False)
     def to_type(self, data, t=type) -> type:

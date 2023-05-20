@@ -223,7 +223,7 @@ class Schema(dict, metaclass=LogicalMeta):
         if field.always_no_output(context.options):
             return
 
-        if not field.dependencies.issubset(self):
+        if field.dependencies and not field.dependencies.issubset(self):
             # maybe some of the dependencies is no_output=True, but still accessible through attribute
             # check if any of those dependencies is not in __dict__, and directly return if found one
             for dep in field.dependencies:
