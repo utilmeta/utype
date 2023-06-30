@@ -4,12 +4,12 @@ from typing import Callable, Dict, List, Optional, Set, Tuple, Type, Union
 
 from ..utils import exceptions as exc
 from ..utils.compat import *
+from ..utils.functional import is_local_var, get_obj_name
 from ..utils.datastructures import cached_property, unprovided
 from .field import ParserField
 from .options import Options, RuntimeContext
 from .rule import resolve_forward_type
 
-LOCALS_NAME = "<locals>"
 __parsers__ = {}
 
 
@@ -25,9 +25,11 @@ class BaseParser:
         # get to the __dict__ first
         if isinstance(parser, cls):
             return parser
-        global __parsers__
-        if obj in __parsers__:
-            return __parsers__[obj]
+        if not is_local_var(obj):
+            # return None
+            global __parsers__
+            if obj in __parsers__:
+                return __parsers__[obj]
         parser = getattr(obj, "__parser__", None)
         if isinstance(parser, cls):
             return parser
@@ -42,6 +44,8 @@ class BaseParser:
         # since it may get to the base class
         if isinstance(parser, cls):
             return parser
+        if is_local_var(obj):
+            no_cache = True
         global __parsers__
         # key = (cls, obj)
         key = obj
@@ -74,7 +78,8 @@ class BaseParser:
         self.error_hooks: Dict[Type[Exception], Callable] = {}
         self.data_first_search = None
         self.addition_type = None
-        self.name = self.get_name()
+        self.name = get_obj_name(obj)
+        self.is_local = is_local_var(obj)
         self.setup()
 
     def make_context(self, context=None, force_error: bool = False):
@@ -83,15 +88,6 @@ class BaseParser:
     @property
     def kwargs(self):
         return {}
-
-    def get_name(self) -> str:
-        name = getattr(
-            self.obj, "__qualname__", getattr(self.obj, "__name__", None)
-        ) or str(self.obj)
-        while LOCALS_NAME in name:
-            lhs, rhs = name.split(LOCALS_NAME)
-            name = str(rhs).strip(".")
-        return name
 
     def setup(self):
         self.generate_fields()
@@ -111,6 +107,7 @@ class BaseParser:
             annotation=annotation,
             forward_refs=self.forward_refs,
             global_vars=self.globals,
+            force_clear_refs=self.is_local
         )
 
     @cached_property
@@ -207,6 +204,7 @@ class BaseParser:
     def resolve_forward_refs(self, local_vars=None, ignore_errors: bool = True):
         if not self.forward_refs:
             return False
+        clear_refs = []
         resolved = False
         for name in list(self.forward_refs):
             ref, constraints = self.forward_refs[name]
@@ -240,6 +238,8 @@ class BaseParser:
                             constraints={"const": ref.__forward_value__},
                         )
                     resolved = True
+                    if self.is_local:
+                        clear_refs.append(ref)
                     self.forward_refs.pop(name)
             except Exception:
                 if ignore_errors:
@@ -250,6 +250,13 @@ class BaseParser:
                 field.resolve_forward_refs()
             # resolve for types
             self.addition_type, r = resolve_forward_type(self.addition_type)
+        if self.is_local:
+            # ForwardRef in local vars is not cachable
+            # where typing is using a lru_cache
+            # we should clear
+            for ref in clear_refs:
+                ref.__forward_evaluated__ = False
+                ref.__forward_value__ = None
         return resolved
 
     @classmethod

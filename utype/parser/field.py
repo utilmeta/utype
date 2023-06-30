@@ -1068,6 +1068,7 @@ class ParserField:
         positional_only: bool = False,
         global_vars=None,
         forward_refs=None,
+        force_clear_refs=False,
         **kwargs
     ):
         prop = None
@@ -1173,6 +1174,7 @@ class ParserField:
                     forward_refs=forward_refs,
                     forward_key=attname,
                     constraints=output_field.constraints if output_field else None,
+                    force_clear_refs=force_clear_refs
                 )
 
             else:
@@ -1231,6 +1233,7 @@ class ParserField:
             global_vars=global_vars,
             forward_refs=forward_refs,
             forward_key=attname,
+            force_clear_refs=force_clear_refs
         )
 
         parser_field = _cls(

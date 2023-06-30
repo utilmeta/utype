@@ -337,6 +337,18 @@ class TestClass:
         #     l_int: List['types.PositiveInt'] = Field(length=5)
         #     l_int_f: 'List[types.PositiveInt]' = Field(max_length=3)
 
+    def test_local_forward_ref(self):
+        def f(u=0):
+            class Self(Schema):
+                num: int = u
+                to_self: Optional["Self"] = None
+                list_self: List["Self"] = utype.Field(default_factory=list)
+            data = Self(to_self={'to_self': {}}, list_self=[{'list_self': []}])
+            return data.to_self.to_self.num, data.list_self[0].num
+
+        assert f(1) == (1, 1)
+        assert f(2) == (2, 2)
+
     def test_class_vars(self, dfs):
         def outer(k=None):
             return k

@@ -51,6 +51,7 @@ def register_forward_ref(
     global_vars: Dict[str, Any] = None,
     forward_refs: Dict[str, Tuple[ForwardRef, dict]] = None,
     forward_key: str = None,
+    force_clear: bool = False
 ):
 
     if not isinstance(annotation, ForwardRef):
@@ -60,6 +61,7 @@ def register_forward_ref(
         evaluated = True
         annotation = annotation.__forward_value__
     elif global_vars:
+        ref = annotation
         try:
             annotation = evaluate_forward_ref(annotation, global_vars, None)
         except NameError:
@@ -67,6 +69,9 @@ def register_forward_ref(
             pass
         else:
             evaluated = True
+            if force_clear:
+                ref.__forward_evaluated__ = False
+                ref.__forward_value__ = None
 
     if not evaluated:
         if isinstance(forward_refs, dict):
@@ -185,6 +190,7 @@ class LogicalType(type):  # noqa
         global_vars: Dict[str, Any] = None,
         forward_refs=None,
         forward_key: str = None,
+        force_clear: bool = False
     ):
         if not cls.combinator:
             return
@@ -198,12 +204,16 @@ class LogicalType(type):  # noqa
                     global_vars=global_vars,
                     forward_refs=forward_refs,
                     forward_key=key,
+                    force_clear=force_clear,
                 )
                 arg = cls._parse_arg(arg)
                 registered = True
             elif isinstance(arg, LogicalType) and arg.combinator:
                 if arg.register_forward_refs(
-                    global_vars=global_vars, forward_refs=forward_refs, forward_key=key
+                    global_vars=global_vars,
+                    forward_refs=forward_refs,
+                    forward_key=key,
+                    force_clear=force_clear
                 ):
                     registered = True
             args.append(arg)
@@ -1234,6 +1244,7 @@ class Rule(metaclass=LogicalType):
         constraints: Dict[str, Any] = None,
         global_vars: Dict[str, Any] = None,
         forward_refs=None,
+        force_clear_refs=False
     ):
         args = []
         ellipsis_args = False
@@ -1280,7 +1291,10 @@ class Rule(metaclass=LogicalType):
                     args.append(arg)
                     continue
                 annotation = cls.parse_annotation(
-                    arg, global_vars=global_vars, forward_refs=forward_refs
+                    arg,
+                    global_vars=global_vars,
+                    forward_refs=forward_refs,
+                    force_clear_refs=force_clear_refs
                 )
                 # this annotation can be a ForwardRef
                 # not with constraints, cause that is applied to upper layer
@@ -1336,6 +1350,7 @@ class Rule(metaclass=LogicalType):
         global_vars=None,
         forward_refs=None,
         forward_key=None,
+        force_clear_refs=False,
     ):
         if isinstance(annotation, str):
             if not annotation:
@@ -1352,6 +1367,7 @@ class Rule(metaclass=LogicalType):
                 global_vars=global_vars,
                 forward_refs=forward_refs,
                 forward_key=forward_key,
+                force_clear=force_clear_refs
             )
             if isinstance(annotation, ForwardRef):
                 # if annotation still cannot be resolved by global vars
@@ -1370,6 +1386,7 @@ class Rule(metaclass=LogicalType):
                     global_vars=global_vars,
                     forward_refs=forward_refs,
                     forward_key=forward_key,
+                    force_clear=force_clear_refs
                 )
             # do not detect origin for Logical types (including Rule)
             origin = None
@@ -1387,6 +1404,7 @@ class Rule(metaclass=LogicalType):
                 constraints=constraints,
                 forward_refs=forward_refs,
                 global_vars=global_vars,
+                force_clear_refs=force_clear_refs
             )
         elif annotation:
             if isinstance(annotation, type):
@@ -1396,6 +1414,7 @@ class Rule(metaclass=LogicalType):
                         constraints=constraints,
                         forward_refs=forward_refs,
                         global_vars=global_vars,
+                        force_clear_refs=force_clear_refs
                     )
                 else:
                     # no constraints, we can directly use it
@@ -1408,6 +1427,7 @@ class Rule(metaclass=LogicalType):
                 constraints=constraints,
                 forward_refs=forward_refs,
                 global_vars=global_vars,
+                force_clear_refs=force_clear_refs
             )
         return None
 

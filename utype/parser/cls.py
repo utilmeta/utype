@@ -85,7 +85,16 @@ class ClassParser(BaseParser):
     def globals(self) -> dict:
         dic = dict(super().globals)
         # for the self-reference model in the function (not in global vars)
-        dic.setdefault(self.obj.__name__, self.obj)
+        # dic.setdefault(self.obj.__name__, self.obj)
+        name = self.obj.__name__
+        current_obj = dic.get(name)
+        if current_obj:
+            if getattr(current_obj, '__qualname__', None) != getattr(self.obj, '__qualname__', None):
+                warnings.warn(f'Parser object: {self.obj} got conflict object: {current_obj} '
+                              f'with same name: {repr(name)}, it may affect the ForwardRef resolve')
+        dic[name] = self.obj
+        # !IMPORTANT: we need to override __name__ for current obj
+        # cause in the locals, same name may be the different object, we should be careful about that
         return dic
 
     def generate_fields(self):
@@ -121,6 +130,7 @@ class ClassParser(BaseParser):
                     global_vars=global_vars,
                     forward_refs=self.forward_refs,
                     options=self.options,
+                    force_clear_refs=self.is_local,
                     **self.kwargs
                 )
             )
@@ -160,6 +170,7 @@ class ClassParser(BaseParser):
                     global_vars=global_vars,
                     forward_refs=self.forward_refs,
                     options=self.options,
+                    force_clear_refs=self.is_local,
                     **self.kwargs
                 )
             )

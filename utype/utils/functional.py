@@ -1,5 +1,7 @@
 from typing import Optional
 
+LOCALS_NAME = "<locals>"
+
 
 def multi(f):
     return isinstance(
@@ -41,3 +43,19 @@ def get_name(func) -> Optional[str]:
     if hasattr(func, "__name__"):
         return func.__name__
     return None
+
+
+def get_obj_name(obj) -> str:
+    name = getattr(
+        obj, "__qualname__", getattr(obj, "__name__", None)
+    ) or str(obj)
+    if LOCALS_NAME in name:
+        name = str(name.split(LOCALS_NAME)[-1]).strip(".")
+    return name
+
+
+def is_local_var(obj):
+    name = getattr(
+        obj, "__qualname__", getattr(obj, "__name__", None)
+    ) or ''
+    return not name or LOCALS_NAME in name
