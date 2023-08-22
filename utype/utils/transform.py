@@ -349,7 +349,7 @@ class TypeTransformer:
                     # cookie syntax or comma separate syntax
                     return t(
                         {
-                            value.split("=")[0].strip(): value.split("=")[1].strip()
+                            value.split("=")[0].strip(): ("=".join(value.split("=")[1:]).strip())
                             for value in data.split(spliter)
                         }
                     )

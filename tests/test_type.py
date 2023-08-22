@@ -344,6 +344,12 @@ class TestType:
                     True,
                 ),  # cookie syntax
                 (
+                    "title=A=B;url=https://example.com?id=1234",
+                    {"title": "A=B", 'url': 'https://example.com?id=1234'},
+                    False,
+                    True,
+                ),  # cookie syntax
+                (
                     "k1=v1, k2=v2, k3=v3",
                     {"k1": "v1", "k2": "v2", "k3": "v3"},
                     False,

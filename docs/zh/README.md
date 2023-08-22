@@ -19,7 +19,7 @@
 
 utype 是一个基于 Python 类型注解的数据类型声明与解析库，能够在运行时根据你的声明对类与函数的参数进行解析转化
 
-* 版本：`0.3.3`【测试】
+* 版本：`0.3.4`【测试】
 * 作者：<a href="https://github.com/voidZXL" target="_blank">@voidZXL</a>
 * 协议：Apache 2.0
 * 代码：<a href="https://github.com/utilmeta/utype" target="_blank">https://github.com/utilmeta/utype</a>
