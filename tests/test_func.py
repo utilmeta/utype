@@ -406,6 +406,14 @@ class TestFunc:
         assert fib('10', _current=10, _next=6) == 55
         assert fib('10', 10, 5) == 615      # can pass through positional args
 
+    def test_args_parse(self):
+        @utype.parse
+        def get(a):
+            return a
+
+        assert get(1) == 1
+        assert get(1, 2) == 1
+
     def test_generator(self, eager):
         csv_file = """
         1,3,5

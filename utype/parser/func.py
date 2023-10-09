@@ -395,8 +395,8 @@ class FunctionParser(BaseParser):
                         # annotation = args[0] if args else None
                         continue
 
-            fields.append(
-                self.parser_field_cls.generate(
+            try:
+                field = self.parser_field_cls.generate(
                     attname=name,
                     annotation=annotation,
                     default=param.default
@@ -408,6 +408,11 @@ class FunctionParser(BaseParser):
                     positional_only=param.kind == param.POSITIONAL_ONLY,
                     **self.kwargs
                 )
+            except Exception as e:
+                raise exc.ConfigError(f'{self.name}: parse field [{repr(name)}] failed with error: {e}')
+
+            fields.append(
+                field
             )
 
         field_map = {}
@@ -591,7 +596,7 @@ class FunctionParser(BaseParser):
                     continue
             else:
                 field = self.positional_fields.get(i)
-                # if field not exists, maybe it's a excluded var
+
                 if field:
                     if field.is_no_input(arg, options=context.options):
                         arg = field.get_default(options=context.options)
@@ -601,6 +606,16 @@ class FunctionParser(BaseParser):
                     if unprovided(arg):
                         # on_error=excluded, or error collected
                         continue
+                else:
+                    if i in self.exclude_indexes:
+                        # excluded var
+                        # def f(a, _b, _c):
+                        # we do not parse, just append this arg
+                        pass
+                    else:
+                        # excess var ignore
+                        continue
+
             parsed_args.append(arg)
 
         # 2. check if unprovided args has default give, and the unprovided required args

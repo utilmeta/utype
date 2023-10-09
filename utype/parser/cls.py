@@ -122,8 +122,9 @@ class ClassParser(BaseParser):
                 # a: Union[None]
                 annotation = type(None)
                 # to make a difference to annotation=None
-            fields.append(
-                self.parser_field_cls.generate(
+
+            try:
+                field = self.parser_field_cls.generate(
                     attname=key,
                     annotation=annotation,
                     default=default,
@@ -133,7 +134,10 @@ class ClassParser(BaseParser):
                     force_clear_refs=self.is_local,
                     **self.kwargs
                 )
-            )
+            except Exception as e:
+                raise exc.ConfigError(f'{self.name}: parse field [{repr(key)}] failed with error: {e}')
+
+            fields.append(field)
 
         for key, attr in self.obj.__dict__.items():
             if key in annotations:
@@ -162,8 +166,9 @@ class ClassParser(BaseParser):
                 # means that sub schema has dropped field [f] (not declaring the annotation)
                 self.fields.pop(key)
                 continue
-            fields.append(
-                self.parser_field_cls.generate(
+
+            try:
+                field = self.parser_field_cls.generate(
                     attname=key,
                     annotation=None,
                     default=attr,
@@ -173,7 +178,10 @@ class ClassParser(BaseParser):
                     force_clear_refs=self.is_local,
                     **self.kwargs
                 )
-            )
+            except Exception as e:
+                raise exc.ConfigError(f'{self.name}: parse field [{repr(key)}] failed with error: {e}')
+
+            fields.append(field)
 
         field_map = {}
         for field in fields:
