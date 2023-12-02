@@ -148,6 +148,13 @@ class TestType:
                 ("-1.24", -1, False, False),
                 (Decimal("0.14"), 0, True, False),
                 (timedelta(hours=1), 3600, False, True),
+                ('-2169770310306829106111111111111111111111111.12',
+                 -2169770310306829106111111111111111111111111, False, False),
+                ('-2169770310306829106111111111111111111111111',
+                 -2169770310306829106111111111111111111111111, False, True),
+                # big float is already lost
+                # (2169770310306829106111111111111111111111111.12,
+                #  2169770310306829106111111111111111111111111, True, False),
                 ([10], 10, False, True),
                 ([10, 11], 10, False, False),
                 ((-1.3 + 0j), -1, False, False),
@@ -260,6 +267,10 @@ class TestType:
                       + [
                           ('Fri, 10 Mar 2023 17:25:08 +0800',
                            datetime(2023, 3, 10, 17, 25, 8, tzinfo=timezone(timedelta(seconds=28800))),
+                           True, True
+                           ),
+                          ('2023-10-09T20:41:59+08:00',
+                           datetime(2023, 10, 9, 20, 41, 59, tzinfo=timezone(timedelta(seconds=28800))),
                            True, True
                            ),
                           ("2022-01-02", datetime(2022, 1, 2), True, True),

@@ -35,6 +35,7 @@ class DateFormat:
     DATETIME_PS = "%a %b %d %H:%M:%S %Y"
     DATETIME_GMT = "%b %d %H:%M:%S %Y"
     DATE = "%Y-%m-%d"
+    DATE_HM = "%Y-%m-%d %H:%M"
     # TIME = '%H:%M:%S'
 
 
@@ -53,7 +54,8 @@ class TypeTransformer:
         DateFormat.DATETIME_HTTP,
         DateFormat.DATETIME_PS,
         DateFormat.DATETIME_GMT,
-        DateFormat.DATE
+        DateFormat.DATE,
+        DateFormat.DATE_HM
     ]
     EPOCH = datetime(1970, 1, 1)
     MS_WATERSHED = int(2e10)
@@ -156,6 +158,10 @@ class TypeTransformer:
         elif isinstance(data, complex) and not self.no_data_loss:
             if not data.imag:
                 return data.real
+        elif not data:
+            # convert ''. None and others to 0
+            # might be a questionable feature?
+            return 0
         return data
 
     # ---------------------
@@ -395,10 +401,14 @@ class TypeTransformer:
                 if data.lower() in self.TRUE_VALUES:
                     return 1
 
-        data = float(data)
+        data = Decimal(data)
+        # !!
+        # FOR number > 1e+16, int(float()) will not get accurate result, use decimal instead
 
         if self.no_data_loss:
-            if not data.is_integer():
+            if not data.is_normal():
+                raise TypeError
+            if data.as_tuple().exponent:
                 raise TypeError
 
         return t(data)
@@ -507,7 +517,8 @@ class TypeTransformer:
         if '+' in str(data):
             for f in self.DATETIME_FORMATS:
                 try:
-                    val = t.strptime(data, f + ' %z')
+                    # val = t.strptime(data, f + ' %z')
+                    val = t.strptime(data, f + (' %z' if ' +' in str(data) else '%z'))
                     if is_utc:
                         val = val.replace(tzinfo=timezone.utc)
                     return val

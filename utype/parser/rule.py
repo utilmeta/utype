@@ -24,7 +24,8 @@ ORIGIN = TypeVar("ORIGIN")
 NUM_TYPES = (int, float, Decimal)
 SEQ_TYPES = (list, tuple, set, frozenset, deque, Iterator)
 MAP_TYPES = (dict, Mapping)
-TYPE_EXACT_TOLERANCE = ({int, float},)
+TYPE_EXACT_TOLERANCE = ({int, float}, {int, Decimal}, (float, Decimal))
+
 OPERATOR_NAMES = {
     "&": "AllOf",
     "|": "AnyOf",

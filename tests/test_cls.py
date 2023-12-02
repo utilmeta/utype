@@ -3,7 +3,7 @@ import typing
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
 from uuid import UUID
-
+from decimal import Decimal
 import pytest  # noqa
 
 import utype
@@ -476,6 +476,11 @@ class TestClass:
         assert s(a=bool).a == bool
         assert s(a=int).a == int
 
+        class s(Schema):
+            d: Decimal = utype.Field(ge=0, round=2)
+
+        assert s(d=0.1234).d == Decimal('0.12')
+
     def test_generic_types(self):
         import sys
         if sys.version_info >= (3, 8):
@@ -823,6 +828,12 @@ class TestClass:
             'properties': {'slug': {'type': 'string'}, 'title': {'type': 'string'},
                            'updated_at': {'type': 'string', 'format': 'date-time'}},
             'required': ['title', 'updated_at']}
+
+        class t(Schema):
+            __options__ = Options(mode='a')
+            a: int = Field(mode='rw', no_input='w')
+
+        assert 'a' not in t()
 
     def test_schema_dict(self, dfs):
         class T(Schema):

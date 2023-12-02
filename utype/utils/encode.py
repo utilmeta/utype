@@ -118,12 +118,39 @@ def from_uuid(data: uuid.UUID):
 
 @register_encoder(decimal.Decimal)
 def from_decimal(data: decimal.Decimal):
-    return float(data) if data.is_normal() else str(data)
+    if data.is_normal():
+        if js_unsafe(data):
+            return str(data)
+        return float(data)
+    return str(data)
+
+
+# TODO?
+# @register_encoder(float)
+# def from_float(data: float):
+#     if js_unsafe(data):
+#         return str(data)
+#     return data
+#
+#
+# @register_encoder(int)
+# def from_int(data: int):
+#     if js_unsafe(data):
+#         return str(data)
+#     return data
 
 
 @register_encoder(Enum)
 def from_enum(en: Enum):
     return en.value
+
+
+MAX_SAFE_NUMBER = 9007199254740991
+MIN_SAFE_NUMBER = -9007199254740991
+
+
+def js_unsafe(num: Union[int, float, decimal.Decimal]):
+    return num > MAX_SAFE_NUMBER or num < MIN_SAFE_NUMBER
 
 
 # @register_encoder(attr="__iter__")

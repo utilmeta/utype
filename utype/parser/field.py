@@ -808,7 +808,8 @@ class ParserField:
         if callable(self.no_input):
             return False
         if isinstance(self.no_input, (str, list, set, tuple)):
-            return options.mode in self.no_input
+            if options.mode in self.no_input:
+                return True
         if self.mode:
             return options.mode not in self.mode
         return False
@@ -822,7 +823,8 @@ class ParserField:
         if callable(self.no_output):
             return False
         if isinstance(self.no_output, (str, list, set, tuple)):
-            return options.mode in self.no_output
+            if options.mode in self.no_output:
+                return True
         if self.mode:
             return options.mode not in self.mode
         return False
