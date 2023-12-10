@@ -225,10 +225,9 @@ You can register transformers not only for custom types, but also for basic type
 ## RoadMap and Contribution
 The utype is still growing, and the following features are planned for implementation in the new version
 
-* Support the generation of input and output template documents in json-schema format
 * Improve the handling mechanism of parsing errors, including error handling hook functions, etc.
 * Support parsing and management of environment variables and configuration files
-* Support the declaration and resolution of command line parameters
+* Support the declaration and parse command line parameters
 * Support for Python generics, type variables, and more type annotation syntax
 * Develop Pycharm/VS Code plugin that supports IDE detection and hints for constraints, logical types, and nested types
 

@@ -149,9 +149,17 @@ class Field:
                     params={"required": required, "on_error": on_error},
                 )
 
+            if isinstance(required, str):
+                if mode:
+                    if not set(required).issubset(set(mode)):
+                        raise exc.ConfigError(
+                            f"Field required: {represent(required)} is not in mode: {represent(mode)}",
+                            params={"required": required, "mode": mode},
+                        )
+
         if isinstance(no_input, str):
             if mode:
-                if no_input not in mode:
+                if not set(no_input).issubset(set(mode)):
                     raise exc.ConfigError(
                         f"Field no_input: {represent(no_input)} is not in mode: {represent(mode)}",
                         params={"no_input": no_input, "mode": mode},
@@ -159,7 +167,7 @@ class Field:
 
         if isinstance(no_output, str):
             if mode:
-                if no_output not in mode:
+                if not set(no_output).issubset(set(mode)):
                     raise exc.ConfigError(
                         f"Field no_output: {represent(no_output)} is not in mode: {represent(mode)}",
                         params={"no_output": no_output, "mode": mode},

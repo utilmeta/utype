@@ -32,6 +32,16 @@ class ClassParser(BaseParser):
         super().__init__(obj, *args, **kwargs)
         self.init_parser = None
 
+    @property
+    def in_out_identical(self):
+        for val in self.fields.values():
+            if val.no_input is True and val.no_output is True:
+                # ignored
+                continue
+            if val.no_input or val.no_output:
+                return False
+        return True
+
     def setup(self):
         self.generate_from_bases()
         super().setup()

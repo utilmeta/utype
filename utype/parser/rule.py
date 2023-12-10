@@ -1472,9 +1472,12 @@ class Rule(metaclass=LogicalType):
         elif issubclass(t, Enum):
             # do not need to apply constraint to a strong type
             return t
+        args = cls.__args__ or []
+        if not args and not constraints:
+            return t
         return Rule.annotate(
             t,
-            *(cls.__args__ or []),
+            *args,
             constraints=constraints
         )
 

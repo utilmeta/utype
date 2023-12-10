@@ -731,7 +731,7 @@ print(res % 100007)
 ```
 
 !!! note
-	Ordinary Python function does not support tail-recursion, so if the call stack depth exceed certain limit (default to 1000 or so), execution will be failed and a `RecursiveError` is raised, but using generator-stype tail-recursion can solve this problem
+	Ordinary Python function does not support tail-recursion, so if the call stack depth exceed certain limit (default to 1000 or so), execution will be failed and a `RecursiveError` is raised, but using generator-style tail-recursion can solve this problem
 
 If your tail-recursive generator uses `@utype.parse` decoration, you can simplify the call by declaring the final return type. When utype recognizes that the iterator yield is still a generator, it will continue to iterate until it gets the result, so the above example can be simplified to
 

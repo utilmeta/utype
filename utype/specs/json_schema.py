@@ -90,12 +90,17 @@ class JsonSchemaGenerator:
 
     def __init__(self, t,
                  defs: Dict[type, dict] = None,
+                 names: Dict[str, type] = None,
                  ref_prefix: str = None,
                  mode: str = None,
                  output: bool = False
                  ):
         self.t = t
         self.defs = defs
+        self.names = names
+        if isinstance(defs, dict) and self.names is None:
+            self.names = {}
+
         self.ref_prefix = ref_prefix or self.DEFAULT_REF_PREFIX
         self.mode = mode
         self.output = output
@@ -186,17 +191,16 @@ class JsonSchemaGenerator:
     def get_defs(self) -> Dict[str, dict]:
         defs = {}
         for t, values in self.defs.items():
-            if t.__qualname__ in defs:
-                warnings.warn(f'Conflict def name on: {t.__qualname__}: {t}, {defs[t.__qualname__]}')
-                continue
-            defs[t.__qualname__] = values
+            name = self.get_def_name(t)
+            defs[name] = values
         return defs
 
     def generate_for_rule(self, t: Type[Rule]):
         name = t.__qualname__
         if isinstance(self.defs, dict):
-            if t in self.defs:
-                return {"$ref": f"{self.ref_prefix}{name}"}
+            def_name = self.get_def_name(t)
+            if def_name:
+                return {"$ref": f"{self.ref_prefix}{def_name}"}
 
         # type
         origin = t.__origin__
@@ -231,17 +235,37 @@ class JsonSchemaGenerator:
             data.update(extra)
         if t.__args__:
             data.update(self._get_args(t))
-        if isinstance(self.defs, dict):
-            self.defs[t] = data
-            return {"$ref": f"{self.ref_prefix}{name}"}
+        if isinstance(self.defs, dict) and name != 'Rule':
+            return {"$ref": f"{self.ref_prefix}{self.set_def(name, t, data)}"}
         return data
 
-    def _generate_for_field(self, f: ParserField) -> Optional[dict]:
+    def get_def_name(self, t: type):
+        if t in self.defs:
+            for k, v in self.names.items():
+                if v == t:
+                    return k
+        return None
+
+    def set_def(self, name: str, t: type, data: dict):
+        n = 0
+        while True:
+            _name = name + (f'_{n}' if n else '')
+            if _name in self.names:
+                n += 1
+                continue
+            name = _name
+            break
+            # de-duplicate name
+        self.defs[t] = data
+        self.names[name] = t
+        return name
+
+    def generate_for_field(self, f: ParserField, options: Options = None) -> Optional[dict]:
         if self.output:
-            if f.always_no_output(self.options):
+            if f.always_no_output(options or self.options):
                 return None
         else:
-            if f.always_no_input(self.options):
+            if f.always_no_input(options or self.options):
                 return None
 
         t = f.output_type if self.output else f.type
@@ -264,27 +288,38 @@ class JsonSchemaGenerator:
                 data.update(readOnly=True)
             elif f.field.mode == 'w':
                 data.update(writeOnly=True)
-        if not unprovided(f.field.example):
+        if not unprovided(f.field.example) and f.field.example is not None:
             data.update(examples=[f.field.example])
         if f.aliases:
-            data.update(aliases=f.aliases)
+            data.update(aliases=list(f.aliases))
         return data
 
+    # todo: de-duplicate generated schema class like UserSchema['a']
     def generate_for_dataclass(self, t):
-        name = t.__qualname__
+        # name = t.__qualname__
+        parser: ClassParser = getattr(t, '__parser__')
+        cls_name = parser.name
+        mode = parser.options.mode
+        if mode:
+            cls_name += '_' + mode
+        if self.output and not parser.in_out_identical:
+            cls_name += '_O'
+
         if isinstance(self.defs, dict):
-            if t in self.defs:
-                return {"$ref": f"{self.ref_prefix}{name}"}
+            def_name = self.get_def_name(t)
+            if def_name:
+                return {"$ref": f"{self.ref_prefix}{def_name}"}
+
         data = {"type": "object"}
         required = []
         properties = {}
-        parser: ClassParser = getattr(t, '__parser__')
+
         for name, field in parser.fields.items():
-            value = self._generate_for_field(field)
+            value = self.generate_for_field(field, options=parser.options)
             if value is None:
                 continue
             properties[name] = value
-            if field.is_required(self.options):
+            if field.is_required(parser.options or self.options):
                 # will count options.ignore_required in
                 required.append(name)
             elif self.output:
@@ -301,9 +336,9 @@ class JsonSchemaGenerator:
                 data.update(additionalProperties=self.generate_for_type(addition))
             else:
                 data.update(additionalProperties=addition)
+
         if isinstance(self.defs, dict):
-            self.defs[t] = data
-            return {"$ref": f"{self.ref_prefix}{name}"}
+            return {"$ref": f"{self.ref_prefix}{self.set_def(cls_name, t, data)}"}
         return data
 
     def generate_for_function(self, f):
@@ -317,13 +352,13 @@ class JsonSchemaGenerator:
         required = []
         params = {}
         for name, field in parser.fields.items():
-            value = self._generate_for_field(field)
+            value = self.generate_for_field(field, options=parser.options)
             if value is None:
                 continue
             params[name] = value
             if field.positional_only:
                 pos_params.append(name)
-            if field.is_required(self.options):
+            if field.is_required(parser.options or self.options):
                 required.append(name)
         data.update(parameters=params)
         if required:
@@ -337,20 +372,3 @@ class JsonSchemaGenerator:
             else:
                 data.update(additionalParameters=addition)
         return data
-
-
-# class OpenAPIGenerator(JsonSchemaGenerator):
-#     DEFAULT_REF_PREFIX = "#/components/schemas/"
-#
-#     def _generate_for_field(self, f: ParserField):
-#         data = super()._generate_for_field(f)
-#         if data is None:
-#             return data
-#         t = f.output_type if self.output else f.type
-#         if isinstance(t, LogicalType) and f.discriminator_map:
-#             # not part of json-schema, but in OpenAPI
-#             data.update(discriminator=dict(
-#                 propertyName=f.field.discriminator,
-#                 mapping={k: self.generate_for_type(v) for k, v in f.discriminator_map.items()}
-#             ))
-#         return data
