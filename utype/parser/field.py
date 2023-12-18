@@ -1083,12 +1083,10 @@ class ParserField:
     ):
         prop = None
         output_type = None
-        no_input = False
-        no_output = False
-        required = True
         dependencies = None
         field = cls.get_field(annotation, default, **kwargs)
         output_field = None
+        field_kwargs = dict()
 
         if isinstance(default, property):
             prop = default
@@ -1138,8 +1136,10 @@ class ParserField:
                         #     f"you should use @{default} over the @property"
                         # )
             else:
-                no_input = True
-                required = False
+                field_kwargs.update(
+                    no_input=True,
+                    required=False
+                )
 
             if prop.fget:
                 return_annotation = getattr(prop.fget, "__annotations__", {}).get(
@@ -1188,7 +1188,7 @@ class ParserField:
                 )
 
             else:
-                no_output = True
+                field_kwargs.update(no_output=True)
 
         final = is_final(annotation)
         if final:
@@ -1223,13 +1223,11 @@ class ParserField:
 
         _cls = cls
         if not isinstance(field, Field):
-            field = cls.field_cls(
+            field_kwargs.update(
                 default=default,
-                no_input=no_input,
-                no_output=no_output,
-                required=required,
-                immutable=final,
+                immutable=final
             )
+            field = cls.field_cls(**field_kwargs)
         else:
             _cls = field.parser_field_cls or _cls
             # this default is for the Annotated
