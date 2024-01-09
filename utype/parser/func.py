@@ -450,6 +450,8 @@ class FunctionParser(BaseParser):
         # validate DEFAULT order
         optional_name = None
         for i, (k, v) in enumerate(self.parameters):
+            if self.first_reserve and not i:
+                continue
             v: inspect.Parameter
             if v.kind == v.VAR_POSITIONAL:
                 continue
@@ -467,6 +469,8 @@ class FunctionParser(BaseParser):
                 required = v.default != v.empty
 
             if required:
+                if i in self.exclude_indexes:
+                    continue
                 if optional_name:
                     msg = (
                         f"{self.obj}: non-default argument: {repr(k)} "

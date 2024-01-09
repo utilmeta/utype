@@ -34,6 +34,7 @@ repo_url: https://github.com/utilmeta/utype
 edit_uri: edit/main/docs/en
 plugins:
 - search
+- open-in-new-tab
 
 nav:
   - README.md
@@ -45,12 +46,9 @@ nav:
       - references/rule.md
       - references/field.md
       - references/options.md
-  - Languanges:
-      - En: /
-      - Zh: /zh
-#  - Feature Extensions:
-#      - extension/env.md
-#      - extension/cmd.md
+  - Languages:
+      - English: /
+      - 中文: /zh
 
 extra:
   social:
@@ -58,6 +56,8 @@ extra:
       link: https://github.com/utilmeta/utype
     - icon: fontawesome/brands/twitter
       link: https://twitter.com/utype_io
+    - icon: fontawesome/brands/reddit
+      link: https://www.reddit.com/r/utilmeta
   alternate:
     - name: English
       link: /
@@ -93,3 +93,5 @@ markdown_extensions:
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.superfences
+
+copyright: Copyright &copy; 2022 - 2024 Xulin Zhou

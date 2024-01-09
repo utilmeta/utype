@@ -1,3 +1,4 @@
+import decimal
 import io
 import json
 import re
@@ -401,7 +402,10 @@ class TypeTransformer:
                 if data.lower() in self.TRUE_VALUES:
                     return 1
 
-        data = Decimal(data)
+        try:
+            data = Decimal(data)
+        except decimal.InvalidOperation:
+            raise TypeError(f'invalid number: {repr(data)}')
         # !!
         # FOR number > 1e+16, int(float()) will not get accurate result, use decimal instead
 

@@ -18,10 +18,8 @@
 
 utype is a data type declaration and parsing library based on Python type annotations, enforce types and constraints for classes and functions at runtime
 
-* Version: `0.3.6` [Test]
-* Author: <a href="https://github.com/voidZXL" target="_blank">@voidZXL</a>
-* License: Apache 2.0
 * Code Repository: <a href="https://github.com/utilmeta/utype" target="_blank">https://github.com/utilmeta/utype</a>
+* Author: <a href="https://github.com/voidZXL" target="_blank">@voidZXL</a>
 
 ## Motivation
 
@@ -110,9 +108,6 @@ pip install -U utype
 
 !!! note
     utype requires Python >= 3.7
-
-!!! warning
-    If you see this prompt, welcome to become a user of the beta version of utype. At present, there may be some functions that have not been tested, and the API may change in the future. Please be cautious when using it in production, and enjoy~
 
 ## Usage examples
 
@@ -309,18 +304,26 @@ You can register transformers not only for custom types, but also for basic type
 ## RoadMap and Contribution
 utype project is still growing, and the following features are planned for implementation in the new version
 
-* Support the generation of input and output template documents in json-schema format
 * Improve the handling mechanism of parsing errors, including error handling hook functions, etc.
-* Support parsing and management of environment variables and configuration files
-* Support the declaration and resolution of command line parameters
 * Support for Python generics, type variables, and more type annotation syntax
 * Develop Pycharm/VS Code plugin that supports IDE detection and hints for constraints, logical types, and nested types
 
 You are also welcome to contribute features or submit issues.
 
+## Applications
+
+### UtilMeta Python Framework
+UtilMeta Python Framework is a progressive meta-framework for backend applications, which efficiently builds declarative APIs based on the Python type annotation standard, and supports the integration of mainstream Python frameworks as runtime backend
+
+* Homepage: [https://utilmeta.com/py](https://utilmeta.com/py)
+* Source Code: [https://github.com/utilmeta/utilmeta-py](https://github.com/utilmeta/utilmeta-py)
 
 ## Community
 
-* Twitter: <a href="https://twitter.com/utype_io" target="_blank">utype_io</a>
-* Discord: <a href="https://discord.gg/d98ndkNA77"  target="_blank">utype</a>
-* Email: dev@utype.io
+utype is a project of [UtilMeta](https://utilmeta.com), so you can join our community in
+
+* [Discord](https://discord.gg/JdmEkFS6dS)
+* [X(Twitter)](https://twitter.com/utilmeta)
+* [Reddit](https://www.reddit.com/r/utilmeta)
+* [中文讨论区](https://lnzhou.com/channels/utilmeta/community)
+

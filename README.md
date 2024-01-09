@@ -10,13 +10,11 @@
 utype is a data types declaration & parsing library based on Python type annotations, 
 enforce types and constraints for classes and functions at runtime
 
-* Version: `0.3.6` [test]
-* Author: [@voidZXL](https://github.com/voidZXL)
-* License: Apache 2.0
-* Source Code: [https://github.com/utilmeta/utype](https://github.com/utilmeta/utype)
 * Documentation: [https://utype.io](https://utype.io)
 * 中文文档: [https://utype.io/zh](https://utype.io/zh)
-
+* Source Code: [https://github.com/utilmeta/utype](https://github.com/utilmeta/utype)
+* Author: [@voidZXL](https://github.com/voidZXL)
+* License: Apache 2.0
 
 ### Core Features
 
@@ -30,7 +28,7 @@ enforce types and constraints for classes and functions at runtime
 pip install -U utype
 ```
 
-utype requires Python >= 3.7
+> utype requires Python >= 3.7
 
 ### Usage Example
 
@@ -135,8 +133,7 @@ except utype.exc.ParseError as e:
     """
 ```
 
-!!! success
-    You can easily get type checking and code completion of IDEs (such as Pycharm, VS Code) during development
+> You can easily get type checking and code completion of IDEs (such as Pycharm, VS Code) during development
 
 utype supports not only normal functions, but also generator functions, asynchronous functions, and asynchronous generator functions with the same usage
 ```python
@@ -170,8 +167,7 @@ if __name__ == '__main__':
     asyncio.run(wait())
 ```
 
-!!! note
-    The `AsyncGenerator` type is used to annotate the return value of the asynchronous generator, which has two parameters: the type of the value output by `yield`, type of the value sent by `asend`
+> The `AsyncGenerator` type is used to annotate the return value of the asynchronous generator, which has two parameters: the type of the value output by `yield`, type of the value sent by `asend`
 
 As you can see, the parameters passed to the function and the value received from `yield` were all converted to the expected type as declared
 
@@ -223,19 +219,27 @@ print(dict(ArticleSchema(slug=b'My Awesome Article!')))
 You can register transformers not only for custom types, but also for basic types (such as `str`, `int`, etc.) Or types in the standard library (such as `datetime`, `Enum`, etc.) To customize the conversion behavior
 
 ## RoadMap and Contribution
-The utype is still growing, and the following features are planned for implementation in the new version
+utype is still growing, and the following features are planned for implementation in the new version
 
 * Improve the handling mechanism of parsing errors, including error handling hook functions, etc.
-* Support parsing and management of environment variables and configuration files
 * Support the declaration and parse command line parameters
 * Support for Python generics, type variables, and more type annotation syntax
 * Develop Pycharm/VS Code plugin that supports IDE detection and hints for constraints, logical types, and nested types
 
 You are also welcome to contribute features or submit issues.
 
+## Applications
+
+### UtilMeta Python Framework
+UtilMeta Python Framework is a progressive meta-framework for backend applications, which efficiently builds declarative APIs based on the Python type annotation standard, and supports the integration of mainstream Python frameworks as runtime backend
+* Homepage: [https://utilmeta.com/py](https://utilmeta.com/py)
+* Source Code: [https://github.com/utilmeta/utilmeta-py](https://github.com/utilmeta/utilmeta-py)
 
 ## Community
 
-* Twitter: <a href="https://twitter.com/utype_io" target="_blank">utype_io</a>
-* Discord: <a href="https://discord.gg/d98ndkNA77"  target="_blank">utype</a>
-* Email: dev@utype.io
+utype is a project of [UtilMeta](https://utilmeta.com), so you can join the community in
+
+* [Discord](https://discord.gg/JdmEkFS6dS)
+* [X(Twitter)](https://twitter.com/utilmeta)
+* [Reddit](https://www.reddit.com/r/utilmeta)
+* [中文讨论区](https://lnzhou.com/channels/utilmeta/community)

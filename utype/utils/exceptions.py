@@ -1,5 +1,7 @@
 # ERROR for handling parse
-from typing import Any, List, Set, Union
+from typing import Any, List, Set, Union, TYPE_CHECKING
+if TYPE_CHECKING:
+    from ..parser.field import ParserField
 
 
 class ConfigError(SyntaxError):
@@ -43,7 +45,7 @@ class ParseError(TypeError, ValueError):
         item: Union[
             int, str
         ] = None,  # like key in the object or index in seq to indentify value
-        field=None,  # no field can means it's additional field
+        field: 'ParserField' = None,  # no field can means it's additional field
         routes: list = None,
         origin_exc: Exception = None,
     ):
@@ -64,6 +66,27 @@ class ParseError(TypeError, ValueError):
         if self.item:
             msg = f"parse item: [{repr(self.item)}] failed: {msg}"
         return msg
+
+    def get_detail(self) -> dict:
+        from ..specs.json_schema import JsonSchemaGenerator
+        origin = None
+        if self.origin_exc:
+            if isinstance(self.origin_exc, ParseError) and self.origin_exc.field:
+                origin = self.origin_exc.get_detail()
+
+        if origin:
+            return {
+                'name': self.field.name if self.field else None,
+                'field': self.field.field.__class__.__name__ if self.field else None,
+                'origin': origin
+            }
+        return {
+            'name': self.field.name if self.field else None,
+            'value': self.value,
+            'field': self.field.field.__class__.__name__ if self.field else None,
+            'schema': JsonSchemaGenerator(self.type)() if self.type else None,
+            'msg': self.msg,
+        }
 
 
 class TypeMismatchError(ParseError):
@@ -256,6 +279,18 @@ class CollectedParseError(ParseError):
     def __init__(self, errors: List[ParseError]):
         self.errors = errors
         super().__init__(";\n".join([str(error) for error in errors]))
+
+    def get_detail(self) -> list:
+        errors = []
+        for error in self.errors:
+            if isinstance(error, ParseError):
+                errors.append(error.get_detail())
+            else:
+                errors.append({
+                    'msg': str(error),
+                    'error': error.__class__.__name__
+                })
+        return errors
 
 
 class NegateViolatedError(ParseError):

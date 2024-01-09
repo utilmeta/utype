@@ -33,6 +33,7 @@ repo_url: https://github.com/utilmeta/utype
 edit_uri: edit/main/docs/zh
 plugins:
 - search
+- open-in-new-tab
 
 nav:
   - README.md
@@ -92,3 +93,5 @@ markdown_extensions:
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.superfences
+
+copyright: Copyright &copy; 2022 - 2024 周煦林

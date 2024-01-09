@@ -19,10 +19,8 @@
 
 utype 是一个基于 Python 类型注解的数据类型声明与解析库，能够在运行时根据你的声明对类与函数的参数进行解析转化
 
-* 版本：`0.3.6`【测试】
-* 作者：<a href="https://github.com/voidZXL" target="_blank">@voidZXL</a>
-* 协议：Apache 2.0
 * 代码：<a href="https://github.com/utilmeta/utype" target="_blank">https://github.com/utilmeta/utype</a>
+* 作者：<a href="https://github.com/voidZXL" target="_blank">@voidZXL</a>
 
 ## 需求动机
 
@@ -111,9 +109,6 @@ pip install -U utype
 
 !!! note
 	utype 需要 Python >= 3.7
-
-!!! warning
-	如果你看到这条提示，欢迎你成为 utype 的测试版本用户，目前 utype 还处于测试阶段，可能存在一些功能没有被测试到，API 也有可能会在未来发生变动，请谨慎用于生产环境，and enjoy~
 
 ## 用法示例
 
@@ -315,17 +310,25 @@ print(dict(ArticleSchema(slug=b'My Awesome Article!')))
 ## RoadMap 与贡献
 utype 还在成长中，目前规划了以下将在新版本中实现的特性
 
-* 支持生成 json-schema 格式的输入输出模板文档
 * 完善解析错误的处理机制，包括错误处理钩子函数等
-* 支持环境变量和配置文件的解析和管理
-* 支持命令行参数的声明与解析
 * 支持 Python 泛型，类型变量等更多类型注解语法
 * 开发 Pycharm / VS Code 插件，支持对约束，逻辑类型和嵌套类型的 IDE 检测与提示
 
 也欢迎你来贡献 feature 或者提交 issue ~
 
-## 用户交流与答疑
+## 应用案例
 
-中文交流 QQ 群：183623597
+### UtilMeta Python 框架
+UtilMeta 是一个面向服务端应用的渐进式元框架，基于 Python 类型注解标准高效构建声明式接口，支持使用主流 Python 框架作为运行时实现或渐进式迁移
 
-<img style="width: 300px" src="https://utype.io/assets/qq-group.jpg" alt="">
+* 主页: [https://utilmeta.com/py](https://utilmeta.com/py)
+* 源码: [https://github.com/utilmeta/utilmeta-py](https://github.com/utilmeta/utilmeta-py)
+
+## 社区
+
+utype 是一个 [UtilMeta](https://utilmeta.com) 项目，你可以加入下面的社区参与交流
+
+* [Discord](https://discord.gg/JdmEkFS6dS)
+* [X(Twitter)](https://twitter.com/utilmeta)
+* [Reddit](https://www.reddit.com/r/utilmeta)
+* [中文讨论区](https://lnzhou.com/channels/utilmeta/community)
