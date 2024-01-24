@@ -27,6 +27,7 @@ theme:
     - toc.follow
     - navigation.tracking
     - navigation.top
+    - content.code.copy
 
 repo_name: utilmeta/utype
 repo_url: https://github.com/utilmeta/utype

@@ -996,3 +996,13 @@ class TestClass:
         assert res == {'oneOf': [{'type': 'object', 'properties':
             {'name': {'type': 'string', 'maxLength': 10}, 'age': {'type': 'integer'}}, 'required': ['name', 'age']},
                                  {'type': 'array', 'prefixItems': [{'type': 'string'}, {'type': 'integer'}]}]}
+
+    def test_pass(self):
+        class A(Schema):
+            a: str = utype.Field(no_output=True)
+
+        class B(Schema):
+            a_or: A
+
+        b = B(a_or=[A(a=3)])
+        assert b.a_or.a == '3'

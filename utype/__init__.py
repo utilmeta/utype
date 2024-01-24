@@ -12,7 +12,7 @@ from .specs.json_schema import JsonSchemaGenerator
 register_transformer = TypeTransformer.registry.register
 
 
-VERSION = (0, 4, 0, None)
+VERSION = (0, 4, 1, None)
 
 
 def _get_version():

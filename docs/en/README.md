@@ -25,7 +25,7 @@ utype is a data type declaration and parsing library based on Python type annota
 
 Currently, Python does not have the mechanism to guarantee types at runtime, so when we write a function, we often need to perform type assertion and constraint checking on parameters before we can start writing the actual logic. such as
 ```python
-def login(username, password):  
+def signup(username, password):  
     import re  
     if not isinstance(username, str) \  
             or not re.match('[0-9a-zA-Z]{3,20}', username):  
@@ -43,18 +43,18 @@ However, if we can declare all types and constraints in the parameters, enforce 
 	from utype.types import Annotated  # compat 3.7+
 	
 	@utype.parse
-	def login(
+	def signup(
 		username: Annotated[str, utype.Param(regex='[0-9a-zA-Z]{3,20}')],
 		password: Annotated[str, utype.Param(min_length=6)]
 	):
 		# # you can directly start coding
 		return username, password
 	
-	print(login('alice', 123456))
+	print(signup('alice', 123456))
 	('alice', '123456')
 	
 	try:
-		login('@invalid', 123456)
+		signup('@invalid', 123456)
 	except utype.exc.ParseError as e:
 		print(e)
 		"""
@@ -68,18 +68,18 @@ However, if we can declare all types and constraints in the parameters, enforce 
 	import utype
 	
 	@utype.parse
-	def login(
+	def signup(
 		username: str = utype.Param(regex='[0-9a-zA-Z]{3,20}'),
 		password: str = utype.Param(min_length=6)
 	):
 		# # you can directly start coding
 		return username, password
 	
-	print(login('alice', 123456))
+	print(signup('alice', 123456))
 	('alice', '123456')
 	
 	try:
-		login('@invalid', 123456)
+		signup('@invalid', 123456)
 	except utype.exc.ParseError as e:
 		print(e)
 		"""

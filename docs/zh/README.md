@@ -26,7 +26,7 @@ utype 是一个基于 Python 类型注解的数据类型声明与解析库，能
 
 目前 Python 没有在运行时解析类型与校验约束的机制，所以当我们编写一个函数时，往往需要先对参数进行类型断言和约束校验等操作，然后才能开始编写真正的逻辑，否则很可能会在运行时发生异常错误，如
 ```python
-def login(username, password):  
+def signup(username, password):  
     import re  
     if not isinstance(username, str) \  
             or not re.match('[0-9a-zA-Z]{3,20}', username):  
@@ -44,18 +44,18 @@ def login(username, password):
 	from utype.types import Annotated
 	
 	@utype.parse
-	def login(
+	def signup(
 		username: Annotated[str, utype.Param(regex='[0-9a-zA-Z]{3,20}')],
 		password: Annotated[str, utype.Param(min_length=6)]
 	):
 		# 你可以直接开始编写逻辑了
 		return username, password
 	
-	print(login('alice', 123456))
+	print(signup('alice', 123456))
 	('alice', '123456')
 	
 	try:
-		login('@invalid', 123456)
+		signup('@invalid', 123456)
 	except utype.exc.ParseError as e:
 		print(e)
 		"""
@@ -69,18 +69,18 @@ def login(username, password):
 	import utype
 	
 	@utype.parse
-	def login(
+	def signup(
 		username: str = utype.Param(regex='[0-9a-zA-Z]{3,20}'),
 		password: str = utype.Param(min_length=6)
 	):
 		# 你可以直接开始编写逻辑了
 		return username, password
 	
-	print(login('alice', 123456))
+	print(signup('alice', 123456))
 	('alice', '123456')
 	
 	try:
-		login('@invalid', 123456)
+		signup('@invalid', 123456)
 	except utype.exc.ParseError as e:
 		print(e)
 		"""

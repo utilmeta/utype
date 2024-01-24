@@ -574,8 +574,18 @@ def init_dataclass(
     detector=lambda cls: isinstance(getattr(cls, "__parser__", None), ClassParser),
 )
 def transform_dataclass(transformer: TypeTransformer, data, cls):
+    if isinstance(data, (list, tuple)) and not transformer.options.no_explicit_cast:
+        if data:
+            if transformer.options.no_data_loss and len(data) > 1:
+                raise TypeError
+            data = data[0]
+            # otherwise the data will become dict then fill the dataclass
+            if type(data) == cls:
+                return data
+
     if transformer.options.allow_subclasses:
         if isinstance(data, cls):
             # subclass
             return data
+
     return init_dataclass(cls, data, context=transformer.context)
