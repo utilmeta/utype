@@ -2,7 +2,6 @@ import inspect
 import warnings
 from collections.abc import Mapping
 from functools import partial
-from types import FunctionType
 from typing import Callable, Dict, Type, TypeVar
 
 from ..utils import exceptions as exc
@@ -524,6 +523,17 @@ class ClassParser(BaseParser):
         # we will make init_parser the "INPUT" parser
 
         return __init__
+
+    @property
+    def schema_annotations(self):
+        # this is meant to be extended and override
+        # if the result is not None, it will become the x-annotation of the JSON schema output
+        data = dict()
+        if self.options.mode:
+            data.update(mode=self.options.mode)
+        if self.options.case_insensitive:
+            data.update(case_insensitive=self.options.case_insensitive)
+        return data
 
 
 def init_dataclass(

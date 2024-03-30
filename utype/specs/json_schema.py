@@ -12,6 +12,8 @@ from uuid import UUID
 from ipaddress import IPv4Address, IPv6Address
 from typing import Optional, Type, Union, Dict
 from ..utils.datastructures import unprovided
+from ..utils.compat import JSON_TYPES
+from enum import EnumMeta
 
 
 class JsonSchemaGenerator:
@@ -118,6 +120,30 @@ class JsonSchemaGenerator:
             return self.generate_for_dataclass(t)
         elif isinstance(t, LogicalType) and t.combinator:
             return self.generate_for_logical(t)
+        elif isinstance(t, EnumMeta):
+            base = t.__base__
+            enum_type = None
+            enum_values = []
+            enum_map = {}
+            for key, val in t.__members__.items():
+                enum_values.append(val.value)
+                enum_map[key] = val.value
+                enum_type = type(val.value)
+            if not isinstance(base, EnumMeta):
+                enum_type = base
+            prim = self._get_primitive(enum_type)
+            fmt = self._get_format(enum_type)
+            data = {
+                "type": prim,
+                "enum": enum_values,
+                "x-annotation": {
+                    "enums": enum_map
+                }
+            }
+            if fmt:
+                data.update(format=fmt)
+            return data
+
         # default common type
         prim = self._get_primitive(t)
         fmt = self._get_format(t)
@@ -138,6 +164,9 @@ class JsonSchemaGenerator:
     def _get_format(self, origin: type) -> Optional[str]:
         if not origin:
             return None
+        format = getattr(origin, 'format', None)
+        if format and isinstance(format, str):
+            return format
         for types, f in self.FORMAT_MAP.items():
             if issubclass(origin, types):
                 return f
@@ -289,9 +318,21 @@ class JsonSchemaGenerator:
             elif f.field.mode == 'w':
                 data.update(writeOnly=True)
         if not unprovided(f.field.example) and f.field.example is not None:
-            data.update(examples=[f.field.example])
+            example = f.field.example
+            if type(f.field.example) not in JSON_TYPES:
+                example = str(f.field.example)
+            data.update(examples=[example])
         if f.aliases:
-            data.update(aliases=list(f.aliases))
+            aliases = list(f.aliases)
+            if aliases:
+                # sort to stay identical
+                aliases.sort()
+            data.update(aliases=aliases)
+        annotations = f.schema_annotations
+        if annotations:
+            data.update({
+                'x-annotation': annotations
+            })
         return data
 
     # todo: de-duplicate generated schema class like UserSchema['a']
@@ -337,6 +378,12 @@ class JsonSchemaGenerator:
             else:
                 data.update(additionalProperties=addition)
 
+        annotations = parser.schema_annotations
+        if annotations:
+            data.update({
+                'x-annotation': annotations
+            })
+
         if isinstance(self.defs, dict):
             return {"$ref": f"{self.ref_prefix}{self.set_def(cls_name, t, data)}"}
         return data
@@ -372,3 +419,11 @@ class JsonSchemaGenerator:
             else:
                 data.update(additionalParameters=addition)
         return data
+
+# REVERSE ACTION OF GENERATE:
+# --- GENERATE Schema and types based on Json schema
+
+
+class JsonSchemaParser:
+    def __init__(self, json_schema: dict):
+        pass

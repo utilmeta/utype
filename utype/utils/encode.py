@@ -7,6 +7,7 @@ from typing import Union
 from .base import TypeRegistry
 import json
 from .datastructures import unprovided
+from ipaddress import IPv4Address, IPv6Address, IPv4Network, IPv6Network
 
 
 encoder_registry = TypeRegistry('encoder', cache=True, shortcut='__encoder__')
@@ -96,6 +97,16 @@ def from_bytes(data: bytes):
 @register_encoder(date)
 def from_datetime(data: Union[datetime, date]):
     return data.isoformat()
+
+
+@register_encoder(IPv4Network, IPv4Address, IPv6Network, IPv6Address)
+def from_ip(data):
+    return str(data)
+
+
+@register_encoder(IPv4Network)
+def from_datetime(data):
+    return str(data)
 
 
 @register_encoder(timedelta)

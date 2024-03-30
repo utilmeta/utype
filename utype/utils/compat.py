@@ -34,6 +34,7 @@ __all__ = [
     "is_classvar",
     "is_annotated",
     "evaluate_forward_ref",
+    'JSON_TYPES'
 ]
 
 if sys.version_info < (3, 8):

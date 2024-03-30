@@ -319,6 +319,14 @@ class Field:
         setattr(fn_or_cls, "__field__", self)
         return fn_or_cls
 
+    @property
+    def schema_annotations(self):
+        return {}
+
+    @property
+    def default_type(self):
+        return None
+
 
 class Param(Field):
     def __init__(
@@ -729,17 +737,18 @@ class ParserField:
     #         return value()
     #     return copy_value(value)
 
-    def get_default(self, options: Options, defer: bool = False):
+    def get_default(self, options: Options, defer: Optional[bool] = False):
         # options = options or self.options
         if options.no_default:
             return unprovided
 
-        if not defer:
-            if self.defer_default or options.defer_default:
-                return unprovided
-        else:
-            if not self.defer_default and not options.defer_default:
-                return unprovided
+        if isinstance(defer, bool):
+            if not defer:
+                if self.defer_default or options.defer_default:
+                    return unprovided
+            else:
+                if not self.defer_default and not options.defer_default:
+                    return unprovided
 
         if not unprovided(options.force_default):
             default = options.force_default
@@ -762,10 +771,6 @@ class ParserField:
         if self.on_error:
             return self.on_error
         return options.invalid_values
-
-    def get_example(self):
-        if not unprovided(self.field.example):
-            return self.field.example
 
     def is_required(self, options: Options):
         if options.ignore_required or not self.required:
@@ -1068,6 +1073,12 @@ class ParserField:
         else:
             return default
 
+    @property
+    def schema_annotations(self):
+        # this is meant to be extended and override
+        # if the result is not None, it will become the x-annotation of the JSON schema output
+        return self.field.schema_annotations
+
     @classmethod
     def generate(
         cls,
@@ -1234,6 +1245,10 @@ class ParserField:
 
         if not dependencies and field.dependencies:
             dependencies = field.dependencies
+
+        if annotation is None:
+            # a place to inject
+            annotation = field.default_type
 
         input_type = _cls.rule_cls.parse_annotation(
             annotation=annotation,
