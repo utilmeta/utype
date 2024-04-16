@@ -1,5 +1,6 @@
 import inspect
 import re
+import types
 import typing
 import warnings
 from collections import deque
@@ -1307,7 +1308,8 @@ class Rule(metaclass=LogicalType):
         #     return type_
 
         name = cls.__name__
-        if type_ == Union:
+        if type_ == Union or type_ == types.UnionType:
+            # in Python >= 3.10, native logic operator like int | str will be a UnionType
             type_ = LogicalType.any_of(*args)
             # clear the args for union
             args = []

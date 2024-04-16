@@ -265,7 +265,9 @@ class JsonSchemaGenerator:
         if t.__args__:
             data.update(self._get_args(t))
         if isinstance(self.defs, dict) and name != 'Rule':
-            return {"$ref": f"{self.ref_prefix}{self.set_def(name, t, data)}"}
+            if '<locals>' not in name:
+                # not a auto created rule
+                return {"$ref": f"{self.ref_prefix}{self.set_def(name, t, data)}"}
         return data
 
     def get_def_name(self, t: type):

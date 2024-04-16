@@ -1,4 +1,5 @@
 import json
+import sys
 import typing
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
@@ -684,6 +685,13 @@ class TestClass:
 
         with pytest.raises(exc.ParseError):
             UnionSchema(opt=5, union={"a": "b"})  # cannot convert to Dict[str, int]
+
+        if sys.version_info >= (3, 10):
+            class a(utype.Schema):
+                b: int | None = utype.Field(ge=1)
+
+            assert a(b=None).b is None
+            assert a(b='3').b == 3
 
     @pytest.mark.parametrize(argnames=['no_output', 'immutable', 'no_input'],
                              argvalues=[

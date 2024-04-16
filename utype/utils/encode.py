@@ -1,4 +1,5 @@
 import decimal
+import io
 import uuid
 from collections.abc import Mapping
 from datetime import date, datetime, time, timedelta
@@ -92,6 +93,11 @@ def from_unprovided(data):
 @register_encoder(bytes)
 def from_bytes(data: bytes):
     return data.decode("utf-8", errors="replace")
+
+
+@register_encoder(io.BytesIO)
+def from_bytes_io(data: io.BytesIO):
+    return data.read().decode("utf-8", errors="replace")
 
 
 @register_encoder(date)
