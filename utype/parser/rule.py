@@ -1,6 +1,4 @@
-import inspect
 import re
-import types
 import typing
 import warnings
 from collections import deque
@@ -12,7 +10,7 @@ from typing import (Any, AsyncGenerator, Callable, Dict, Generator, List,
 
 from ..utils import exceptions as exc
 from ..utils.compat import (ForwardRef, Literal, evaluate_forward_ref,
-                            get_args, get_origin)
+                            get_args, get_origin, UnionType)
 from ..utils.datastructures import unprovided
 from ..utils.functional import multi, pop
 from ..utils.transform import TypeTransformer
@@ -1308,7 +1306,7 @@ class Rule(metaclass=LogicalType):
         #     return type_
 
         name = cls.__name__
-        if type_ == Union or type_ == types.UnionType:
+        if type_ == Union or type_ == UnionType:
             # in Python >= 3.10, native logic operator like int | str will be a UnionType
             type_ = LogicalType.any_of(*args)
             # clear the args for union

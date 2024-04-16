@@ -12,6 +12,11 @@ except ImportError:
     from typing_extensions import Literal
 
 try:
+    from types import UnionType
+except ImportError:
+    UnionType = Union
+
+try:
     from typing import Final
 except ImportError:
     from typing_extensions import Final
@@ -27,6 +32,7 @@ __all__ = [
     "get_args",
     'Literal',
     'Final',
+    'UnionType',
     "ForwardRef",
     "Annotated",
     "is_final",
