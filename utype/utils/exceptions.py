@@ -22,9 +22,12 @@ class FieldError(AttributeError, KeyError):
     ):
         self.msg = msg
         self.field = field
-        self.origin = origin_exc
+        self.origin_exc = origin_exc
 
         super().__init__(msg)
+
+        if isinstance(self.origin_exc, Exception):
+            self.__traceback__ = self.origin_exc.__traceback__
 
 
 class UpdateError(FieldError):
@@ -60,11 +63,16 @@ class ParseError(TypeError, ValueError):
         self.routes = routes
         super().__init__(self.formatted_message)
 
+        if isinstance(self.origin_exc, Exception):
+            self.__traceback__ = self.origin_exc.__traceback__
+
     @property
     def formatted_message(self):
         msg = self.msg
         if self.item:
             msg = f"parse item: [{repr(self.item)}] failed: {msg}"
+        if isinstance(self.origin_exc, Exception) and not isinstance(self.origin_exc, ParseError):
+            msg = f'{self.origin_exc.__class__.__name__}: {msg}'
         return msg
 
     def get_detail(self) -> dict:

@@ -277,7 +277,12 @@ class JsonSchemaGenerator:
                     return k
         return None
 
-    def set_def(self, name: str, t: type, data: dict):
+    def set_def(self, name: str, t: type, data: dict = None):
+        if t in self.defs:
+            if data is not None:
+                # name already set
+                self.defs[t] = data
+            return name
         n = 0
         while True:
             _name = name + (f'_{n}' if n else '')
@@ -352,6 +357,9 @@ class JsonSchemaGenerator:
             def_name = self.get_def_name(t)
             if def_name:
                 return {"$ref": f"{self.ref_prefix}{def_name}"}
+            cls_name = self.set_def(cls_name, t, data=None)
+            # set data to None:
+            # avoid cascade references
 
         data = {"type": "object"}
         required = []
