@@ -207,6 +207,7 @@ class BaseParser:
             return False
         clear_refs = []
         resolved = False
+        # todo: add resolve hooks so that application code can execute lazy-load type process logic
         for name in list(self.forward_refs):
             ref, constraints = self.forward_refs[name]
             try:

@@ -135,10 +135,14 @@ def from_uuid(data: uuid.UUID):
 
 @register_encoder(decimal.Decimal)
 def from_decimal(data: decimal.Decimal):
-    if data.is_normal():
+    if data.is_finite():
         if js_unsafe(data):
             return str(data)
+        if not data.as_tuple().exponent:
+            # integer
+            return int(data)
         return float(data)
+    # infinity / NaN
     return str(data)
 
 

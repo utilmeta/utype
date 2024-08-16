@@ -159,6 +159,8 @@ class TestType:
                 ([10, 11], 10, False, False),
                 ((-1.3 + 0j), -1, False, False),
                 (en_z, 0, True, True),  # this enum instance is an instance of int
+                ('', 0, False, True),
+                (None, 0, False, True),
             ],
             SubInt: [
                 (1, SubInt(1), True, True),
@@ -530,13 +532,15 @@ class TestType:
             'time': time(12, 13, 14, 1234),
             'dur': timedelta(days=1, seconds=10, microseconds=123),
             'dc': Decimal('10.23'),
+            'di': Decimal('-11'),
+            'd0': Decimal('0'),
             'en': en(2),
             'a': (1, 2),
             's': {'s'}
         }
         res = JSONSerializer().dumps(data)
-        assert res == b'{"dt":"2000-01-01T12:13:14.001234","date":"2000-01-01",' \
-                      b'"time":"12:13:14.001","dur":"P1DT00H00M10.000123S","dc":10.23,"en":2,"a":[1,2],"s":["s"]}'
+        assert res == (b'{"dt":"2000-01-01T12:13:14.001234","date":"2000-01-01","time":"12:13:14.001",'
+                       b'"dur":"P1DT00H00M10.000123S","dc":10.23,"di":-11,"d0":0,"en":2,"a":[1,2],"s":["s"]}')
 
     # def test_vendor(self):
     #     from utype import register_transformer

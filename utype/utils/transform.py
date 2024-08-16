@@ -2,6 +2,7 @@ import decimal
 import io
 import json
 import re
+import collections
 from collections import deque
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from datetime import date, datetime, time, timedelta, timezone
@@ -401,6 +402,8 @@ class TypeTransformer:
                     return 0
                 if data.lower() in self.TRUE_VALUES:
                     return 1
+            elif isinstance(data, t):
+                return data
 
         try:
             data = Decimal(data)
@@ -410,7 +413,7 @@ class TypeTransformer:
         # FOR number > 1e+16, int(float()) will not get accurate result, use decimal instead
 
         if self.no_data_loss:
-            if not data.is_normal():
+            if not data.is_finite():
                 raise TypeError
             if data.as_tuple().exponent:
                 raise TypeError
@@ -644,6 +647,12 @@ class TypeTransformer:
     def to_type(self, data, t=type) -> type:
         if not isinstance(data, type):
             raise TypeError('data is not a type')
+        return data
+
+    @registry.register(collections.abc.Callable, allow_subclasses=False)
+    def to_callable(self, data, t) -> Callable:
+        if not callable(data):
+            raise TypeError('data is not callable')
         return data
 
     def handle_unresolved(self, data, t):
