@@ -8,7 +8,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Union
 from uuid import UUID
 
 from ..utils import exceptions as exc
-from ..utils.compat import Literal, get_args, is_final, is_annotated
+from ..utils.compat import Literal, get_args, is_final, is_annotated, ForwardRef
 from ..utils.datastructures import unprovided
 from ..utils.functional import copy_value, get_name, multi
 from .options import Options, RuntimeContext
@@ -1095,7 +1095,24 @@ class ParserField:
         prop = None
         output_type = None
         dependencies = None
+
+        if isinstance(annotation, str):
+            annotation = ForwardRef(annotation)
+
+        if isinstance(annotation, ForwardRef):
+            # try to evaluate now, if failed, evaluate in the further
+            from .rule import register_forward_ref
+            annotation = register_forward_ref(
+                annotation=annotation,
+                global_vars=global_vars,
+                forward_refs=forward_refs,
+                forward_key=attname,
+                force_clear=force_clear_refs,
+                evaluate_only=True
+            )
+
         field = cls.get_field(annotation, default, **kwargs)
+
         output_field = None
         field_kwargs = dict()
 

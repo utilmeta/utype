@@ -51,7 +51,8 @@ def register_forward_ref(
     global_vars: Dict[str, Any] = None,
     forward_refs: Dict[str, Tuple[ForwardRef, dict]] = None,
     forward_key: str = None,
-    force_clear: bool = False
+    force_clear: bool = False,
+    evaluate_only: bool = False,
 ):
 
     if not isinstance(annotation, ForwardRef):
@@ -72,7 +73,8 @@ def register_forward_ref(
             if force_clear:
                 ref.__forward_evaluated__ = False
                 ref.__forward_value__ = None
-
+    if evaluate_only:
+        return annotation
     if not evaluated:
         if isinstance(forward_refs, dict):
             # class A:

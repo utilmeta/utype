@@ -364,13 +364,19 @@ class JsonSchemaGenerator:
         data = {"type": "object"}
         required = []
         properties = {}
+        options = parser.options
+
+        if self.output:
+            # handle output
+            if parser.output_options:
+                options = parser.output_options
 
         for name, field in parser.fields.items():
-            value = self.generate_for_field(field, options=parser.options)
+            value = self.generate_for_field(field, options=options)
             if value is None:
                 continue
             properties[name] = value
-            if field.is_required(parser.options or self.options):
+            if field.is_required(options or self.options):
                 # will count options.ignore_required in
                 required.append(name)
             elif self.output:
@@ -381,7 +387,7 @@ class JsonSchemaGenerator:
         data.update(properties=properties)
         if required:
             data.update(required=required)
-        addition = parser.options.addition
+        addition = options.addition
         if addition is not None:
             if isinstance(addition, type):
                 data.update(additionalProperties=self.generate_for_type(addition))

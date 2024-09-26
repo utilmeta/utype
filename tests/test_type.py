@@ -276,6 +276,8 @@ class TestType:
                            True, True
                            ),
                           ("2022-01-02", datetime(2022, 1, 2), True, True),
+                          ("2022/01/20", datetime(2022, 1, 20), True, True),
+                          ("2022/1/02", datetime(2022, 1, 2), True, True),
                           # ('10:20:30', datetime(1900, 1, 1, 10, 20, 30), True, True),       # no standard behaviour
                           (dt.date(), datetime(2022, 1, 2), True, True),
                           (dt.timestamp(), dt.astimezone(timezone.utc), True, True),
@@ -311,6 +313,16 @@ class TestType:
             ],
             date: [
                 ("2020-02-20", date(2020, 2, 20), True, True),
+                ("2020/02/20", date(2020, 2, 20), True, True),
+                ("2020/2/20", date(2020, 2, 20), True, True),
+                ("20/02/2020", date(2020, 2, 20), True, True),
+                ("20/2/2020", date(2020, 2, 20), True, True),
+                ("02/20/2020", date(2020, 2, 20), True, True),
+                ("20-02-2020", date(2020, 2, 20), True, True),
+                ("20 Feb 2020", date(2020, 2, 20), True, True),
+                ("20 February 2020", date(2020, 2, 20), True, True),
+                ("Thursday, 20 February 2020", date(2020, 2, 20), True, True),
+                ("Thu, 20 Feb 2020", date(2020, 2, 20), True, True),
                 (b"2020-02-20", date(2020, 2, 20), True, True),
                 (dt.timestamp(), dt.date(), True, False),
                 (int(dt.timestamp() * 1000), dt.date(), True, False),

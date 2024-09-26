@@ -46,6 +46,17 @@ class TypeTransformer:
     
     # ----- preferences
     # can be override
+    DATE_FORMATS = [
+        "%Y-%m-%d",
+        "%d %b %Y",
+        "%d %B %Y",
+        "%Y/%m/%d",
+        "%d/%m/%Y",
+        "%m/%d/%Y",
+        "%d-%m-%Y",
+        "%A, %d %B %Y",
+        "%a, %d %b %Y",
+    ]
     DATETIME_FORMATS = [
         DateFormat.DATETIME,
         DateFormat.DATETIME_DF,
@@ -56,9 +67,11 @@ class TypeTransformer:
         DateFormat.DATETIME_HTTP,
         DateFormat.DATETIME_PS,
         DateFormat.DATETIME_GMT,
-        DateFormat.DATE,
-        DateFormat.DATE_HM
+
+        # Date formats
+        "%Y-%m-%d %H:%M"
     ]
+
     EPOCH = datetime(1970, 1, 1)
     MS_WATERSHED = int(2e10)
     ARRAY_SEPARATORS = (",", ";")
@@ -485,14 +498,14 @@ class TypeTransformer:
         elif isinstance(data, t):
             return data
 
-        dt = self.to_datetime(data, datetime)
+        dt = self.to_datetime(data, datetime, date_first=True)
         if self.no_data_loss:
             if dt.time() != time(0, 0):
                 raise ValueError(f"Invalid date: {data}, got time part: {dt.time()}")
         return dt.date()
 
     @registry.register(datetime)
-    def to_datetime(self, data, t: Type[datetime] = datetime) -> datetime:
+    def to_datetime(self, data, t: Type[datetime] = datetime, date_first: bool = False) -> datetime:
         if isinstance(data, t):
             return data
         elif isinstance(data, date):
@@ -512,7 +525,12 @@ class TypeTransformer:
         is_utc = "GMT" in data or 'UTC' in data or data.endswith("Z") and "T" in data
         data = data.replace('GMT', '').replace('UTC', '').replace('TZD', '').rstrip('Z').strip()
 
-        for f in self.DATETIME_FORMATS:
+        if date_first:
+            formats = self.DATE_FORMATS + self.DATETIME_FORMATS
+        else:
+            formats = self.DATETIME_FORMATS + self.DATE_FORMATS
+
+        for f in formats:
             try:
                 val = t.strptime(data, f)
                 if is_utc:
@@ -522,7 +540,7 @@ class TypeTransformer:
                 continue
 
         if '+' in str(data):
-            for f in self.DATETIME_FORMATS:
+            for f in formats:
                 try:
                     # val = t.strptime(data, f + ' %z')
                     val = t.strptime(data, f + (' %z' if ' +' in str(data) else '%z'))

@@ -66,6 +66,7 @@ class BaseParser:
         self.obj = obj
         self.init_kwargs = {"options": options}
         self.options: Options = self.options_cls.generate_from(options)
+        self.output_options: Optional[Options] = None
 
         self.forward_refs: Dict[
             str, Tuple[ForwardRef, dict]
