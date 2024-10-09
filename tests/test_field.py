@@ -4,6 +4,7 @@ from typing import Union
 
 import pytest
 
+import utype
 from utype import DataClass, Field, Options, Schema, dataclass, exc, parse
 from utype.utils.compat import Final, Literal
 from utype.utils.style import AliasGenerator
@@ -286,6 +287,23 @@ class TestField:
         new_article = Article.__from__(new_article_json, options=Options(mode='a'))
         assert new_article.slug == 'my-awesome-article'
         assert isinstance(new_article.created_at, datetime)
+
+        # test mode with required
+        class T2(Schema):
+            a: int = Field(required='a', default=None, defer_default=True)
+
+        class Ta(T2):
+            __options__ = Options(mode='a')
+
+        class Tw(T2):
+            __options__ = Options(mode='w')
+
+        assert Ta(a='2').a == 2
+        assert Tw().a is None
+        assert dict(Tw()) == {}
+
+        with pytest.raises(utype.exc.AbsenceError):
+            Ta()
 
     def test_field_no_input_output(self, dfs):
         class T(Schema):

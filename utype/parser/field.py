@@ -110,10 +110,13 @@ class Field:
             mode = "w"
 
         if deprecated:
-            required = False
+            if required is None:
+                required = False
 
         if not unprovided(default):
-            required = False
+            if not isinstance(required, str):
+                required = False
+
             if default_factory:
                 raise exc.ConfigError(
                     f"Field: default: {represent(default)} and default factory cannot set both",
@@ -121,7 +124,9 @@ class Field:
                 )
 
         if default_factory:
-            required = False
+            if not isinstance(required, str):
+                required = False
+
             if not callable(default_factory):
                 raise exc.ConfigError(
                     f"Field: default_factory: {represent(default_factory)} must be a callable",
