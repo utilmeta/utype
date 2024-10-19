@@ -10,7 +10,7 @@ import pytest  # noqa
 import utype
 from utype import (DataClass, Field, Options, Rule, Schema, exc,
                    register_transformer, types)
-from utype.utils.compat import Final
+from utype.utils.compat import Final, Self
 
 
 @pytest.fixture(params=(False, True))
@@ -319,18 +319,27 @@ class TestClass:
             T(forward_in_dict={1: [2], 2: [1]})
 
         # test not-module-level self ref
-        class Self(Schema):
+        class SelfRef(Schema):
             name: str
-            to_self: "Self" = Field(required=False)
-            self_lst: List["Self"] = Field(default_factory=list)
+            to_self: "SelfRef" = Field(required=False)
+            self_lst: List["SelfRef"] = Field(default_factory=list)
 
-        sf = Self(name=1, to_self=b'{"name":"test"}')
+        sf = SelfRef(name=1, to_self=b'{"name":"test"}')
         assert sf.to_self.name == "test"
         assert sf.self_lst == []
 
-        sf2 = Self(name="t2", self_lst=[dict(sf)])
+        sf2 = SelfRef(name="t2", self_lst=[dict(sf)])
         assert sf2.self_lst[0].name == "1"
         assert "to_self" not in sf2
+
+        class SelfRef2(Schema):
+            name: str
+            to_self: Self = Field(required=False)
+            self_lst: List[Self] = Field(default_factory=list)
+
+        sfi = SelfRef2(name=1, to_self=b'{"name":"test"}')
+        assert sfi.to_self.name == "test"
+        assert sfi.self_lst == []
 
         # class ForwardSchema(Schema):
         #     int1: 'types.PositiveInt' = Field(lt=10)
@@ -340,11 +349,11 @@ class TestClass:
 
     def test_local_forward_ref(self):
         def f(u=0):
-            class Self(Schema):
+            class LocSelf(Schema):
                 num: int = u
-                to_self: Optional["Self"] = None
-                list_self: List["Self"] = utype.Field(default_factory=list)
-            data = Self(to_self={'to_self': {}}, list_self=[{'list_self': []}])
+                to_self: Optional["LocSelf"] = None
+                list_self: List["LocSelf"] = utype.Field(default_factory=list)
+            data = LocSelf(to_self={'to_self': {}}, list_self=[{'list_self': []}])
             return data.to_self.to_self.num, data.list_self[0].num
 
         assert f(1) == (1, 1)

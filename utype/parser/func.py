@@ -33,6 +33,18 @@ PASSED_CODES = (
 
 
 class FunctionParser(BaseParser):
+    @property
+    def bound(self):
+        # class A:
+        #    class B:
+        #        def f():
+        # f.__qualname__ = 'A.B.f'
+        # f.bound -> 'A.B'
+        name = self.obj.__qualname__
+        if '.' in name:
+            return '.'.join(name.split('.')[:-1])
+        return None
+
     @classmethod
     def function_pass(cls, f):
         if not inspect.isfunction(f):
@@ -299,10 +311,12 @@ class FunctionParser(BaseParser):
         if not self.return_annotation:
             return
 
-        self.return_type = self.parse_annotation(annotation=self.return_annotation)
+        self.return_type = self.parse_annotation(
+            annotation=self.return_annotation
+        )
 
         # https://docs.python.org/3/library/typing.html#typing.Generator
-        if self.return_type and issubclass(self.return_type, Rule):
+        if self.return_type and isinstance(self.return_type, type) and issubclass(self.return_type, Rule):
             if self.is_generator:
                 if self.return_type.__origin__ in (Iterable, Iterator):
                     self.generator_yield_type = self.return_type.__args__[0]
@@ -406,6 +420,7 @@ class FunctionParser(BaseParser):
                     forward_refs=self.forward_refs,
                     options=self.options,
                     positional_only=param.kind == param.POSITIONAL_ONLY,
+                    bound=self.bound,
                     **self.kwargs
                 )
             except Exception as e:
@@ -760,6 +775,7 @@ class FunctionParser(BaseParser):
         @wraps(self.obj)
         def eager_generator(*args, **kwargs) -> Generator:
             context = (options or self.options).make_context()
+            self.resolve_forward_refs()
             args, kwargs = self.get_params(
                 args,
                 kwargs,
@@ -846,6 +862,7 @@ class FunctionParser(BaseParser):
         @wraps(self.obj)
         def eager_generator(*args, **kwargs) -> AsyncGenerator:
             context = (options or self.options).make_context()
+            self.resolve_forward_refs()
             args, kwargs = self.get_params(
                 args,
                 kwargs,
@@ -886,6 +903,7 @@ class FunctionParser(BaseParser):
         @wraps(self.obj)
         def eager_call(*args, **kwargs):
             context = (options or self.options).make_context()
+            self.resolve_forward_refs()
             args, kwargs = self.get_params(
                 args,
                 kwargs,
@@ -915,6 +933,7 @@ class FunctionParser(BaseParser):
         parse_params: bool = None,
         parse_result: bool = None,
     ):
+        self.resolve_forward_refs()
         args, kwargs = self.get_params(
             args,
             kwargs,

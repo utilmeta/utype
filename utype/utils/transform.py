@@ -56,6 +56,7 @@ class TypeTransformer:
         "%d-%m-%Y",
         "%A, %d %B %Y",
         "%a, %d %b %Y",
+        "%Y%m%d",
     ]
     DATETIME_FORMATS = [
         DateFormat.DATETIME,
@@ -512,14 +513,10 @@ class TypeTransformer:
             return t(year=data.year, month=data.month, day=data.day)  # noqa
 
         data = self._attempt_from(data)
-        try:
-            num = self.to_float(data, float)
-        except (TypeError, ValueError):
-            pass
-        else:
-            while abs(num) > self.MS_WATERSHED:
-                num /= 1000
-            return t.utcfromtimestamp(num).replace(tzinfo=timezone.utc)
+        if isinstance(data, (int, float, Decimal)):
+            while abs(data) > self.MS_WATERSHED:
+                data /= 1000
+            return t.utcfromtimestamp(data).replace(tzinfo=timezone.utc)
 
         data = self._from_byte_like(data)
         is_utc = "GMT" in data or 'UTC' in data or data.endswith("Z") and "T" in data
@@ -549,6 +546,15 @@ class TypeTransformer:
                     return val
                 except (TypeError, ValueError, re.error):
                     continue
+
+        try:
+            num = self.to_float(data, float)
+        except (TypeError, ValueError):
+            pass
+        else:
+            while abs(num) > self.MS_WATERSHED:
+                num /= 1000
+            return t.utcfromtimestamp(num).replace(tzinfo=timezone.utc)
 
         raise TypeError('invalid datetime')
 

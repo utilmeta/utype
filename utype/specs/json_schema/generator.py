@@ -1,92 +1,20 @@
 import inspect
-import warnings
-
 from utype.parser.rule import Rule, LogicalType, SEQ_TYPES, MAP_TYPES
 from utype.parser.field import ParserField
 from utype.parser.cls import ClassParser
 from utype.parser.func import FunctionParser
 from utype.parser.base import Options
-from decimal import Decimal
-from datetime import datetime, date, time, timedelta
-from uuid import UUID
-from ipaddress import IPv4Address, IPv6Address
+
 from typing import Optional, Type, Union, Dict
-from ..utils.datastructures import unprovided
-from ..utils.compat import JSON_TYPES
+from utype.utils.datastructures import unprovided
+from utype.utils.compat import JSON_TYPES
 from enum import EnumMeta
+from . import constant
 
 
 class JsonSchemaGenerator:
     # pass in a defs dict to generate re-use '$defs'
-    PRIMITIVES = ("null", "boolean", "object", "array", "integer", "number", "string")
-    PRIMITIVE_MAP = {
-        type(None): "null",
-        bool: "boolean",
-        MAP_TYPES: "object",
-        SEQ_TYPES: "array",
-        int: "integer",
-        (float, Decimal): "number",
-    }
-    OPERATOR_NAMES = {
-        "&": "allOf",
-        "|": "anyOf",
-        "^": "oneOf",
-        "~": "not",
-    }
-    FORMAT_MAP = {
-        (bytes, bytearray, memoryview): 'binary',
-        float: 'float',
-        IPv4Address: 'ipv4',
-        IPv6Address: 'ipv6',
-        datetime: 'date-time',
-        date: 'date',
-        time: 'time',
-        timedelta: 'duration',
-        UUID: 'uuid'
-    }
-    DEFAULT_CONSTRAINTS_MAP = {
-        'enum': 'enum',
-        'const': 'const',
-    }
-    TYPE_CONSTRAINTS_MAP = {
-        ("integer", "number"): {
-            'multiple_of': 'multipleOf',
-            'le': 'maximum',
-            'lt': 'exclusiveMaximum',
-            'ge': 'minimum',
-            'gt': 'exclusiveMinimum',
-            'decimal_places': 'decimalPlaces',
-            'max_digits': 'maxDigits',
-            **DEFAULT_CONSTRAINTS_MAP,
-        },
-        ("array",): {
-            'max_length': 'maxItems',
-            'min_length': 'minItems',
-            'unique_items': 'uniqueItems',
-            'max_contains': 'maxContains',
-            'min_contains': 'minContains',
-            'contains': 'contains',
-            **DEFAULT_CONSTRAINTS_MAP,
-        },
-        ("object",): {
-            'max_length': 'maxProperties',
-            'min_length': 'minProperties',
-            **DEFAULT_CONSTRAINTS_MAP,
-        },
-        ("string",): {
-            'regex': 'pattern',
-            'max_length': 'maxLength',
-            'min_length': 'minLength',
-            **DEFAULT_CONSTRAINTS_MAP,
-        },
-        ("boolean", "null"): DEFAULT_CONSTRAINTS_MAP
-    }
 
-    FORMAT_PATTERNS = {
-        'integer': r'[-]?\d+',
-        'number': r'[-]?\d+(\.\d+)?',
-        'date': r'\d{4}-\d{2}-\d{2}',
-    }
     DEFAULT_PRIMITIVE = "string"
     DEFAULT_REF_PREFIX = "#/$defs/"
 
@@ -153,7 +81,7 @@ class JsonSchemaGenerator:
         return data
 
     def generate_for_logical(self, t: LogicalType):
-        operator_name = self.OPERATOR_NAMES.get(t.combinator)
+        operator_name = constant.OPERATOR_NAMES.get(t.combinator)
         if not operator_name:
             return {}
         conditions = [self.generate_for_type(cond) for cond in t.args]
@@ -167,7 +95,7 @@ class JsonSchemaGenerator:
         format = getattr(origin, 'format', None)
         if format and isinstance(format, str):
             return format
-        for types, f in self.FORMAT_MAP.items():
+        for types, f in constant.FORMAT_MAP.items():
             if issubclass(origin, types):
                 return f
         return None
@@ -175,7 +103,7 @@ class JsonSchemaGenerator:
     def _get_primitive(self, origin: type) -> str:
         if not origin:
             return self.DEFAULT_PRIMITIVE
-        for types, pri in self.PRIMITIVE_MAP.items():
+        for types, pri in constant.PRIMITIVE_MAP.items():
             if issubclass(origin, types):
                 return pri
         return self.DEFAULT_PRIMITIVE
@@ -206,7 +134,7 @@ class JsonSchemaGenerator:
             if not pattern:
                 fmt = key_arg.get('format') or key_arg.get('type')
                 if fmt:
-                    pattern = self.FORMAT_PATTERNS.get(fmt)
+                    pattern = constant.FORMAT_PATTERNS.get(fmt)
             pattern = pattern or '.*'
             return {name: {pattern: val_arg}}
         else:
@@ -235,7 +163,7 @@ class JsonSchemaGenerator:
         origin = t.__origin__
         data = dict(self.generate_for_type(origin))
         primitive = getattr(t, 'primitive', None)
-        if primitive in self.PRIMITIVES:
+        if primitive in constant.PRIMITIVES:
             data.update(type=primitive)
         else:
             primitive = data.get('type', self.DEFAULT_PRIMITIVE)
@@ -250,8 +178,8 @@ class JsonSchemaGenerator:
                 data.update(format=fmt)
 
         # constraints
-        constrains_map = self.DEFAULT_CONSTRAINTS_MAP
-        for types, mp in self.TYPE_CONSTRAINTS_MAP.items():
+        constrains_map = constant.DEFAULT_CONSTRAINTS_MAP
+        for types, mp in constant.TYPE_CONSTRAINTS_MAP.items():
             if primitive in types:
                 constrains_map = mp
                 break
@@ -435,11 +363,3 @@ class JsonSchemaGenerator:
             else:
                 data.update(additionalParameters=addition)
         return data
-
-# REVERSE ACTION OF GENERATE:
-# --- GENERATE Schema and types based on Json schema
-
-
-class JsonSchemaParser:
-    def __init__(self, json_schema: dict):
-        pass

@@ -3,6 +3,7 @@ import warnings
 from typing import Any, Callable, List, Optional, Set, Type, Union
 
 from ..utils import exceptions as exc
+# from ..utils.base import ParamsCollector
 from ..utils.compat import Literal
 from ..utils.datastructures import unprovided
 from ..utils.functional import multi
@@ -143,6 +144,7 @@ class Options:
         # if this value is another callable (like dict, list), return value()
         # otherwise return this value directly when attr is unprovided
     ):
+        # super().__init__({k: v for k, v in locals().items() if not unprovided(v)})
 
         if no_data_loss:
             if addition is None:
@@ -181,6 +183,8 @@ class Options:
         options = {}
         for key, val in locals().items():
             if unprovided(val):
+                continue
+            if key.startswith('_'):
                 continue
             if hasattr(self, key):
                 # if getattr(self, key) == val:

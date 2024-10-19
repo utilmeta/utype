@@ -8,6 +8,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Union
 from uuid import UUID
 
 from ..utils import exceptions as exc
+from ..utils.base import ParamsCollector
 from ..utils.compat import Literal, get_args, is_final, is_annotated, ForwardRef
 from ..utils.datastructures import unprovided
 from ..utils.functional import copy_value, get_name, multi
@@ -17,7 +18,7 @@ from .rule import ConstraintMode, Lax, LogicalType, Rule, resolve_forward_type
 represent = repr
 
 
-class Field:
+class Field(ParamsCollector):
     parser_field_cls = None
 
     def __init__(
@@ -91,6 +92,8 @@ class Field:
         min_contains: int = None,
         unique_items: Union[bool, ConstraintMode] = None,
     ):
+        super().__init__(locals())
+
         if mode:
             if readonly or writeonly:
                 raise exc.ConfigError(
@@ -1094,6 +1097,7 @@ class ParserField:
         positional_only: bool = False,
         global_vars=None,
         forward_refs=None,
+        bound=None,
         force_clear_refs=False,
         **kwargs
     ):
@@ -1216,6 +1220,7 @@ class ParserField:
                     global_vars=global_vars,
                     forward_refs=forward_refs,
                     forward_key=attname,
+                    bound=bound,
                     constraints=output_field.constraints if output_field else None,
                     force_clear_refs=force_clear_refs
                 )
@@ -1278,6 +1283,7 @@ class ParserField:
             global_vars=global_vars,
             forward_refs=forward_refs,
             forward_key=attname,
+            bound=bound,
             force_clear_refs=force_clear_refs
         )
 

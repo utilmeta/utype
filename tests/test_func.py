@@ -8,7 +8,7 @@ import pytest
 
 import utype
 from utype import Field, Options, Param, exc, parse, types
-from utype.utils.compat import Final
+from utype.utils.compat import Final, Self
 
 
 @pytest.fixture(params=(False, True))
@@ -19,6 +19,22 @@ def eager(request):
 @pytest.fixture(params=('throw', 'exclude', 'preserve'))
 def on_error(request):
     return request.param
+
+
+class schemas:
+    class MySchema(utype.Schema):
+        a: int
+        b: int
+        result: int
+
+        @classmethod
+        @utype.parse
+        def add(cls, a: int, b: int) -> Self:
+            return dict(
+                a=a,
+                b=b,
+                result=a+b
+            )
 
 
 class TestFunc:
@@ -405,6 +421,13 @@ class TestFunc:
         assert fib('10') == 55
         assert fib('10', _current=10, _next=6) == 55
         assert fib('10', 10, 5) == 615      # can pass through positional args
+
+    def test_self_ref(self):
+        result = schemas.MySchema.add('1', '2')
+        assert isinstance(result, schemas.MySchema)
+        assert result.a == 1
+        assert result.b == 2
+        assert result.result == 3
 
     def test_args_parse(self):
         @utype.parse

@@ -9,7 +9,7 @@ from typing import (Any, AsyncGenerator, Callable, Dict, Generator, List,
                     Mapping, Optional, Tuple, Type, TypeVar, Union, Iterator)
 
 from ..utils import exceptions as exc
-from ..utils.compat import (ForwardRef, Literal, evaluate_forward_ref,
+from ..utils.compat import (ForwardRef, Literal, Self, evaluate_forward_ref,
                             get_args, get_origin, UnionType)
 from ..utils.datastructures import unprovided
 from ..utils.functional import multi, pop
@@ -308,17 +308,24 @@ class LogicalType(type):  # noqa
                 return repr(_arg)
             return getattr(_arg, "__name__", None) or repr(_arg)
 
-        if not cls.args:
-            origin = getattr(cls, "__origin__", None)
+        origin = getattr(cls, "__origin__", None)
+        # if cls.__name__ == 'Rule':
+        #     origin_repr = f'Rule[{_repr(origin)}]' if origin else cls.__name__
+        # else:
+        origin_repr = f'{cls.__name__}[{_repr(origin)}]' if origin else cls.__name__
+
+        if not cls.combinator:
             validators = getattr(cls, "__validators__", [])
             constraints = ", ".join(f"{key}={val}" for key, val, c in validators)
-            origin_repr = ""
-            if origin:
-                origin_repr = _repr(origin)
-                if constraints:
-                    origin_repr += ", "
-            return f"{cls.__name__}({origin_repr}{constraints})"
+            args = []
+            if cls.args:
+                args.extend([_repr(arg) for arg in cls.args])
+            if constraints:
+                args.append(constraints)
+            args_repr = "(%s)" % ", ".join(args) if args else ''
+            return f"{origin_repr}{args_repr}"
 
+        # _origin = _repr(origin) if origin else cls.__name__
         args_repr = ", ".join([_repr(arg) for arg in cls.args])
         l_par = "(" if cls.combinator else "["
         r_par = ")" if cls.combinator else "]"
@@ -1036,6 +1043,7 @@ class Rule(metaclass=LogicalType):
     transformer_cls = TypeTransformer
     constraints_cls = Constraints
     context_cls = RuntimeContext
+    __options__ = None
 
     __origin__: type = None
     __applied__: bool = False
@@ -1246,7 +1254,11 @@ class Rule(metaclass=LogicalType):
         constraints: Dict[str, Any] = None,
         global_vars: Dict[str, Any] = None,
         forward_refs=None,
-        force_clear_refs=False
+        force_clear_refs=False,
+        options=None,
+        bound=None,
+        name: str = None,
+        description: str = None,
     ):
         args = []
         ellipsis_args = False
@@ -1296,7 +1308,8 @@ class Rule(metaclass=LogicalType):
                     arg,
                     global_vars=global_vars,
                     forward_refs=forward_refs,
-                    force_clear_refs=force_clear_refs
+                    force_clear_refs=force_clear_refs,
+                    bound=bound
                 )
                 # this annotation can be a ForwardRef
                 # not with constraints, cause that is applied to upper layer
@@ -1307,7 +1320,6 @@ class Rule(metaclass=LogicalType):
         # if not args and not constraints:
         #     return type_
 
-        name = cls.__name__
         if type_ == Union or type_ == UnionType:
             # in Python >= 3.10, native logic operator like int | str will be a UnionType
             type_ = LogicalType.any_of(*args)
@@ -1324,9 +1336,11 @@ class Rule(metaclass=LogicalType):
             #         forward_refs=forward_refs,
             #         global_vars=global_vars
             #     )
-            if issubclass(type_, cls):
+            if issubclass(type_, cls) and not name:
                 # use the subclass name
                 name = type_.__name__
+
+        name = name or cls.__name__
 
         # if type_ == Union:
         #     any_of = LogicalType.any_of(*args)
@@ -1341,6 +1355,10 @@ class Rule(metaclass=LogicalType):
             attrs.update(__args__=args)
         if ellipsis_args:
             attrs.update(__ellipsis_args__=True)
+        if options is not None:
+            attrs.update(__options__=options)
+        if description:
+            attrs.update(__doc__=description)
         if constraints:
             attrs.update(constraints)
         return LogicalType(name, (cls,), attrs)
@@ -1350,6 +1368,7 @@ class Rule(metaclass=LogicalType):
         cls,
         annotation,
         constraints=None,
+        bound=None,
         global_vars=None,
         forward_refs=None,
         forward_key=None,
@@ -1362,6 +1381,18 @@ class Rule(metaclass=LogicalType):
                 )
             # ForwardRef
             annotation = ForwardRef(annotation)
+
+        if annotation is Self:
+            if not bound:
+                raise TypeError('using Self annotation must inside a class bound')
+            if isinstance(bound, str):
+                annotation = ForwardRef(bound)
+            elif isinstance(bound, ForwardRef):
+                annotation = bound
+            elif isinstance(bound, type):
+                return bound
+            else:
+                raise TypeError(f'using Self annotation got invalid class bound: {bound}')
 
         if isinstance(annotation, ForwardRef):
             annotation = register_forward_ref(
@@ -1407,7 +1438,8 @@ class Rule(metaclass=LogicalType):
                 constraints=constraints,
                 forward_refs=forward_refs,
                 global_vars=global_vars,
-                force_clear_refs=force_clear_refs
+                force_clear_refs=force_clear_refs,
+                bound=bound
             )
         elif annotation:
             if isinstance(annotation, type):
@@ -1417,7 +1449,8 @@ class Rule(metaclass=LogicalType):
                         constraints=constraints,
                         forward_refs=forward_refs,
                         global_vars=global_vars,
-                        force_clear_refs=force_clear_refs
+                        force_clear_refs=force_clear_refs,
+                        bound=bound
                     )
                 else:
                     # no constraints, we can directly use it
@@ -1430,7 +1463,8 @@ class Rule(metaclass=LogicalType):
                 constraints=constraints,
                 forward_refs=forward_refs,
                 global_vars=global_vars,
-                force_clear_refs=force_clear_refs
+                force_clear_refs=force_clear_refs,
+                bound=bound
             )
         return None
 
@@ -1439,46 +1473,138 @@ class Rule(metaclass=LogicalType):
         return True
 
     @classmethod
-    def merge_type(cls, t):
+    def _get_origin(cls, t):
+        rule = t
+        while (isinstance(rule, type) and issubclass(rule, Rule) and
+               not rule.__args__ and not rule.__validators__):
+            rule = rule.__origin__
+        return rule
+
+    @classmethod
+    def merge_type(cls, t, strict: bool = False):
+        rule = cls._get_origin(cls)
+        t = cls._get_origin(t)
+
         if not t or not isinstance(t, type):
             return cls
         if not cls.__origin__:
             return t
-        if cls.combinator:
-            return t & cls
-        if cls.__origin__ and issubclass(cls.__origin__, t):
-            return cls
+
+        # if cls.combinator or isinstance(t, LogicalType) and t.combinator:
+        #     return t & cls
+        # if cls.__origin__ and issubclass(cls.__origin__, t):
+        #     return cls
+
         constraints = {}
         for name, val, func in cls.__validators__:
             constraints[name] = getattr(cls, name, val)
             # do not lose the mode info
             # so we get value from cls first
-
         # try to find a strong constraint
         if 'const' in constraints or 'enum' in constraints:
             return cls
 
+        origin = rule.__origin__ if (isinstance(rule, type) and issubclass(rule, Rule)) else rule
+        args = (rule.__args__ or []) if (isinstance(rule, type) and issubclass(rule, Rule)) else []
+
+        if isinstance(origin, type):
+            if isinstance(t, type):
+                if issubclass(origin, t):
+                    return rule
+                # elif issubclass(t, origin):
+                else:
+                    if not issubclass(t, origin):
+                        if issubclass(t, Rule):
+                            if not issubclass(t.__origin__, origin):
+                                if strict:
+                                    raise TypeError(f'Invalid type merge: {t.__origin__}, {origin}')
+                        elif strict:
+                            raise TypeError(f'Invalid type merge: {t}, {origin}')
+                    origin = t
+
+        if isinstance(rule, LogicalType) and rule.combinator:
+            if rule.combinator == '|':
+                # Union
+                # narrow the condition
+                if isinstance(t, LogicalType) and t.combinator == '|':
+                    # find common args
+                    common_args = []
+                    for arg in rule.args:
+                        if arg in t.args:
+                            common_args.append(arg)
+                        else:
+                            arg_rule = arg if isinstance(arg, Rule) else Rule.annotate(arg)
+                            for t_arg in t.args:
+                                try:
+                                    common_args.append(arg_rule.merge_type(t_arg, strict=True))
+                                    break
+                                except (TypeError, ValueError):
+                                    continue
+                    if len(common_args) > 1:
+                        return LogicalType.any_of(*common_args)
+                    elif len(common_args) == 1:
+                        if common_args[0] != type(None):
+                            return common_args[0]
+                        return t
+
+                for arg in rule.args:
+                    if arg == t:
+                        return arg
+                    try:
+                        arg_rule = arg if isinstance(arg, Rule) else Rule.annotate(arg)
+                        return arg_rule.merge_type(t, strict=True)
+                    except (TypeError, ValueError):
+                        continue
+            else:
+                return rule & t
+
         if isinstance(t, LogicalType):
             if t.combinator:
-                return t & cls
+                if t.combinator == '|':
+                    common_args = []
+                    _rule = rule if isinstance(rule, Rule) else Rule.annotate(rule)
+
+                    for arg in t.args:
+                        if arg == type(None):
+                            common_args.append(arg)
+                            continue
+                        if arg == rule:
+                            common_args.append(arg)
+                            continue
+                        if isinstance(origin, type) and issubclass(origin, arg):
+                            common_args.append(rule)
+                            continue
+                        try:
+                            common_args.append(_rule.merge_type(arg, strict=True))
+                        except (TypeError, ValueError):
+                            continue
+
+                    if len(common_args) > 1:
+                        return LogicalType.any_of(*common_args)
+                    elif len(common_args) == 1:
+                        if common_args[0] != type(None):
+                            return common_args[0]
+                        return t
+                else:
+                    return t & rule
+
             elif issubclass(t, Rule):
                 for name, val, func in t.__validators__:
                     constraints[name] = getattr(t, name, val)
                 if 'const' in constraints or 'enum' in constraints:
                     return t
                 return Rule.annotate(
-                    t.__origin__ or cls.__origin__,
-                    *(t.__args__ or cls.__args__ or []),
+                    t.__origin__ or origin,
+                    *(t.__args__ or args),
                     constraints=constraints
                 )
         elif issubclass(t, Enum):
             # do not need to apply constraint to a strong type
             return t
-        args = cls.__args__ or []
         if not args and not constraints:
             return t
         return Rule.annotate(
-            t,
+            origin,
             *args,
             constraints=constraints
         )
@@ -1486,7 +1612,7 @@ class Rule(metaclass=LogicalType):
     @classmethod
     def parse(cls, value, context: RuntimeContext = None):
         # use __options__ instead of options is to identify much clearer with other subclass init kwargs
-        context = context or cls.context_cls()
+        context = context or cls.context_cls(options=cls.__options__)
         options = context.options
         # IMPORTANT:
         # we must do clone here (as the parser do make_runtime)
@@ -1697,9 +1823,10 @@ class Rule(metaclass=LogicalType):
         result = []
         options = context.options
 
-        if options.no_data_loss and len(value) > len(cls.__args__):
-            for item in range(len(cls.__args__), len(value)):
-                context.handle_error(exc.TupleExceedError(item=item, value=value[item]))
+        if len(value) > len(cls.__args__):
+            if options.addition is False or options.no_data_loss:
+                for item in range(len(cls.__args__), len(value)):
+                    context.handle_error(exc.TupleExceedError(item=item, value=value[item]))
 
         for i, (arg, func) in enumerate(zip(cls.__args__, cls.__arg_transformers__)):
             if i >= len(value):
@@ -1723,6 +1850,27 @@ class Rule(metaclass=LogicalType):
                         result.append(value[i])
                         continue
                     context.handle_error(error)
+
+        if options.addition:
+            if isinstance(options.addition, type):
+                for _i, addition_param in enumerate(value[len(cls.__args__):]):
+                    i = _i + len(cls.__args__)
+                    with context.enter(route=i) as arg_context:
+                        try:
+                            result.append(
+                                arg_context.transformer.apply(value[i], options.addition)
+                            )
+                        except Exception as e:
+                            error = exc.ParseError(
+                                item=i, value=value[i], type=options.addition, origin_exc=e
+                            )
+                            if options.invalid_items == options.PRESERVE:
+                                context.collect_waring(error.formatted_message)
+                                result.append(value[i])
+                                continue
+                            context.handle_error(error)
+            else:
+                result.extend(value[len(cls.__args__):])
 
         return cls.__origin__(result)
 

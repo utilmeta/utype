@@ -61,3 +61,47 @@ except ImportError:
                 return self
             res = instance.__dict__[self.name] = self.func(instance)
             return res
+
+
+class ImmutableDict(dict):
+    def __error__(self, *args, **kwargs):
+        raise AttributeError("ImmutableDict can not modify value")
+
+    __delitem__ = __error__
+    __setitem__ = __error__
+
+    def __str__(self):
+        return f'{self.__class__.__name__}({super().__repr__()})'
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}({super().__repr__()})'
+
+    setdefault = __error__
+    pop = __error__
+    popitem = __error__
+    clear = __error__
+    update = __error__
+
+
+class ImmutableList(list):
+    def error(self, *args, **kwargs):
+        raise AttributeError("ImmutableList can not modify value")
+
+    def __str__(self):
+        return f'{self.__class__.__name__}({super().__repr__()})'
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}({super().__repr__()})'
+
+    append = error
+    clear = error
+    extend = error
+    insert = error
+    pop = error
+    remove = error
+    reverse = error
+    sort = error
+    __iadd__ = error
+    __imul__ = error
+    __setitem__ = error
+    __delitem__ = error

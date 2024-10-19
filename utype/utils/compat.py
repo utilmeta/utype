@@ -26,12 +26,24 @@ try:
 except ImportError:
     from typing_extensions import Annotated
 
+try:
+    from typing import Self
+except ImportError:
+    from typing_extensions import Self
+
+try:
+    from typing import Required
+except ImportError:
+    from typing_extensions import Required
+
 
 __all__ = [
     "get_origin",
     "get_args",
     'Literal',
     'Final',
+    'Self',
+    'Required',
     'UnionType',
     "ForwardRef",
     "Annotated",

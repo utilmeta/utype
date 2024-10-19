@@ -313,6 +313,7 @@ class TestType:
             ],
             date: [
                 ("2020-02-20", date(2020, 2, 20), True, True),
+                ("20200220", date(2020, 2, 20), True, True),
                 ("2020/02/20", date(2020, 2, 20), True, True),
                 ("2020/2/20", date(2020, 2, 20), True, True),
                 ("20/02/2020", date(2020, 2, 20), True, True),

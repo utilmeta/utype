@@ -88,6 +88,10 @@ class BaseParser:
         return self.options.make_context(context=context, force_error=force_error)
 
     @property
+    def bound(self):
+        return self.obj
+
+    @property
     def kwargs(self):
         return {}
 
@@ -109,7 +113,8 @@ class BaseParser:
             annotation=annotation,
             forward_refs=self.forward_refs,
             global_vars=self.globals,
-            force_clear_refs=self.is_local
+            force_clear_refs=self.is_local,
+            bound=self.bound
         )
 
     @cached_property

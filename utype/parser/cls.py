@@ -141,6 +141,7 @@ class ClassParser(BaseParser):
                     forward_refs=self.forward_refs,
                     options=self.options,
                     force_clear_refs=self.is_local,
+                    bound=self.bound,
                     **self.kwargs
                 )
             except Exception as e:
@@ -185,6 +186,7 @@ class ClassParser(BaseParser):
                     forward_refs=self.forward_refs,
                     options=self.options,
                     force_clear_refs=self.is_local,
+                    bound=self.bound,
                     **self.kwargs
                 )
             except Exception as e:
