@@ -1,6 +1,6 @@
 from decimal import Decimal
 from enum import Enum
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, time
 from uuid import UUID
 from typing import Union, Optional, Tuple, List, Set, Mapping, \
     Dict, Type, Callable, Any, TYPE_CHECKING, Iterator, ClassVar

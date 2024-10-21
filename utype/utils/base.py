@@ -121,6 +121,11 @@ class ParamsCollectorMeta(type):
         cls._defaults = {}
         cls._requires = set()
 
+        prefix = getattr(cls, '__name_prefix__', None)
+        if prefix:
+            name = prefix.rstrip('.') + '.' + name
+            cls.__name__ = name
+
         if not bases:
             return
 
@@ -187,8 +192,22 @@ class ParamsCollectorMeta(type):
         except AttributeError:
             return cls.__name__
 
+    # def __repr__(cls):
+    #     name = cls.__name__
+    #     prefix = getattr(cls, '__repr_prefix__', None)
+    #     if prefix:
+    #         name = prefix.rstrip('.') + '.' + name
+    #     else:
+    #         return super().__repr__()
+    #     return name
+    #
+    # def __str__(self):
+    #     return self.__repr__()
+
 
 class ParamsCollector(metaclass=ParamsCollectorMeta):
+    __name_prefix__ = None
+
     def __init__(self, __params__: Dict[str, Any]):
         args = []
         kwargs = {}
@@ -276,16 +295,24 @@ class ParamsCollector(metaclass=ParamsCollectorMeta):
         else:
             cls = self.__class__
         try:
-            return cls.__qualname__
+            name = cls.__qualname__
         except AttributeError:
-            return cls.__name__
+            name = cls.__name__
+        prefix = self.__name_prefix__
+        if prefix:
+            name = prefix.rstrip('.') + '.' + name
+        return name
 
     def _repr(self, name: str = None,
+              prefix: str = None,
               includes: List[str] = None,
               excludes: List[str] = None,
               addition: dict = None
               ):
         name = name or self.__name__
+        prefix = prefix
+        if prefix:
+            name = prefix.rstrip('.') + '.' + name
         if inspect.isclass(self):
             return f'<{name} class "{self.__module__}.{name}">'
         attrs = []

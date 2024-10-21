@@ -262,7 +262,12 @@ class JsonSchemaGenerator:
             if aliases:
                 # sort to stay identical
                 aliases.sort()
-            data.update(aliases=aliases)
+            data.update({
+                'x-var-name': f.attname,
+                'x-aliases': aliases,
+                'aliases': aliases,     # compat old version, will be deprecated
+            })
+
         annotations = f.schema_annotations
         if annotations:
             data.update({
@@ -270,7 +275,6 @@ class JsonSchemaGenerator:
             })
         return data
 
-    # todo: de-duplicate generated schema class like UserSchema['a']
     def generate_for_dataclass(self, t):
         # name = t.__qualname__
         parser: ClassParser = getattr(t, '__parser__')
@@ -292,6 +296,7 @@ class JsonSchemaGenerator:
         data = {"type": "object"}
         required = []
         properties = {}
+        dependent_required = {}
         options = parser.options
 
         if self.output:
@@ -304,6 +309,8 @@ class JsonSchemaGenerator:
             if value is None:
                 continue
             properties[name] = value
+            if field.dependencies:
+                dependent_required[name] = field.dependencies
             if field.is_required(options or self.options):
                 # will count options.ignore_required in
                 required.append(name)
@@ -315,6 +322,8 @@ class JsonSchemaGenerator:
         data.update(properties=properties)
         if required:
             data.update(required=required)
+        if dependent_required:
+            data.update(dependentRequired=dependent_required)
         addition = options.addition
         if addition is not None:
             if isinstance(addition, type):

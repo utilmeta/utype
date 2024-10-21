@@ -474,7 +474,7 @@ class Constraints:
 
     @property
     def origin_type(self):
-        return self.rule_cls.__origin__
+        return self.rule_cls._get_origin(self.rule_cls)
 
     @origin_type.setter
     def origin_type(self, t: type):
@@ -681,7 +681,20 @@ class Constraints:
                             raise exc.ConfigError(
                                 f"Constraint: {repr(key)} is only for type: {origin_types}, got bool"
                             )
-                        if not issubclass(self.origin_type, origin_types):
+                        origin = self.origin_type
+                        origins = []
+                        while True:
+                            find = issubclass(origin, origin_types)
+                            if find:
+                                break
+                            origin = getattr(origin, "__origin__", None)
+                            if not origin:
+                                break
+                            if origin in origins:
+                                break
+                            origins.append(origin)
+
+                        if not find:
                             raise exc.ConfigError(
                                 f"Constraint: {repr(key)} is only for type: "
                                 f"{origin_types}, got {self.origin_type}"
