@@ -99,8 +99,13 @@ class ClassParser(BaseParser):
         current_obj = dic.get(name)
         if current_obj:
             if getattr(current_obj, '__qualname__', None) != getattr(self.obj, '__qualname__', None):
-                warnings.warn(f'Parser object: {self.obj} got conflict object: {current_obj} '
-                              f'with same name: {repr(name)}, it may affect the ForwardRef resolve')
+                from ..settings import warning_settings
+                warning_settings.warn(
+                    f'Parser object: {self.obj} got conflict object: {current_obj} '
+                    f'with same name: {repr(name)}, it may affect the ForwardRef resolve',
+                    warning_settings.globals_name_conflict
+                )
+
         dic[name] = self.obj
         # !IMPORTANT: we need to override __name__ for current obj
         # cause in the locals, same name may be the different object, we should be careful about that

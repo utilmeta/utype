@@ -1,5 +1,4 @@
 import inspect
-import warnings
 from collections.abc import (AsyncGenerator, AsyncIterable, AsyncIterator,
                              Callable, Generator, Iterable, Iterator, Mapping)
 from functools import wraps
@@ -13,6 +12,7 @@ from .base import BaseParser
 from .field import ParserField
 from .options import Options, RuntimeContext
 from .rule import Rule, resolve_forward_type
+from ..settings import warning_settings
 
 LAMBDA_NAME = (lambda: None).__name__
 LOCALS_NAME = "<locals>"
@@ -256,9 +256,10 @@ class FunctionParser(BaseParser):
                 f"without declaring the **kwargs variable"
             )
         if self.kw_var and not self.options.addition:
-            warnings.warn(
+            warning_settings.warn(
                 f"FunctionParser: {func}, specified **{self.kw_var}"
-                f" but set addition=False, {self.kw_var} will always be empty"
+                f" but set addition=False, {self.kw_var} will always be empty",
+                warning_settings.function_kwargs_With_no_addition,
             )
 
         if self.options.no_default:
@@ -272,12 +273,14 @@ class FunctionParser(BaseParser):
             )
 
         if self.options.immutable:
-            warnings.warn(
-                f"FunctionParser: {func}, specified immutable=True in Options, which is useless"
+            warning_settings(
+                f"FunctionParser: {func}, specified immutable=True in Options, which is useless",
+                warning_settings.function_invalid_options
             )
         if self.options.secret_names:
-            warnings.warn(
-                f"FunctionParser: {func}, specified secret_names in Options, which is useless"
+            warning_settings.warn(
+                f"FunctionParser: {func}, specified secret_names in Options, which is useless",
+                warning_settings.function_invalid_options
             )
 
         self.position_type = None
@@ -327,9 +330,10 @@ class FunctionParser(BaseParser):
                         self.generator_return_type,
                     ) = self.return_type.__args__
                 else:
-                    warnings.warn(
+                    warning_settings.warn(
                         f"Invalid return type annotation: {self.return_annotation} "
-                        f"for generator function, should be Generator[...] / Iterator[...] / Iterable[...]"
+                        f"for generator function, should be Generator[...] / Iterator[...] / Iterable[...]",
+                        warning_settings.function_invalid_return_annotation
                     )
             elif self.is_async_generator:
                 if self.return_type.__origin__ in (AsyncIterable, AsyncIterator):
@@ -340,10 +344,11 @@ class FunctionParser(BaseParser):
                         self.generator_send_type,
                     ) = self.return_type.__args__
                 else:
-                    warnings.warn(
+                    warning_settings.warn(
                         f"Invalid return type annotation: {self.return_annotation} "
                         f"for async generator function, should be "
-                        f"AsyncGenerator[...] / AsyncIterator[...] / AsyncIterable[...]"
+                        f"AsyncGenerator[...] / AsyncIterator[...] / AsyncIterable[...]",
+                        warning_settings.function_invalid_return_annotation
                     )
 
     @cached_property
@@ -401,9 +406,10 @@ class FunctionParser(BaseParser):
                 else:
                     annotation = param.annotation
                     if is_final(annotation) or is_classvar(annotation):
-                        warnings.warn(
+                        warning_settings.warn(
                             f"{self.obj}: param: {repr(name)} invalid annotation: {annotation}, "
-                            f"this is only for class variables, please use the type directly"
+                            f"this is only for class variables, please use the type directly",
+                            warning_settings.function_invalid_params_annotation
                         )
                         # args = get_args(annotation)
                         # annotation = args[0] if args else None
@@ -494,7 +500,7 @@ class FunctionParser(BaseParser):
                     if v.kind == v.POSITIONAL_ONLY:
                         raise SyntaxError(msg)
                     else:
-                        warnings.warn(msg)
+                        warning_settings.warn(msg, warning_settings.function_non_default_follows_default_args)
             else:
                 optional_name = k
 

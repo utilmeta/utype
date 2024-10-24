@@ -1,6 +1,5 @@
 import re
 import typing
-import warnings
 from collections import deque
 from decimal import Decimal
 from enum import Enum, EnumMeta
@@ -14,6 +13,7 @@ from ..utils.compat import (ForwardRef, Literal, Self, evaluate_forward_ref,
 from ..utils.datastructures import unprovided
 from ..utils.functional import multi, pop
 from ..utils.transform import TypeTransformer
+from ..settings import warning_settings
 from .options import RuntimeContext
 
 T = typing.TypeVar("T")
@@ -535,15 +535,17 @@ class Constraints:
                 if not hasattr(self.origin_type, "__len__"):
                     # just warning here, we will coerce to str in runtime
                     if issubclass(self.origin_type, (int, float, Decimal)):
-                        warnings.warn(
+                        warning_settings.warn(
                             f"Rule specify length constraints for type: {self.origin_type} "
                             f"that does not support length, we recommend to use "
-                            f'"max_digits" and "round" for number types'
+                            f'"max_digits" and "round" for number types',
+                            warning_settings.rule_length_constraints_on_unsupported_types
                         )
                     else:
-                        warnings.warn(
+                        warning_settings.warn(
                             f"Rule specify length constraints for type: {self.origin_type} "
-                            f"that does not support length, value will be convert to str to validate length"
+                            f"that does not support length, value will be convert to str to validate length",
+                            warning_settings.rule_length_constraints_on_unsupported_types
                         )
 
     def valid_bounds(self, bounds: dict):
@@ -1188,9 +1190,10 @@ class Rule(metaclass=LogicalType):
                 cls.__origin__
             )
             if not cls.__origin_transformer__:
-                warnings.warn(
+                warning_settings.warn(
                     f"{cls}: origin type: {cls.__origin__} got no transformer resolved, "
-                    f"will just pass {cls.__origin__}(data) at runtime"
+                    f"will just pass {cls.__origin__}(data) at runtime",
+                    warning_settings.rule_no_origin_transformer
                 )
 
         if cls.__args__:
@@ -1221,9 +1224,10 @@ class Rule(metaclass=LogicalType):
                         cls.__origin__, NONE_ARG_ALLOWED_TYPES
                     ):
                         continue
-                    warnings.warn(
+                    warning_settings(
                         f"None arg: {arg} detected where origin type: {cls.__origin__} is not in "
-                        f"{NONE_ARG_ALLOWED_TYPES}"
+                        f"{NONE_ARG_ALLOWED_TYPES}",
+                        warning_settings.rule_none_arg_in_unsupported_origin
                     )
                     continue
 
@@ -1231,18 +1235,20 @@ class Rule(metaclass=LogicalType):
                     raise TypeError(f"Invalid arg: {arg}, must be a class")
                 transformer = cls.transformer_cls.resolver_transformer(arg)
                 if not transformer:
-                    warnings.warn(
+                    warning_settings.warn(
                         f"{cls}: arg type: {arg} got no transformer resolved, "
-                        f"will just pass {arg}(data) at runtime"
+                        f"will just pass {arg}(data) at runtime",
+                        warning_settings.rule_no_arg_transformer
                     )
 
                 arg_transformers.append(transformer)
             cls.__arg_transformers__ = tuple(arg_transformers)
             cls.__args_parser__ = cls.resolve_args_parser()
             if not cls.__args_parser__:
-                warnings.warn(
+                warning_settings.warn(
                     f"{cls}: type: {cls.__origin__} with __args__ cannot resolve an args parser, "
-                    f"you should inherit resolve_args_parser and specify yourself"
+                    f"you should inherit resolve_args_parser and specify yourself",
+                    warning_settings.rule_none_arg_in_unsupported_origin
                 )
         else:
             if class_getitem and not cls.__dict__.get("__class_getitem__"):
@@ -1278,9 +1284,10 @@ class Rule(metaclass=LogicalType):
 
         if type_ == Any:
             if args_:
-                warnings.warn(f"Any type cannot specify args: {args_}")
+                warning_settings.warn(f"Any type cannot specify args: {args_}", warning_settings.rule_args_in_any)
             if constraints:
-                warnings.warn(f"Any type cannot specify constraints: {constraints}")
+                warning_settings.warn(f"Any type cannot specify constraints: {constraints}",
+                                      warning_settings.rule_args_in_any)
             return Rule
 
         elif type_ == Literal:
@@ -1805,9 +1812,10 @@ class Rule(metaclass=LogicalType):
                     resolved = True
                     transformer = cls.transformer_cls.resolver_transformer(arg)
                     if not transformer:
-                        warnings.warn(
+                        warning_settings.warn(
                             f"{cls}: arg type: {arg} got no transformer resolved, "
-                            f"will just pass {arg}(data) at runtime"
+                            f"will just pass {arg}(data) at runtime",
+                            warning_settings.rule_no_arg_transformer
                         )
                     trans = transformer or trans
             args.append(arg)

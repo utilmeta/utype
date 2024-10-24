@@ -8,6 +8,7 @@ from .parser.options import Options
 from .parser.rule import Lax, Rule
 from .utils import exceptions as exc
 from .utils.datastructures import Unprovided, unprovided
+from .settings import warning_settings
 
 T = TypeVar("T")
 FUNC = TypeVar("FUNC")
@@ -34,9 +35,9 @@ def parse(
     eager: bool = False,
 ) -> Union[T, Callable[[T], T]]:
     if ignore_params and ignore_result:
-        warnings.warn(
+        warning_settings.warn(
             f"@utype.parse: you turn off both params and result parse in @parse decorator,"
-            f" which is basically meaningless..."
+            f" which is basically meaningless...", warning_settings.parse_ignore_both_params_and_result
         )
 
     def decorator(func: T) -> T:
@@ -103,9 +104,10 @@ def dataclass(
                 post_setattr=post_setattr, post_delattr=post_delattr
             )
         elif post_setattr or post_delattr:
-            warnings.warn(
+            warning_settings.warn(
                 f"@utype.dataclass received post_delattr / post_setattr "
-                f'without "set_properties=True", these params won\'t take effect'
+                f'without "set_properties=True", these params won\'t take effect',
+                warning_settings.dataclass_setattr_delattr_not_effect
             )
 
         cls.__parser__ = parser

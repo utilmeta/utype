@@ -1,13 +1,12 @@
 import inspect
-import warnings
 from typing import Any, Callable, List, Optional, Set, Type, Union
 
 from ..utils import exceptions as exc
-# from ..utils.base import ParamsCollector
 from ..utils.compat import Literal
 from ..utils.datastructures import unprovided
 from ..utils.functional import multi
 from ..utils.transform import TypeTransformer
+from ..settings import warning_settings
 
 DEFAULT_SECRET_NAMES = (
     "password",
@@ -175,8 +174,9 @@ class Options:
 
         if not collect_errors:
             if max_errors:
-                warnings.warn(
-                    f"Options with max_errors: {max_errors} should turn on collect_errors=True"
+                warning_settings.warn(
+                    f"Options with max_errors: {max_errors} should turn on collect_errors=True",
+                    warning_settings.options_max_errors_with_no_collect_errors
                 )
                 max_errors = None
 
@@ -477,5 +477,6 @@ class RuntimeContext:
             raise exc.CollectedParseError(errors=errors)
 
     def collect_waring(self, warning, category=None):
+        import warnings
         warnings.warn(warning, category=category)
         self.warnings.append(warning)
