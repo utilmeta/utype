@@ -94,6 +94,9 @@ class TestRule:
         assert weekday_or_date('fri') == 'fri'
         assert weekday_or_date('2000-1-1') == date(2000, 1, 1)
 
+        multi_any = Rule.any_of(dict, list, str, None)
+        assert multi_any('str') == 'str'
+
     def test_length(self):
         class Length3(Rule):
             length = 3

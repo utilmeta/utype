@@ -539,6 +539,8 @@ class TestType:
             c = 1
             d = 2
 
+        # from pathlib import PosixPath
+
         data = {
             'dt': datetime(2000, 1, 1, 12, 13, 14, 1234),
             'date': date(2000, 1, 1),
@@ -549,7 +551,8 @@ class TestType:
             'd0': Decimal('0'),
             'en': en(2),
             'a': (1, 2),
-            's': {'s'}
+            's': {'s'},
+            # 'p': PosixPath('/path/to/file')
         }
         res = JSONSerializer().dumps(data)
         assert res == (b'{"dt":"2000-01-01T12:13:14.001234","date":"2000-01-01","time":"12:13:14.001",'

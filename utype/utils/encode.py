@@ -9,6 +9,7 @@ from .base import TypeRegistry
 import json
 from .datastructures import unprovided
 from ipaddress import IPv4Address, IPv6Address, IPv4Network, IPv6Network
+from pathlib import PurePath
 
 
 encoder_registry = TypeRegistry('encoder', cache=True, shortcut='__encoder__')
@@ -93,6 +94,11 @@ def from_unprovided(data):
 @register_encoder(bytes)
 def from_bytes(data: bytes):
     return data.decode("utf-8", errors="replace")
+
+
+@register_encoder(PurePath)
+def from_bytes(data: PurePath):
+    return str(data)
 
 
 @register_encoder(io.BytesIO)
