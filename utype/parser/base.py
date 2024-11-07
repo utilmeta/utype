@@ -452,10 +452,13 @@ class BaseParser:
                     result[name] = default
                 continue
 
-            if (name in result) or (excluded_keys and name in excluded_keys):
-                if options.ignore_alias_conflicts:
+            if not options.ignore_alias_conflicts:
+                if name in result:  # or (excluded_keys and name in excluded_keys):
+                    if result[name] != value:
+                        context.handle_error(exc.AliasConflictError(item=name, value=value))
                     continue
-                context.handle_error(exc.AliasConflictError(item=name, value=value))
+
+            if excluded_keys and name in excluded_keys:
                 continue
 
             parsed = field.parse_value(value, context=context)
@@ -547,8 +550,9 @@ class BaseParser:
                         if unprovided(value):
                             value = data[alias]
                         else:
-                            context.handle_error(exc.AliasConflictError(item=name))
-                            break
+                            if data[alias] != value:
+                                context.handle_error(exc.AliasConflictError(item=name, value=data[alias]))
+                                break
 
             if unprovided(value):
                 unprovided_fields.add(name)
@@ -605,6 +609,8 @@ class BaseParser:
             for k, v in data.items():
                 if k in used_alias:
                     continue
+                # if excluded_keys and k in excluded_keys:
+                #     pass
                 add_value = self.parse_addition(k, v, context=context)
                 if not unprovided(add_value):
                     addition[k] = add_value

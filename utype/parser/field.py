@@ -10,7 +10,7 @@ from ..utils import exceptions as exc
 from ..utils.base import ParamsCollector
 from ..utils.compat import Literal, get_args, is_final, is_annotated, ForwardRef
 from ..utils.datastructures import unprovided
-from ..utils.functional import copy_value, get_name, multi
+from ..utils.functional import copy_value, get_name, multi, distinct_add
 from .options import Options, RuntimeContext
 from .rule import ConstraintMode, Lax, LogicalType, Rule, resolve_forward_type
 from ..settings import warning_settings
@@ -293,8 +293,8 @@ class Field(ParamsCollector):
                     alias = _alias
         return alias
 
-    def get_alias_from(self, attname: str, generator=None) -> Set[str]:
-        aliases = {attname}
+    def get_alias_from(self, attname: str, generator=None) -> List[str]:
+        aliases = [attname]
         alias_from = []
         if self.alias_from:
             if not multi(self.alias_from):
@@ -312,9 +312,9 @@ class Field(ParamsCollector):
             if callable(alias):
                 alias = alias(attname)
             if multi(alias):
-                aliases.update([a for a in alias if isinstance(a, str) and a])
+                distinct_add(aliases, [a for a in alias if isinstance(a, str) and a])
             elif isinstance(alias, str) and alias:
-                aliases.add(alias)
+                distinct_add(aliases, [alias])
 
         return aliases
 
@@ -437,7 +437,7 @@ class ParserField:
         # all the transformers and validators are infer from type
         field: Field,
         attname: str = None,
-        aliases: Set[str] = None,
+        aliases: List[str] = None,
         field_property: property = None,
         output_type: type = None,
         output_field: Field = None,
@@ -458,8 +458,17 @@ class ParserField:
         self.property = field_property
         self.final = final
         self.name = name
-        self.aliases = set(aliases or []).difference({self.name})
-        self.all_aliases = self.aliases.union({self.name})
+
+        all_aliases = [self.name]
+        _aliases = []
+        for alias in aliases or []:
+            if alias not in all_aliases:
+                all_aliases.append(alias)
+            if alias != name:
+                _aliases.append(alias)
+        # !!!order matters
+        self.all_aliases = all_aliases
+        self.aliases = _aliases
 
         # self.input_transformer = self.transformer_cls.resolver_transformer(input_type)
         self.dependencies = dependencies
@@ -490,6 +499,10 @@ class ParserField:
         self.case_insensitive = self.field.case_insensitive
     # ----------------
     # below are static field properties
+
+    @property
+    def alias_set(self):
+        return set(self.aliases)
 
     @property
     def discriminator(self):
@@ -538,7 +551,7 @@ class ParserField:
             # do not lower name
             # self.name = self.name.lower()
             self.aliases = {a.lower() for a in self.aliases}
-            self.all_aliases = {a.lower() for a in self.all_aliases}
+            self.all_aliases = [a.lower() for a in self.all_aliases]
 
         if self.repr_func is None:
             if options.secret_names:
@@ -675,7 +688,7 @@ class ParserField:
         take the field
         """
         if self.aliases:
-            inter = self.aliases.intersection(fields)
+            inter = self.alias_set.intersection(fields)
             if inter:
                 raise exc.ConfigError(
                     f"Field(name={repr(self.name)}) aliases: {inter} conflict with fields"

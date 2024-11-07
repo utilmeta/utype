@@ -133,7 +133,7 @@ class Options:
         ignore_constraints: bool = unprovided,  # for Rule, ignore constraints, only transform type
         alias_from_generator: Union[Callable, List[Callable]] = unprovided,
         alias_generator: Callable = unprovided,
-        ignore_alias_conflict: bool = unprovided,
+        ignore_alias_conflicts: bool = unprovided,
         allow_subclasses: bool = unprovided,
         cast_keyword_str: bool = unprovided,
         # allowed_runtime_options: Union[str, None, List[str]] = "*",

@@ -150,6 +150,21 @@ class TestOptions:
                 value: str
                 # name is same
 
+        # ------------
+        class AliasSchema(Schema):
+            alias: str = Field(alias_from=['alias_from', '@af2'])
+
+        assert dict(AliasSchema({'alias': 1, 'alias_from': 1, '@af2': 1})) == {'alias': '1'}
+
+        with pytest.raises(exc.AliasConflictError):
+            dict(AliasSchema({'alias': 1, 'alias_from': 2}))
+
+        class AliasSchema2(Schema):
+            __options__ = Options(ignore_alias_conflicts=True)
+            alias: str = Field(alias_from=['alias_from', '@af2'])
+        assert dict(AliasSchema2({'alias': 1, 'alias_from': 2})) == {'alias': '1'}
+        assert dict(AliasSchema2({'alias_from': 1, '@af2': 2})) == {'alias': '1'}
+
     def test_addition(self):
         class UserSchemaDisallow(Schema):
             __options__ = Options(addition=False)
