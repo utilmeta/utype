@@ -159,6 +159,9 @@ class LogicalType(type):  # noqa
         if isinstance(arg, mcs):
             return arg
 
+        if arg in (Any, Self):
+            return arg
+
         __origin = get_origin(arg)
         if __origin:
             # like List[str] Literal["value"]
@@ -233,10 +236,24 @@ class LogicalType(type):  # noqa
 
             arg = mcs._parse_arg(arg)
 
+            if arg == Any:
+                if operator in ('|', '^'):
+                    # if Any in any_of, there will be just Any (or Rule)
+                    return Rule
+                elif operator == '&':
+                    # if Any in and, just ignore
+                    continue
+
             if arg in __args:
                 # avoid duplicate
                 continue
             __args.append(arg)
+        if not __args:
+            return Rule
+        if operator != '~':
+            # for operation other than not, if just 1 arg left, use that
+            if len(__args) == 1:
+                return __args[0]
 
         return mcs(
             OPERATOR_NAMES.get(operator, operator),

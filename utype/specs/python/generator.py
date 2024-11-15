@@ -2,14 +2,12 @@ import inspect
 import keyword
 import re
 
-import utype
 from utype.parser.rule import Rule, LogicalType
 from utype.parser.field import Field
 from utype.parser.cls import ClassParser
 from utype.parser.func import FunctionParser
 from utype import unprovided, Options
-
-from typing import Type, Dict, ForwardRef
+from typing import Type, Dict, Any, ForwardRef
 from utype.utils.functional import represent, valid_attr
 from collections import deque
 
@@ -98,10 +96,11 @@ class PythonCodeGenerator:
                     default = self.generate_for_field(param_default)
                 else:
                     default = represent(param_default)
-                if len(args) == 1:
-                    args.append(f'={default}')
-                else:
-                    args.append(f' = {default}')
+                if default:
+                    if len(args) == 1:
+                        args.append(f'={default}')
+                    else:
+                        args.append(f' = {default}')
             params.append(''.join(args))
 
         return_annotation = None
@@ -122,7 +121,7 @@ class PythonCodeGenerator:
             return t
         if isinstance(t, ForwardRef):
             return repr(t.__forward_arg__)
-        if not isinstance(t, type):
+        if not isinstance(t, type) or t in (Any, Rule):
             return 'Any'
         if isinstance(t, LogicalType):
             if t.combinator:
@@ -183,7 +182,7 @@ class PythonCodeGenerator:
 
     @classmethod
     def generate_for_field(cls, field: Field, addition: dict = None) -> str:
-        if not field.__spec_kwargs__ and not addition:
+        if not field.__spec_kwargs__ and not addition and field.__class__ == Field:
             return ''
         name = None
         if field.__class__ == Field:

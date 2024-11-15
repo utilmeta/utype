@@ -15,12 +15,14 @@ PRIMITIVE_MAP = {
 }
 TYPE_MAP = {
     'null': type(None),
+    'string': str,
     'boolean': bool,
     'bool': bool,
     'object': dict,
     'array': list,
     'integer': int,
     'int': int,
+    'bigint': int,
     'number': float,
     'float': float,
     'decimal': Decimal,

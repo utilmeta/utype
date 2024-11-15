@@ -332,3 +332,70 @@ utype 是一个 [UtilMeta](https://utilmeta.com) 项目，你可以加入下面�
 * [X(Twitter)](https://twitter.com/utilmeta)
 * [Reddit](https://www.reddit.com/r/utilmeta)
 * [中文讨论区](https://lnzhou.com/channels/utilmeta/community)
+
+
+## 对比
+### utype | Pydantic
+Pydantic 是一个流行的 Python 数据解析验证库，utype 提供的功能与 Pydantic 大体上是相近的，但相比之下，utype 在以下方面有更多的关注
+
+* **函数的解析**：utype 能很好的处理各种函数参数与返回值的解析（包括同步函数，异步函数，生成器与异步生成器函数），pydantic 对函数返回值只进行验证，并不尝试进行类型转化，且并不支持生成器函数
+* **约束类型**：对于 utype 来说所有的 **约束** （比如大小，长度，正则等）都会体现在类型中，从而可以直接用来进行类型转化与判断，pydantic 定义的类型往往需要作为字段的注解才能发挥作用
+```python
+>>> from pydantic import PositiveInt
+>>> PositiveInt(-1)
+-1
+>>> from utype.types import PositiveInt
+>>> PositiveInt(-1)
+utype.utils.exceptions.ConstraintError: Constraint: <gt>: 0 violated
+```
+* **类型注册机制**：utype 中所有类型的解析与转化方式都是可以进行注册与覆盖的，也就是说开发者可以方便地自定义基本类型的解析方式，或者注册自定义类型的解析函数；pydantic 支持的解析的内置类型是固定的。由于 utype 的类型解析是注册机制的，所以 utype 也可以兼容解析 **pydantic**, **dataclasses**, **attrs** 等数据类 （参考 [兼容 Pydantic](/zh/guide/type/#pydantic)）
+```python
+from utype import register_transformer  
+from collections.abc import Mapping  
+from pydantic import BaseModel  
+  
+@register_transformer(BaseModel)  
+def transform_pydantic(transformer, data, cls):  
+    if not transformer.no_explicit_cast and not isinstance(data, Mapping):  
+        data = transformer(data, dict)  
+    return cls(**data)
+```
+* **逻辑类型**：utype 的类型支持任意嵌套组合的逻辑运算，可以兼容基本类型与 typing 用法，以及支持运算出的类型对数据进行处理（pydantic 没有相应用法）
+```python
+from utype import Rule, exc
+from typing import Literal
+
+class IntWeekDay(int, Rule):  
+	gt = 0
+	le = 7
+
+weekday = IntWeekDay ^ Literal['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+
+>>> weekday('6')
+6
+>>> weekday(b'tue')
+'tue'
+>>> weekday(8)
+Constraint: <le>: 7 violated;
+Constraint: <enum>: ('mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun') violated
+```
+* **字段模式**：utype 的字段提供了 模式 (`mode`) 机制，包括 `no_input` 与 `no_output` 等，可以在一个数据类中定义字段的多种用法，对于在 web 场景中定义负责 **增改查** 等多种目的的数据模型更加方便
+* **原生字典模型**：pydantic 的 BaseModel 产出的数据实例虽然有 JSON 序列化方法，但并不能被 `json.dumps` 处理，utype 提供继承原生字典的 `Schema` 类，整合到数据工作流中更方便
+```python
+from pydantic import BaseModel
+from utype import Schema
+import json
+
+class md(BaseModel):
+	value: int
+
+class schema(Schema):
+	value: int
+
+>>> json.dumps(md(value=1))
+TypeError: Object of type md is not JSON serializable
+>>> json.dumps(schema(value=1))
+'{"value": 1}'
+```
+
+整体上而言，utype 提供的配置参数更加简洁一些，提供的功更加灵活一些，可以看作一个更加灵活与轻量级的 Pydantic

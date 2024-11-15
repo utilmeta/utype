@@ -97,6 +97,13 @@ class TestRule:
         multi_any = Rule.any_of(dict, list, str, None)
         assert multi_any('str') == 'str'
 
+        # test Any
+        assert types.PositiveInt & types.PositiveInt == types.PositiveInt
+        assert types.PositiveInt | types.Any in (Rule, types.Any)
+        assert types.PositiveInt | None | types.Any in (Rule, types.Any)
+        assert types.PositiveInt & types.Any == types.PositiveInt
+        assert types.PositiveInt ^ types.Any in (Rule, types.Any)
+
     def test_length(self):
         class Length3(Rule):
             length = 3

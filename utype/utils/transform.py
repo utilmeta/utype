@@ -612,7 +612,11 @@ class TypeTransformer:
                 return t()
         data = self._from_byte_like(data)
         if isinstance(data, str):
-            return t.fromisoformat(data)
+            if ':' in data:
+                try:
+                    return t.fromisoformat(data)
+                except ValueError:
+                    return self.to_datetime(f'1970-01-01 {data}').time()
         raise TypeError
 
     @registry.register(UUID)

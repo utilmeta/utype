@@ -18,7 +18,7 @@ class JsonSchemaParser:
     object_meta_cls = LogicalMeta
     object_options_cls = Options
     field_cls = Field
-    default_type = str
+    default_type = Any
 
     NON_NAME_REG = '[^A-Za-z0-9]+'
 
@@ -217,6 +217,8 @@ class JsonSchemaParser:
                      description: str = None,
                      constraints: dict = None
                      ):
+        if list(schema) == ['type'] and not constraints:
+            return dict
         name = name or 'ObjectSchema'
         properties = schema.get('properties') or {}
         required = schema.get('required') or []
@@ -305,6 +307,8 @@ class JsonSchemaParser:
                     description: str = None,
                     constraints: dict = None
                     ):
+        if list(schema) == ['type'] and not constraints:
+            return list
         items = schema.get('items')
         prefix_items = schema.get('prefixItems')
         args = []

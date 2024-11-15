@@ -276,6 +276,12 @@ class ParamsCollector(metaclass=ParamsCollectorMeta):
             return data.__copy__()
         return data
 
+    def _update_spec(self, **kwargs):
+        # this is a rather ugly patch, we will figure something more elegantly in future
+        spec = dict(self.__spec_kwargs__)
+        spec.update(kwargs)
+        self.__spec_kwargs__ = ImmutableDict(spec)
+
     def __deepcopy__(self, memo):
         return self.__copy__()
 

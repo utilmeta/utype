@@ -332,6 +332,11 @@ class TestType:
             ],
             time: [
                 ("11:12:13", time(11, 12, 13), True, True),
+                ("08:09:10", time(8, 9, 10), True, True),
+                ("08:09:10", time(8, 9, 10), True, True),
+                ("8:9:10", time(8, 9, 10), True, True),
+                ("8:9:1", time(8, 9, 1), True, True),
+                ("8:30", time(8, 30, 0), True, True),
                 (b"11:12:13", time(11, 12, 13), True, True),
                 (dt, dt.time(), True, False),
                 (dt.date(), time(), True, False),
