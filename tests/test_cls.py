@@ -493,7 +493,7 @@ class TestClass:
 
     def test_generic_types(self):
         import sys
-        if sys.version_info >= (3, 8):
+        if sys.version_info >= (3, 9):
             class Gen(Schema):
                 a: list[int]
                 b: dict[int]
