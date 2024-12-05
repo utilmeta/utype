@@ -544,7 +544,7 @@ class TestType:
             c = 1
             d = 2
 
-        # from pathlib import PosixPath
+        from pathlib import Path
 
         data = {
             'dt': datetime(2000, 1, 1, 12, 13, 14, 1234),
@@ -557,11 +557,11 @@ class TestType:
             'en': en(2),
             'a': (1, 2),
             's': {'s'},
-            # 'p': PosixPath('/path/to/file')
+            'p': Path('file')
         }
         res = JSONSerializer().dumps(data)
         assert res == (b'{"dt":"2000-01-01T12:13:14.001234","date":"2000-01-01","time":"12:13:14.001",'
-                       b'"dur":"P1DT00H00M10.000123S","dc":10.23,"di":-11,"d0":0,"en":2,"a":[1,2],"s":["s"]}')
+                       b'"dur":"P1DT00H00M10.000123S","dc":10.23,"di":-11,"d0":0,"en":2,"a":[1,2],"s":["s"],"p":"file"}')
 
     # def test_vendor(self):
     #     from utype import register_transformer

@@ -383,6 +383,10 @@ Options 提供了一些用于调节字段的行为的选项，包括
 !!! warning
 	`no_default`， `defer_default` 与 `immutable`  选项只能用于数据类，不能用于函数
 
+* `ignore_delete_nonexistent`：在数据类中，你可以使用 `del data.attr` 这样的方式去删除数据实例的 `attr` 属性，如果这个属性并不存在（对应的数据键不存在）， 会抛出 `DeleteError`，但你可以通过开启 `ignore_delete_nonexistent=True` 来忽略这种情况，不抛出错误
+
+> 版本 0.6.2 及以上支持
+
 这些选项默认都没有开启，开启这些选项相当于强制给字段的配置值，所以相关的用法可以参考 [Field 字段配置](/zh/references/field)
 
 ## 字段别名选项

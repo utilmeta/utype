@@ -96,8 +96,8 @@ def from_bytes(data: bytes):
     return data.decode("utf-8", errors="replace")
 
 
-@register_encoder(PurePath)
-def from_bytes(data: PurePath):
+@register_encoder(PurePath, allow_subclasses=True)
+def from_path(data: PurePath):
     return str(data)
 
 
@@ -113,11 +113,6 @@ def from_datetime(data: Union[datetime, date]):
 
 @register_encoder(IPv4Network, IPv4Address, IPv6Network, IPv6Address)
 def from_ip(data):
-    return str(data)
-
-
-@register_encoder(IPv4Network)
-def from_datetime(data):
     return str(data)
 
 

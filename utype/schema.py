@@ -383,6 +383,8 @@ class Schema(dict, metaclass=LogicalMeta):
                     f"{self.__name__}: Attempt to delete required schema key: {repr(field.attname)}"
                 )
             if field.name not in self:
+                if self.__options__.ignore_delete_nonexistent:
+                    return
                 raise exc.DeleteError(
                     f"{self.__name__}: Attempt to delete nonexistent attribute: {repr(field.attname)}"
                 )

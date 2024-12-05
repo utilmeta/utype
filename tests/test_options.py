@@ -74,6 +74,28 @@ class TestOptions:
         with pytest.raises(exc.DeleteError):
             sc.clear()
 
+    def test_delete(self):
+        class AttrSchema(Schema):
+            # __options__ = Options(i)
+            attr: str = ''
+        a = AttrSchema()
+        assert dict(a) == {'attr': ''}
+        del a.attr
+        assert dict(a) == {}
+        with pytest.raises(exc.DeleteError):
+            del a.attr
+
+        class AttrSchema2(Schema):
+            __options__ = Options(ignore_delete_nonexistent=True)
+            attr: str = ''
+
+        a = AttrSchema2()
+        assert dict(a) == {'attr': ''}
+        del a.attr
+        assert dict(a) == {}
+        del a.attr
+        assert dict(a) == {}
+
     # def test_secret_names(self):
     #     pass
 

@@ -77,6 +77,8 @@ class Options:
     # ignore_dependencies: bool = False
     # force_required: bool = False
     ignore_required: bool = False
+    ignore_delete_nonexistent: bool = False
+    # allow_delete_required: bool = False
 
     force_default: Any = unprovided
     # force a default value for Field(required=False) with no default
@@ -127,6 +129,7 @@ class Options:
         no_default: bool = unprovided,
         defer_default: bool = unprovided,
         ignore_required: bool = unprovided,
+        ignore_delete_nonexistent: bool = unprovided,
         # force_required: bool = False,
         # ignore_no_input: bool = False,
         # ignore_no_output: bool = False,

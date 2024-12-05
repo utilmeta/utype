@@ -378,6 +378,10 @@ Options provides options to configure the behavior of the fields, including
 !!! warning
 	`no_default`, `defer_default` and `immutable` only applies to dataclasses, which cannot use in function Options
 
+* `ignore_delete_nonexistent`：In dataclass, you can use `del data.attr` to delete the `attr` attribute of data instance, if this attribute not exists, a `DeleteError` will be raised, or you can turn `ignore_delete_nonexistent=True` to ignore such error
+
+> New in version 0.6.2
+
 These options are not enabled by default. Enabling these options is equivalent to forcing the configuration value of the `Field`, so you can refer to [Field API References](/references/field)
 
 ## Field alias options
