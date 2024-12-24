@@ -68,7 +68,7 @@ class DataClass(metaclass=LogicalMeta):
     __parser__: ClassParser
     __options__: Options
 
-    def __init__(self, **kwargs):
+    def __init__(self, *args, **kwargs):
         pass
 
     def __init_subclass__(cls, **kwargs):
@@ -235,7 +235,7 @@ class Schema(dict, metaclass=LogicalMeta):
             attr = field.property.fget(self)  # get from the original getter
         except Exception as e:
             error_option = field.output_field.on_error if field.output_field else None
-            msg = f"@property: {repr(field.attname)} calculate failed with error: {e}"
+            msg = f"{self.__name__}: @property: {repr(field.attname)} calculate failed with error: {e}"
             if error_option == context.options.THROW:
                 raise e.__class__(msg) from e
             else:

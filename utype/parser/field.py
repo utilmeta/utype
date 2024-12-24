@@ -91,6 +91,9 @@ class Field(ParamsCollector):
         max_contains: int = None,
         min_contains: int = None,
         unique_items: Union[bool, ConstraintMode] = None,
+        # todo?
+        # absence_error_message: str = None,
+        # parse_error_message: str = None,
     ):
         super().__init__(locals())
 
@@ -445,6 +448,7 @@ class ParserField:
         final: bool = False,
         positional_only: bool = False,
         default=unprovided,     # passed when using Annotated[]
+        bound=None,
         **kwargs
     ):
 
@@ -458,6 +462,7 @@ class ParserField:
         self.property = field_property
         self.final = final
         self.name = name
+        self.bound = bound
 
         all_aliases = [self.name]
         _aliases = []
@@ -1326,7 +1331,8 @@ class ParserField:
             final=final,
             positional_only=positional_only,
             default=_default,
+            bound=bound,
             **kwargs
         )
-        parser_field.setup(options=options)
+        parser_field.setup(options)
         return parser_field

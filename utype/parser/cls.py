@@ -150,7 +150,7 @@ class ClassParser(BaseParser):
                     **self.kwargs
                 )
             except Exception as e:
-                raise exc.ConfigError(f'{self.name}: parse field [{repr(key)}] failed with error: {e}')
+                raise exc.ConfigError(f'{self.name}: generate field [{repr(key)}] failed with error: {e}')
 
             fields.append(field)
 
@@ -195,7 +195,7 @@ class ClassParser(BaseParser):
                     **self.kwargs
                 )
             except Exception as e:
-                raise exc.ConfigError(f'{self.name}: parse field [{repr(key)}] failed with error: {e}')
+                raise exc.ConfigError(f'{self.name}: generate field [{repr(key)}] failed with error: {e}')
 
             fields.append(field)
 
