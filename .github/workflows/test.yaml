@@ -14,7 +14,8 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
+    # https://github.com/onnx/tensorflow-onnx/pull/2376
     strategy:
       fail-fast: false
       max-parallel: 3
