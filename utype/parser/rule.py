@@ -7,6 +7,7 @@ from functools import partial
 from typing import (Any, AsyncGenerator, Callable, Dict, Generator, List,
                     Mapping, Optional, Tuple, Type, TypeVar, Union, Iterator)
 
+import utype
 from ..utils import exceptions as exc
 from ..utils.compat import (ForwardRef, Literal, Self, evaluate_forward_ref,
                             get_args, get_origin, UnionType)
@@ -373,23 +374,54 @@ class LogicalType(type):  # noqa
             return value
 
         elif cls.combinator == "|":
+            # Union type
             # 1. check EXACT identical type
             for con in cls.args:
                 if type(value) == con:
                     return value
-            # 2. try to transform in strict mode
-            # strict_transformer = options.get_transformer(no_explicit_cast=True, no_data_loss=True)
 
+            # 2. try to transform in strict mode
+            if not context.options.no_data_loss or not context.options.no_explicit_cast:
+                strict_options = utype.Options(no_data_loss=True, no_explicit_cast=True)
+
+                for con in cls.args:
+                    with context.enter(cls.combinator, options=strict_options) as new_context:
+                        try:
+                            # error isolation
+                            val = new_context.transformer(value, con)
+                        except Exception as e:
+                            context.collect_tmp_error(e)
+                        else:
+                            context.clear_tmp_error()
+                            return val
+
+            # 3. try to transform with no data loss
+            # e.g. Union[str, List[str]] -> [1, 2] -> ['1', '2']
+            if not context.options.no_data_loss and not context.options.no_explicit_cast:
+                no_loss_options = utype.Options(no_data_loss=True)
+
+                for con in cls.args:
+                    with context.enter(cls.combinator, options=no_loss_options) as new_context:
+                        try:
+                            # error isolation
+                            val = new_context.transformer(value, con)
+                        except Exception as e:
+                            context.collect_tmp_error(e)
+                        else:
+                            context.clear_tmp_error()
+                            return val
+
+            # 4. try to transform in common mode
             for con in cls.args:
                 with context.enter(cls.combinator) as new_context:
                     try:
                         # error isolation
-                        value = new_context.transformer(value, con)
+                        val = new_context.transformer(value, con)
                     except Exception as e:
                         context.collect_tmp_error(e)
                     else:
                         context.clear_tmp_error()
-                        break
+                        return val
 
         elif cls.combinator == "^":
             # 1. check EXACT identical type

@@ -680,17 +680,21 @@ class TestClass:
         class UnionSchema(Schema):
             opt: Optional[int] = Field(gt=3)
             union: Union[Dict[str, int], int]
+            str_or_list: Union[str, List[str]]
 
-        u1 = UnionSchema(opt=None, union=3)
+        u1 = UnionSchema(opt=None, union=3, str_or_list=["1", "2"])
         assert u1.opt is None
         assert u1.union == 3
+        assert u1.str_or_list == ["1", "2"]
 
-        u2 = UnionSchema(opt=5, union={1: "2"})
+        u2 = UnionSchema(opt=5, union={1: "2"}, str_or_list="str")
         assert u2.opt == 5
         assert u2.union == {"1": 2}
+        assert u2.str_or_list == "str"
 
-        u3 = UnionSchema(opt=5, union=[1])
+        u3 = UnionSchema(opt=5, union=[1], str_or_list=[1, 2])
         assert u3.union == 1
+        assert u3.str_or_list == ["1", "2"]
 
         with pytest.raises(exc.ParseError):
             UnionSchema(opt=5, union={"a": "b"})  # cannot convert to Dict[str, int]

@@ -386,7 +386,7 @@ class RuntimeContext:
     #         pass
     #
 
-    def enter(self, route: Union[str, int]) -> "RuntimeContext":
+    def enter(self, route: Union[str, int], options: Options = None) -> "RuntimeContext":
         """
         Isolate the error
         if the new context has some collected error
@@ -399,7 +399,7 @@ class RuntimeContext:
             cls=self.cls,
             route=route,
             force_error=self.force_error,
-            options=self.options,
+            options=self.options & options,
             error_hooks=self.error_hooks,
         )
 
