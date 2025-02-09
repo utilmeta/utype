@@ -1,7 +1,6 @@
 import inspect
 import sys
-import warnings
-from typing import Callable, Dict, List, Optional, Set, Tuple, Type, Union
+from typing import Callable, Dict, List, Optional, Set, Tuple, Type, Union, Any
 
 from ..utils import exceptions as exc
 from ..utils.compat import *
@@ -72,6 +71,7 @@ class BaseParser:
             str, Tuple[ForwardRef, dict]
         ] = {}  # store unresolved ref
         self.fields: Dict[str, ParserField] = {}
+        self.annotations: Dict[str, Any] = {}
         self.exclude_vars: Set[str] = set()
         # these data structures are designed to speed up the parsing
         self.case_insensitive_names: Set[str] = set()

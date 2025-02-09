@@ -153,6 +153,8 @@ class ClassParser(BaseParser):
                 raise exc.ConfigError(f'{self.name}: generate field [{repr(key)}] failed with error: {e}')
 
             fields.append(field)
+            self.annotations[key] = annotation
+            # update annotations
 
         for key, attr in self.obj.__dict__.items():
             if key in annotations:
@@ -185,7 +187,8 @@ class ClassParser(BaseParser):
             try:
                 field = self.parser_field_cls.generate(
                     attname=key,
-                    annotation=None,
+                    annotation=self.annotations.get(key),
+                    # can get from the base classes
                     default=attr,
                     global_vars=global_vars,
                     forward_refs=self.forward_refs,
@@ -219,6 +222,7 @@ class ClassParser(BaseParser):
 
     def generate_from_bases(self):
         fields = {}
+        annotations = {}
         alias_map = {}
         attr_alias_map = {}
         case_insensitive_names = set()
@@ -233,7 +237,7 @@ class ClassParser(BaseParser):
             #     option_list.append(parser.options)
 
             fields.update(parser.fields)
-
+            annotations.update(parser.annotations)
             exclude_vars.update(parser.exclude_vars)
             alias_map.update(parser.field_alias_map)
             attr_alias_map.update(parser.attr_alias_map)
@@ -246,6 +250,7 @@ class ClassParser(BaseParser):
         # self.options = self.options_cls.generate_from(*option_list)
 
         self.fields = fields
+        self.annotations = annotations
         self.exclude_vars = exclude_vars
         self.field_alias_map = alias_map
         self.attr_alias_map = attr_alias_map

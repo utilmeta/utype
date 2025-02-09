@@ -7,7 +7,7 @@ from utype.parser.base import Options
 
 from typing import Optional, Type, Union, Dict
 from utype.utils.datastructures import unprovided
-from utype.utils.compat import JSON_TYPES
+from utype.utils.compat import JSON_TYPES, ForwardRef, evaluate_forward_ref
 from enum import EnumMeta
 from . import constant
 
@@ -48,6 +48,17 @@ class JsonSchemaGenerator:
             return self.generate_for_dataclass(t)
         elif isinstance(t, LogicalType) and t.combinator:
             return self.generate_for_logical(t)
+        elif isinstance(t, ForwardRef):
+            # for more robust
+            if t.__forward_evaluated__:
+                return self.generate_for_type(t.__forward_value__)
+            else:
+                try:
+                    annotation = evaluate_forward_ref(t, globals(), None)
+                except NameError:
+                    # ignore for now
+                    return {}
+                return self.generate_for_type(annotation)
         elif isinstance(t, EnumMeta):
             base = t.__base__
             enum_type = None
