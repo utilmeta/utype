@@ -91,8 +91,10 @@ def from_unprovided(data):
     return None
 
 
-@register_encoder(bytes)
+@register_encoder(bytes, memoryview, bytearray)
 def from_bytes(data: bytes):
+    if not isinstance(data, bytes):
+        data = bytes(data)
     return data.decode("utf-8", errors="replace")
 
 
