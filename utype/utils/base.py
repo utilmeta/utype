@@ -1,7 +1,7 @@
 import inspect
 from typing import Callable, Optional, Dict, Any, TypeVar, List
 from .datastructures import ImmutableDict
-from .functional import represent, multi, distinct_add
+from .functional import represent, multi, distinct_add, pop
 
 T = TypeVar('T')
 SEG = '__'
@@ -35,6 +35,7 @@ class TypeRegistry:
         # to=None,  # register to a specific type transformer class
         allow_subclasses: bool = True,
         priority: int = 0,
+        volatile: bool = False,
     ):
         # detect class by issubclass or hasattr
         # this method can override
@@ -51,6 +52,14 @@ class TypeRegistry:
                 assert inspect.isclass(
                     c
                 ), f"register_transformer classes must be class, got {c}"
+                pop(self._cache, c)
+                # delete the type cache if exists
+
+            if metaclass:
+                # clear all related caches
+                for t in list(self._cache):
+                    if isinstance(t, metaclass):
+                        pop(self._cache, t)
 
             if attr:
                 assert isinstance(
@@ -78,6 +87,8 @@ class TypeRegistry:
             self._registry.insert(0, (detector, f, priority))
             if priority:
                 self._registry.sort(key=lambda v: -v[2])
+            if volatile:
+                f.__volatile__ = True
             return f
 
         # before runtime, type will be compiled and applied
@@ -93,10 +104,11 @@ class TypeRegistry:
             return getattr(t, self.shortcut)
         if self.cache and t in self._cache:
             return self._cache[t]
+
         for detector, trans, priority in self._registry:
             try:
                 if detector(t):
-                    if self.cache:
+                    if self.cache and not getattr(trans, '__volatile__', False):
                         self._cache[t] = trans
                     return trans
             except (TypeError, ValueError):

@@ -177,19 +177,31 @@ class LogicalType(type):  # noqa
         return Rule.annotate(__origin, *_new_args)
 
     def resolve_forward_refs(cls):
-        if not cls.combinator:
-            return
+        # if not cls.combinator:
+        #     return
+        origin_resolved = False
+        arg_resolved = False
+        origin = getattr(cls, "__origin__", None)
+
+        if origin is not None:
+            origin, origin_resolved = resolve_forward_type(origin)
+
+            if origin_resolved:
+                setattr(cls, "__origin__", cls._parse_arg(origin))
+
         args = []
-        resolved = False
         for i, arg in enumerate(cls.args):
             arg, resolved = resolve_forward_type(arg)
             if resolved:
                 arg = cls._parse_arg(arg)
+                arg_resolved = True
             args.append(arg)
-        if resolved:
+
+        if arg_resolved:
             # only adjust args if resolved
             setattr(cls, "__args__", tuple(args))
-        return resolved
+
+        return origin_resolved or arg_resolved
 
     def register_forward_refs(
         cls,
@@ -1322,6 +1334,7 @@ class Rule(metaclass=LogicalType):
         constraints: Dict[str, Any] = None,
         global_vars: Dict[str, Any] = None,
         forward_refs=None,
+        forward_key=None,
         force_clear_refs=False,
         options=None,
         bound=None,
@@ -1378,6 +1391,7 @@ class Rule(metaclass=LogicalType):
                     global_vars=global_vars,
                     forward_refs=forward_refs,
                     force_clear_refs=force_clear_refs,
+                    forward_key=forward_key,
                     bound=bound
                 )
                 # this annotation can be a ForwardRef
@@ -1508,6 +1522,7 @@ class Rule(metaclass=LogicalType):
                 forward_refs=forward_refs,
                 global_vars=global_vars,
                 force_clear_refs=force_clear_refs,
+                forward_key=forward_key,
                 bound=bound
             )
         elif annotation:
@@ -1533,6 +1548,7 @@ class Rule(metaclass=LogicalType):
                 forward_refs=forward_refs,
                 global_vars=global_vars,
                 force_clear_refs=force_clear_refs,
+                forward_key=forward_key,
                 bound=bound
             )
         return None
@@ -1845,34 +1861,42 @@ class Rule(metaclass=LogicalType):
     @classmethod
     def resolve_forward_refs(cls):
         # an override version of LogicalType.resolve_forward_refs
-        if not cls.__args__:
-            return False
-        args = []
-        arg_transformers = []
-        resolved = False
-        for arg, trans in zip(cls.__args__, cls.__arg_transformers__):
-            if isinstance(arg, LogicalType):
-                # including the Rule class and LogicalType with combinator
-                if arg.resolve_forward_refs():
-                    resolved = True
-            elif isinstance(arg, ForwardRef):
-                if arg.__forward_evaluated__:
-                    arg = arg.__forward_value__
-                    resolved = True
-                    transformer = cls.transformer_cls.resolver_transformer(arg)
-                    if not transformer:
-                        warning_settings.warn(
-                            f"{cls}: arg type: {arg} got no transformer resolved, "
-                            f"will just pass {arg}(data) at runtime",
-                            warning_settings.rule_no_arg_transformer
-                        )
-                    trans = transformer or trans
-            args.append(arg)
-            arg_transformers.append(trans)
-        if resolved:
-            cls.__args__ = tuple(args)
-            cls.__arg_transformers__ = tuple(arg_transformers)
-        return resolved
+        origin_resolved = False
+        args_resolved = False
+
+        if cls.__origin__:
+            origin, origin_resolved = resolve_forward_type(cls.__origin__)
+            if origin_resolved:
+                cls.__origin__ = origin
+
+        if cls.__args__:
+            args = []
+            arg_transformers = []
+
+            for arg, trans in zip(cls.__args__, cls.__arg_transformers__):
+                if isinstance(arg, LogicalType):
+                    # including the Rule class and LogicalType with combinator
+                    if arg.resolve_forward_refs():
+                        args_resolved = True
+                elif isinstance(arg, ForwardRef):
+                    if arg.__forward_evaluated__:
+                        arg = arg.__forward_value__
+                        args_resolved = True
+                        transformer = cls.transformer_cls.resolver_transformer(arg)
+                        if not transformer:
+                            warning_settings.warn(
+                                f"{cls}: arg type: {arg} got no transformer resolved, "
+                                f"will just pass {arg}(data) at runtime",
+                                warning_settings.rule_no_arg_transformer
+                            )
+                        trans = transformer or trans
+                args.append(arg)
+                arg_transformers.append(trans)
+            if args_resolved:
+                cls.__args__ = tuple(args)
+                cls.__arg_transformers__ = tuple(arg_transformers)
+
+        return origin_resolved or args_resolved
 
     @classmethod
     def resolve_args_parser(cls):
@@ -2058,6 +2082,6 @@ if isinstance(Any, type):
         return value
 
 
-@TypeTransformer.registry.register(metaclass=LogicalType)
+@TypeTransformer.registry.register(metaclass=LogicalType, volatile=True)
 def transform_rule(transformer: TypeTransformer, value, t: LogicalType):
     return t(value, context=transformer.context)

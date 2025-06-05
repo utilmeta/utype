@@ -27,6 +27,9 @@ class JsonSchemaGenerator:
                  ):
         self.t = t
         self.defs = defs
+        # self.recursive_types = []
+        # handle infinite recursive forward ref if defs is empty
+
         self.names = names
         if isinstance(defs, dict) and self.names is None:
             self.names = {}
@@ -37,28 +40,28 @@ class JsonSchemaGenerator:
         self.options = Options(mode=mode)
         # can generate based on mode and input/output
 
-    def generate_for_type(self, t: type):
+    def generate_for_type(self, t: type, recursive_types: set = None):
         if t is None:
             return {}
         if not isinstance(t, type):
             return {}
         if issubclass(t, Rule):
-            return self.generate_for_rule(t)
+            return self.generate_for_rule(t, recursive_types=recursive_types)
         elif isinstance(getattr(t, "__parser__", None), ClassParser):
-            return self.generate_for_dataclass(t)
+            return self.generate_for_dataclass(t, recursive_types=recursive_types)
         elif isinstance(t, LogicalType) and t.combinator:
-            return self.generate_for_logical(t)
+            return self.generate_for_logical(t, recursive_types=recursive_types)
         elif isinstance(t, ForwardRef):
             # for more robust
             if t.__forward_evaluated__:
-                return self.generate_for_type(t.__forward_value__)
+                return self.generate_for_type(t.__forward_value__, recursive_types=recursive_types)
             else:
                 try:
                     annotation = evaluate_forward_ref(t, globals(), None)
                 except NameError:
                     # ignore for now
                     return {}
-                return self.generate_for_type(annotation)
+                return self.generate_for_type(annotation, recursive_types=recursive_types)
         elif isinstance(t, EnumMeta):
             base = t.__base__
             enum_type = None
@@ -91,11 +94,11 @@ class JsonSchemaGenerator:
             data.update(format=fmt)
         return data
 
-    def generate_for_logical(self, t: LogicalType):
+    def generate_for_logical(self, t: LogicalType, recursive_types: set = None):
         operator_name = constant.OPERATOR_NAMES.get(t.combinator)
         if not operator_name:
             return {}
-        conditions = [self.generate_for_type(cond) for cond in t.args]
+        conditions = [self.generate_for_type(cond, recursive_types=recursive_types) for cond in t.args]
         if operator_name == 'not':
             return {operator_name: conditions[0]}
         return {operator_name: conditions}
@@ -119,14 +122,14 @@ class JsonSchemaGenerator:
                 return pri
         return self.DEFAULT_PRIMITIVE
 
-    def _get_args(self, r: Type[Rule]) -> dict:
+    def _get_args(self, r: Type[Rule], recursive_types: set = None) -> dict:
         origin = r.__origin__
         args = r.__args__
         if not args:
             return {}
         if not origin:
             return {}
-        args_res = [self.generate_for_type(arg) for arg in args]
+        args_res = [self.generate_for_type(arg, recursive_types=recursive_types) for arg in args]
         if issubclass(origin, tuple):
             if r.__ellipsis_args__:
                 name = 'items'
@@ -163,7 +166,7 @@ class JsonSchemaGenerator:
             defs[name] = values
         return defs
 
-    def generate_for_rule(self, t: Type[Rule]):
+    def generate_for_rule(self, t: Type[Rule], recursive_types: set = None):
         name = t.__qualname__
         if isinstance(self.defs, dict):
             def_name = self.get_def_name(t)
@@ -172,7 +175,7 @@ class JsonSchemaGenerator:
 
         # type
         origin = t.__origin__
-        data = dict(self.generate_for_type(origin))
+        data = dict(self.generate_for_type(origin, recursive_types=recursive_types))
         primitive = getattr(t, 'primitive', None)
         if primitive in constant.PRIMITIVES:
             data.update(type=primitive)
@@ -202,7 +205,7 @@ class JsonSchemaGenerator:
         if extra and isinstance(extra, dict):
             data.update(extra)
         if t.__args__:
-            data.update(self._get_args(t))
+            data.update(self._get_args(t, recursive_types=recursive_types))
         if isinstance(self.defs, dict) and name != 'Rule':
             if '<locals>' not in name:
                 # not a auto created rule
@@ -235,7 +238,10 @@ class JsonSchemaGenerator:
         self.names[name] = t
         return name
 
-    def generate_for_field(self, f: ParserField, options: Options = None) -> Optional[dict]:
+    def generate_for_field(self, f: ParserField,
+                           options: Options = None,
+                           recursive_types: set = None
+                           ) -> Optional[dict]:
         if self.output:
             if f.always_no_output(options or self.options):
                 return None
@@ -250,7 +256,9 @@ class JsonSchemaGenerator:
             else:
                 t = t or f.output_type
 
-        data = dict(self.generate_for_type(t))
+        data = dict(self.generate_for_type(
+            t, recursive_types=recursive_types
+        ))
 
         if f.field.title:
             data.update(title=f.field.title)
@@ -286,9 +294,12 @@ class JsonSchemaGenerator:
             })
         return data
 
-    def generate_for_dataclass(self, t):
+    def generate_for_dataclass(self, t, recursive_types: set = None):
         # name = t.__qualname__
         parser: ClassParser = getattr(t, '__parser__')
+        if not isinstance(parser, ClassParser):
+            raise TypeError(f'Invalid dataclass: {t}')
+        parser.resolve_forward_refs()       # resolve before generate
         cls_name = parser.name
         mode = parser.options.mode
         if mode:
@@ -303,6 +314,11 @@ class JsonSchemaGenerator:
             cls_name = self.set_def(cls_name, t, data=None)
             # set data to None:
             # avoid cascade references
+        elif isinstance(recursive_types, set):
+            # handle cascade forward ref
+            if t in recursive_types:
+                return {"$ref": f"{self.ref_prefix}{cls_name}"}
+            recursive_types.add(t)
 
         data = {"type": "object"}
         required = []
@@ -316,7 +332,7 @@ class JsonSchemaGenerator:
                 options = parser.output_options
 
         for name, field in parser.fields.items():
-            value = self.generate_for_field(field, options=options)
+            value = self.generate_for_field(field, options=options, recursive_types=recursive_types or {t})
             if value is None:
                 continue
             properties[name] = value

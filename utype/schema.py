@@ -95,7 +95,7 @@ class DataClass(metaclass=LogicalMeta):
         return self.__parser__.name
 
     def __class_getitem__(cls, item):
-        raise NotImplemented
+        raise NotImplementedError
 
     def __validate__(self):
         pass
@@ -184,7 +184,7 @@ class Schema(dict, metaclass=LogicalMeta):
         #     class _cls(cls):
         #         __options__ = item
         #     return _cls
-        raise NotImplemented
+        raise NotImplementedError
 
     def __validate__(self):
         pass
