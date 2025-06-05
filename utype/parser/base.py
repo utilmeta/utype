@@ -27,7 +27,6 @@ class BaseParser:
             return parser
         if not is_local_var(obj):
             # return None
-            global __parsers__
             if obj in __parsers__:
                 return __parsers__[obj]
         parser = getattr(obj, "__parser__", None)
@@ -46,7 +45,6 @@ class BaseParser:
             return parser
         if is_local_var(obj):
             no_cache = True
-        global __parsers__
         # key = (cls, obj)
         key = obj
         if not options:
