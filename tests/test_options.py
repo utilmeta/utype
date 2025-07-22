@@ -403,6 +403,21 @@ class TestOptions:
         assert d.default is None
         assert 'default' not in d
 
+        class SelectedDeferDefaultSchema(Schema):
+            __options__ = Options(
+                ignore_required=['a1', 'a2'],
+                defer_default=['a3']
+            )
+            a1: str
+            a2: str = '2'
+            a3: str = '3'
+
+        d = SelectedDeferDefaultSchema()
+        assert 'a1' not in d
+        assert d.a2 == '2'
+        assert d.a3 == '3'
+        assert list(dict(d).keys()) == ['a2']
+
     def test_errors(self):
         class LoginForm(Schema):
             username: str = Field(regex='[0-9a-zA-Z]{3,20}')

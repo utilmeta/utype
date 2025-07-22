@@ -16,6 +16,7 @@ from ..utils.functional import multi, pop
 from ..utils.transform import TypeTransformer
 from ..settings import warning_settings
 from .options import RuntimeContext
+from datetime import datetime
 
 T = typing.TypeVar("T")
 OTHER = TypeVar("OTHER")
@@ -24,7 +25,8 @@ ORIGIN = TypeVar("ORIGIN")
 NUM_TYPES = (int, float, Decimal)
 SEQ_TYPES = (list, tuple, set, frozenset, deque, Iterator)
 MAP_TYPES = (dict, Mapping)
-TYPE_EXACT_TOLERANCE = ({int, float}, {int, Decimal}, (float, Decimal))
+TYPE_EXACT_TOLERANCE = ({int, float}, {int, Decimal}, {float, Decimal}, {int, datetime},
+                        {float, datetime}, {Decimal, datetime})
 
 OPERATOR_NAMES = {
     "&": "AllOf",
@@ -1558,10 +1560,12 @@ class Rule(metaclass=LogicalType):
         return True
 
     @classmethod
-    def _get_origin(cls, t):
+    def _get_origin(cls, t, type_only: bool = False):
         rule = t
-        while (isinstance(rule, type) and issubclass(rule, Rule) and
-               not rule.__args__ and not rule.__validators__):
+        while isinstance(rule, type) and issubclass(rule, Rule):
+            if not type_only:
+                if rule.__args__ or rule.__validators__:
+                    break
             rule = rule.__origin__
         return rule
 
@@ -1592,19 +1596,36 @@ class Rule(metaclass=LogicalType):
         origin = rule.__origin__ if (isinstance(rule, type) and issubclass(rule, Rule)) else rule
         args = (rule.__args__ or []) if (isinstance(rule, type) and issubclass(rule, Rule)) else []
 
-        if isinstance(origin, type):
-            if isinstance(t, type):
+        if isinstance(origin, type) and not isinstance(origin, LogicalType):
+            if isinstance(t, type) and not isinstance(t, LogicalType):
                 if issubclass(origin, t):
                     return rule
                 # elif issubclass(t, origin):
                 else:
-                    if not issubclass(t, origin):
-                        if issubclass(t, Rule):
-                            if not issubclass(t.__origin__, origin):
-                                if strict:
-                                    raise TypeError(f'Invalid type merge: {t.__origin__}, {origin}')
-                        elif strict:
-                            raise TypeError(f'Invalid type merge: {t}, {origin}')
+                    type_matched = issubclass(t, origin)
+                    if not type_matched:
+                        if issubclass(t, Rule) and issubclass(t.__origin__, origin):
+                            type_matched = True
+
+                    if not type_matched and strict:
+                        t_origin = cls._get_origin(t, type_only=True) if isinstance(t, Rule) else t
+                        o_origin = cls._get_origin(origin, type_only=True) if isinstance(origin, Rule) else origin
+
+                        if {t_origin, o_origin} in TYPE_EXACT_TOLERANCE:
+                            # check tolerance
+                            pass
+                        else:
+                            raise TypeError(f'Invalid type merge: {t_origin}, {o_origin}')
+
+                    # if not issubclass(t, origin):
+                    #     if strict:
+                    #
+                    #     if issubclass(t, Rule):
+                    #         if not issubclass(t.__origin__, origin):
+                    #             if strict:
+                    #                 raise TypeError(f'Invalid type merge: {t.__origin__}, {origin}')
+                    #     elif strict:
+                    #         raise TypeError(f'Invalid type merge: {t}, {origin}')
                     origin = t
 
         if isinstance(rule, LogicalType) and rule.combinator:

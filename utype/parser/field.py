@@ -767,15 +767,15 @@ class ParserField:
 
     def get_default(self, options: Options, defer: Optional[bool] = False):
         # options = options or self.options
-        if options.no_default:
+        if options.field_no_default(self):
             return unprovided
 
         if isinstance(defer, bool):
             if not defer:
-                if self.defer_default or options.defer_default:
+                if self.defer_default or options.field_defer_default(self):
                     return unprovided
             else:
-                if not self.defer_default and not options.defer_default:
+                if not self.defer_default and not options.field_defer_default(self):
                     return unprovided
 
         if not unprovided(options.force_default):
@@ -801,7 +801,7 @@ class ParserField:
         return options.invalid_values
 
     def is_required(self, options: Options):
-        if options.ignore_required or not self.required:
+        if options.field_ignore_required(self) or not self.required:
             return False
         if self.always_no_input(options):
             return False

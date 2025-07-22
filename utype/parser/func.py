@@ -430,7 +430,7 @@ class FunctionParser(BaseParser):
                     **self.kwargs
                 )
             except Exception as e:
-                raise exc.ConfigError(f'{self.name}: generate field [{repr(name)}] failed with error: {e}')
+                raise e.__class__(f'{self.obj}: generate field [{repr(name)}] failed with error: {e}') from e
 
             fields.append(
                 field

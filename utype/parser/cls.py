@@ -150,7 +150,7 @@ class ClassParser(BaseParser):
                     **self.kwargs
                 )
             except Exception as e:
-                raise exc.ConfigError(f'{self.name}: generate field [{repr(key)}] failed with error: {e}')
+                raise e.__class__(f'{self.obj}: generate field [{repr(key)}] failed with error: {e}') from e
 
             fields.append(field)
             self.annotations[key] = annotation
@@ -198,7 +198,7 @@ class ClassParser(BaseParser):
                     **self.kwargs
                 )
             except Exception as e:
-                raise exc.ConfigError(f'{self.name}: generate field [{repr(key)}] failed with error: {e}')
+                raise e.__class__(f'{self.obj}: generate field [{repr(key)}] failed with error: {e}') from e
 
             fields.append(field)
 

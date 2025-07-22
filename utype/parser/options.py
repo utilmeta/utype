@@ -1,5 +1,5 @@
 import inspect
-from typing import Any, Callable, List, Optional, Set, Type, Union
+from typing import Any, Callable, List, Optional, Set, Type, Union, TYPE_CHECKING
 
 from ..utils import exceptions as exc
 from ..utils.compat import Literal
@@ -7,6 +7,9 @@ from ..utils.datastructures import unprovided
 from ..utils.functional import multi
 from ..utils.transform import TypeTransformer
 from ..settings import warning_settings
+
+if TYPE_CHECKING:
+    from .field import ParserField
 
 DEFAULT_SECRET_NAMES = (
     "password",
@@ -76,14 +79,14 @@ class Options:
     ignore_alias_conflicts: bool = False
     # ignore_dependencies: bool = False
     # force_required: bool = False
-    ignore_required: bool = False
-    ignore_delete_nonexistent: bool = False
+    ignore_required: Union[bool, List[str]] = False
+    ignore_delete_nonexistent: Union[bool, List[str]] = False
     # allow_delete_required: bool = False
 
     force_default: Any = unprovided
     # force a default value for Field(required=False) with no default
-    no_default: bool = False
-    defer_default: bool = False
+    no_default: Union[bool, List[str]] = False
+    defer_default: Union[bool, List[str]] = False
 
     # do not take default value (leave it unprovided)
     data_first_search: Optional[bool] = False
@@ -126,10 +129,10 @@ class Options:
         # TypeTransformer and tweak handle_unresolved()
         # ignore_error_property: bool = False,
         force_default: Any = unprovided,
-        no_default: bool = unprovided,
-        defer_default: bool = unprovided,
-        ignore_required: bool = unprovided,
-        ignore_delete_nonexistent: bool = unprovided,
+        no_default: Union[bool, List[str]] = unprovided,
+        defer_default: Union[bool, List[str]] = unprovided,
+        ignore_required: Union[bool, List[str]] = unprovided,
+        ignore_delete_nonexistent: Union[bool, List[str]] = unprovided,
         # force_required: bool = False,
         # ignore_no_input: bool = False,
         # ignore_no_output: bool = False,
@@ -206,6 +209,31 @@ class Options:
 
     def __str__(self):
         return self.__repr__()
+
+    def _field_option(self, field: "ParserField", option: str):
+        val = getattr(self, option, unprovided)
+        if unprovided(val):
+            return None
+        if isinstance(val, bool):
+            # default or configured value
+            return val
+        if multi(val):
+            if set(val).intersection(field.all_aliases):
+                return True
+            return False
+        return None
+
+    def field_ignore_required(self, field: "ParserField"):
+        return self._field_option(field, "ignore_required")
+
+    def field_no_default(self, field: "ParserField"):
+        return self._field_option(field, "no_default")
+
+    def field_defer_default(self, field: "ParserField"):
+        return self._field_option(field, "defer_default")
+
+    def field_ignore_delete_nonexistent(self, field: "ParserField"):
+        return self._field_option(field, "ignore_delete_nonexistent")
 
     @classmethod
     def initialize(cls):
