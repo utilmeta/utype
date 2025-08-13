@@ -1181,10 +1181,10 @@ class ParserField:
                             raise exc.ConfigError(
                                 field=attname, params={"alias": field.alias}
                             )
-                        if field.no_output:
-                            raise exc.ConfigError(
-                                field=attname, params={"no_output": field.no_output}
-                            )
+                        # if field.no_output:
+                        #     raise exc.ConfigError(
+                        #         field=attname, params={"no_output": field.no_output}
+                        #     )
                         if field.dependencies:
                             raise exc.ConfigError(
                                 field=attname,
@@ -1225,10 +1225,10 @@ class ParserField:
                         dependencies = output_field.dependencies
 
                     # some invalid configures
-                    if output_field.no_input:
-                        raise exc.ConfigError(
-                            field=attname, params={"no_input": output_field.no_input}
-                        )
+                    # if output_field.no_input:
+                    #     raise exc.ConfigError(
+                    #         field=attname, params={"no_input": output_field.no_input}
+                    #     )
                     if output_field.alias_from:
                         raise exc.ConfigError(
                             field=attname, params={"alias_from": output_field.alias_from}

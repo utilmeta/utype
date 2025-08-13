@@ -1541,6 +1541,10 @@ class Rule(metaclass=LogicalType):
                 else:
                     # no constraints, we can directly use it
                     return annotation
+            elif isinstance(annotation, TypeVar):
+                # todo: handle Generic and TypeVar validation
+                return Rule
+
             raise TypeError(
                 f"{repr(forward_key)}: invalid annotation: {annotation}"
             )
