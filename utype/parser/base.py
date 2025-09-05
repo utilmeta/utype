@@ -487,11 +487,11 @@ class BaseParser:
                     result[name] = default
 
         if dependencies:
-            dependant = set(result)
+            dependent = set(result)
             if excluded_keys:
-                dependant.update(excluded_keys)
+                dependent.update(excluded_keys)
 
-            diff = dependencies.difference(dependant)
+            diff = dependencies.difference(dependent)
             lack = dependencies.intersection(unprovided_fields)
             lack.update(diff)
             if lack:
@@ -586,11 +586,11 @@ class BaseParser:
                 )
 
         if dependencies:
-            dependant = set(result)
+            dependent = set(result)
             if excluded_keys:
-                dependant.update(excluded_keys)
+                dependent.update(excluded_keys)
 
-            diff = dependencies.difference(dependant)
+            diff = dependencies.difference(dependent)
             lack = dependencies.intersection(unprovided_fields)
             lack.update(diff)
             if lack:

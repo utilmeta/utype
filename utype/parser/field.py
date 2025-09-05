@@ -1,4 +1,5 @@
 import inspect
+import warnings
 from collections.abc import Mapping
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
@@ -478,7 +479,7 @@ class ParserField:
         # self.input_transformer = self.transformer_cls.resolver_transformer(input_type)
         self.dependencies = dependencies
         self.attr_dependencies = set()
-        self.dependants = set()
+        self.dependents = set()
 
         # self.secret = field.secret
         # self.secret_repr = field.secret if isinstance(field.secret, str) else self.SECRET_REPR
@@ -504,6 +505,11 @@ class ParserField:
         self.case_insensitive = self.field.case_insensitive
     # ----------------
     # below are static field properties
+
+    @property
+    def dependants(self):
+        # alias: # will be deprecated in version 0.7
+        return self.dependents
 
     @property
     def alias_set(self):
@@ -678,9 +684,14 @@ class ParserField:
                 )
 
     def add_dependant(self, name: str):
-        if name in self.dependants:
+        warnings.warn(DeprecationWarning(f'add_dependant will be deprecated in version 0.7, use add_dependent'))
+        # alias: will be deprecated in version 0.7
+        return self.add_dependent(name)
+
+    def add_dependent(self, name: str):
+        if name in self.dependents:
             return
-        self.dependants.add(name)
+        self.dependents.add(name)
 
     def apply_fields(
         self,
@@ -717,8 +728,8 @@ class ParserField:
                 field = fields[dep]
                 if self.property:
                     # if no getter function
-                    # dependant will not affect
-                    field.add_dependant(self.name)
+                    # dependent will not affect
+                    field.add_dependent(self.name)
                 if dep not in dependencies:
                     dependencies.append(dep)
                 if field.attname not in attr_dependencies:
@@ -1143,7 +1154,7 @@ class ParserField:
                 forward_refs=forward_refs,
                 forward_key=attname,
                 force_clear=force_clear_refs,
-                evaluate_only=True
+                # evaluate_only=True
             )
 
         field = cls.get_field(annotation, default, **kwargs)

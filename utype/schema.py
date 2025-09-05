@@ -155,9 +155,6 @@ class Schema(dict, metaclass=LogicalMeta):
         )
 
         for key, field in parser.property_fields.items():
-            # if field.property.fset:
-            #   if field.always_no_output(cls.__options__.make_runtime(cls)) and not field.dependants:
-            #       continue
             getter = partial(
                 cls.__field_getter__, field=field, getter=field.property.fget
             )
@@ -336,9 +333,9 @@ class Schema(dict, metaclass=LogicalMeta):
             else:
                 super().__setitem__(field.name, value)
 
-        if field.dependants:
-            # need to update the dependant properties
-            for dep in field.dependants:
+        if field.dependents:
+            # need to update the dependent properties
+            for dep in field.dependents:
                 dep_field = self.__parser__.get_field(dep)
                 if dep_field and dep_field.property:
                     self.__coerce_property__(dep_field, context=context)
@@ -439,7 +436,7 @@ class Schema(dict, metaclass=LogicalMeta):
         data = dict(__m) if __m else kwargs
         for key, val in data.items():
             self.__setitem__(key, val)
-        # TODO: reduce the dependant property calculation times if there are duplicate dependants
+        # TODO: reduce the dependent property calculation times if there are duplicate dependents
 
         # options = self.__options__.patch(
         #     ignored_options=['min_params'],
