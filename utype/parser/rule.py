@@ -16,7 +16,8 @@ from ..utils.functional import multi, pop
 from ..utils.transform import TypeTransformer
 from ..settings import warning_settings
 from .options import RuntimeContext
-from datetime import datetime
+from datetime import datetime, date, time
+from uuid import UUID
 
 T = typing.TypeVar("T")
 OTHER = TypeVar("OTHER")
@@ -26,7 +27,12 @@ NUM_TYPES = (int, float, Decimal)
 SEQ_TYPES = (list, tuple, set, frozenset, deque, Iterator)
 MAP_TYPES = (dict, Mapping)
 TYPE_EXACT_TOLERANCE = ({int, float}, {int, Decimal}, {float, Decimal}, {int, datetime},
-                        {float, datetime}, {Decimal, datetime})
+                        {float, datetime}, {Decimal, datetime},
+                        {int, bool},
+                        (str, UUID), (str, bytes), {bytes, bytearray},
+                        (datetime, date), (datetime, str), (date, str), (time, str),
+                        {list, tuple}, {list, set}, {tuple, set}
+                        )
 
 OPERATOR_NAMES = {
     "&": "AllOf",
@@ -1617,6 +1623,9 @@ class Rule(metaclass=LogicalType):
 
                         if {t_origin, o_origin} in TYPE_EXACT_TOLERANCE:
                             # check tolerance
+                            pass
+                        elif t_origin == str:
+                            # any type can convert to str
                             pass
                         else:
                             raise TypeError(f'Invalid type merge: {t_origin}, {o_origin}')
