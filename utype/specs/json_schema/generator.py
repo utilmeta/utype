@@ -5,8 +5,9 @@ from utype.parser.cls import ClassParser
 from utype.parser.func import FunctionParser
 from utype.parser.base import Options
 
-from typing import Optional, Type, Union, Dict
+from typing import Optional, Type, Dict
 from utype.utils.datastructures import unprovided
+from utype.utils.functional import get_ref, is_builtin_types
 from utype.utils.compat import JSON_TYPES, ForwardRef, evaluate_forward_ref
 from enum import EnumMeta
 from . import constant
@@ -92,6 +93,11 @@ class JsonSchemaGenerator:
         data = {"type": prim}
         if fmt:
             data.update(format=fmt)
+        if inspect.isclass(t) and not is_builtin_types(t):
+            data.update({
+                'x-code-ref': get_ref(t),
+                'x-code-type': 'class'
+            })
         return data
 
     def generate_for_logical(self, t: LogicalType, recursive_types: set = None):
@@ -240,7 +246,8 @@ class JsonSchemaGenerator:
 
     def generate_for_field(self, f: ParserField,
                            options: Options = None,
-                           recursive_types: set = None
+                           recursive_types: set = None,
+                           with_default: bool = False,
                            ) -> Optional[dict]:
         if self.output:
             if f.always_no_output(options or self.options):
@@ -285,6 +292,15 @@ class JsonSchemaGenerator:
                 'x-var-name': f.attname,
                 'x-aliases': aliases,
                 'aliases': aliases,     # compat old version, will be deprecated
+            })
+        if with_default and not f.no_default:
+            default = f.default
+            if f.default_factory:
+                default = f.default_factory()
+            if type(default) not in JSON_TYPES:
+                default = str(default)
+            data.update({
+                'default': default
             })
 
         annotations = f.schema_annotations
@@ -379,7 +395,7 @@ class JsonSchemaGenerator:
         required = []
         params = {}
         for name, field in parser.fields.items():
-            value = self.generate_for_field(field, options=parser.options)
+            value = self.generate_for_field(field, options=parser.options, with_default=True)
             if value is None:
                 continue
             params[name] = value
@@ -392,6 +408,9 @@ class JsonSchemaGenerator:
             data.update(required=required)
         if pos_params:
             data.update(positionalOnly=pos_params)
+        if parser.return_type:
+            data.update(returnValue=self.generate_for_type(parser.return_type))
+
         addition = parser.options.addition
         if addition is not None:
             if isinstance(addition, type):

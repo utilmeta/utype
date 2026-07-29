@@ -3,7 +3,6 @@ from collections.abc import (AsyncGenerator, AsyncIterable, AsyncIterator,
                              Callable, Generator, Iterable, Iterator, Mapping)
 from functools import wraps
 from typing import List, Tuple, Optional
-
 from ..utils import exceptions as exc
 from ..utils.compat import is_classvar, is_final
 from ..utils.datastructures import cached_property, unprovided
@@ -18,18 +17,41 @@ LAMBDA_NAME = (lambda: None).__name__
 LOCALS_NAME = "<locals>"
 
 
-def _f_pass_doc():
-    """"""
+def _f_doc(): """"""
 
 
-def _f_pass():
-    pass
+def _f_pass(): pass
 
 
-PASSED_CODES = (
-    _f_pass.__code__.co_code,
-    _f_pass_doc.__code__.co_code,
+def _f_ellipsis(): ...
+
+
+async def _af_doc(): """"""
+
+
+async def _af_pass(): pass
+
+
+async def _af_ellipsis(): ...
+
+
+PASSED_CODES = tuple(
+    f.__code__.co_code for f in [
+        _f_doc,
+        _f_pass,
+        _f_ellipsis,
+        _af_doc,
+        _af_pass,
+        _af_ellipsis,
+    ]
 )
+
+
+def unwrap_callable(func):
+    if isinstance(func, (staticmethod, classmethod)):
+        func = func.__func__
+    func = inspect.unwrap(func)
+    return func
 
 
 class FunctionParser(BaseParser):
@@ -47,9 +69,13 @@ class FunctionParser(BaseParser):
 
     @classmethod
     def function_pass(cls, f):
+        f = unwrap_callable(f)
         if not inspect.isfunction(f):
             return False
-        return getattr(f, "__code__").co_code in PASSED_CODES
+        try:
+            return getattr(f, "__code__").co_code in PASSED_CODES
+        except AttributeError:
+            return False
 
     @classmethod
     def validate_function(cls, f):

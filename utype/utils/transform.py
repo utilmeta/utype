@@ -233,6 +233,8 @@ class TypeTransformer:
         data = self._from_byte_like(self._attempt_from(data))
         if self.no_explicit_cast and not isinstance(data, str):
             raise TypeError
+        if data is None:
+            return t()
         return t(data)
 
     @registry.register(bytes, bytearray, memoryview)
@@ -250,6 +252,9 @@ class TypeTransformer:
             # if the value is not bytes (need to transform) in strict mode, throw an error directly
             raise TypeError
 
+        if data is None:
+            return t()
+
         return t(str(data).encode())
 
     @registry.register(list, tuple, set, frozenset, deque)
@@ -262,6 +267,8 @@ class TypeTransformer:
 
         if self.no_explicit_cast:
             raise TypeError
+        if data is None:
+            return t()
 
         data = self._from_byte_like(data)
 
@@ -317,6 +324,8 @@ class TypeTransformer:
 
         if self.no_explicit_cast:
             raise TypeError
+        if data is None:
+            return t()
 
         if self.no_data_loss:
             if isinstance(data, (list, set, tuple)):

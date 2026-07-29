@@ -91,3 +91,48 @@ def distinct_add(target: list, data):
 def valid_attr(name: str):
     from keyword import iskeyword
     return name.isidentifier() and not iskeyword(name)
+
+
+def get_ref(obj) -> Optional[str]:
+    module = getattr(obj, '__module__', '')
+    name = getattr(obj, '__qualname__', '') or getattr(obj, '__name__', '')
+    if not module:
+        return name
+    if not name:
+        return None
+    return '.'.join([module, name])
+
+
+def is_builtin_types(t) -> bool:
+    if not isinstance(t, type):
+        return False
+    module = getattr(t, '__module__', None)
+    if not module:
+        return False
+    return any(module == prefix or module.startswith(prefix + '.') for prefix in [
+        'builtins',
+        'ipaddress',
+        'datetime',
+        'decimal',
+        'uuid',
+        'typing',
+        'types',
+        'enum',
+        'collections',
+        'collections.abc',
+        'time',
+        'zoneinfo',
+        're',
+        'json',
+        'base64',
+        'binascii',
+        'hashlib',
+        'random',
+        're',
+        'socket',
+        'dataclasses',
+        'copy',
+        'weakref',
+        'itertools',
+        'contextlib',
+    ])
